@@ -1,0 +1,76 @@
+/* Header styles */
+header {
+  height: 60px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  width: 100%;
+}
+
+header .mantine-Container-root {
+  height: 100%;
+  display: flex;
+}
+
+header .mantine-Group-root {
+  align-items: center;
+  height: 100%;
+  width: 100%;
+}
+
+/* Navigation link styles */
+.nav-links {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex: 1;
+}
+
+.nav-link {
+  position: relative;
+  transition: all 0.2s ease;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 500;
+  font-size: 15px;
+  border-bottom: 2px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--accent-primary) !important;
+  border-bottom: 2px solid var(--accent-secondary) !important;
+}
+
+/* Dropdown menu styles */
+.mantine-Menu-dropdown .mantine-Menu-item {
+  transition: all 0.2s ease;
+}
+
+.mantine-Menu-dropdown .mantine-Menu-item:hover {
+  background-color: var(--bg-secondary);
+  color: var(--accent-primary);
+}
+
+/* User profile styles */
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.user-profile:hover {
+  background-color: var(--bg-secondary);
+}
+
+/* Logo styles */
+.logo {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  margin-right: 20px;
+}
