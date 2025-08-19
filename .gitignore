@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.env
+env/
+venv/
+# Django
+*.sqlite3
+/media/
+# Node
+node_modules/
+/dist/
+/build/
+/.vite/
+/*.local
+# Docker
+*.log
+docker-compose.override.yml
+# VSCode, macOS, etc.
+.vscode/
+.DS_Store
+.windsurf/
+.github/
+# Static files
+staticfiles/
