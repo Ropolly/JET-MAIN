@@ -10,7 +10,7 @@ class BaseModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_on = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="%(class)s_created")
-    status = models.CharField(max_length=50, default="active")
+    status = models.CharField(max_length=50, default="active", db_index=True)
     lock = models.BooleanField(default=False)
     
     class Meta:
@@ -139,8 +139,8 @@ class Ground(BaseModel):
 
 # Airport model
 class Airport(BaseModel):
-    icao_code = models.CharField(max_length=4)
-    iata_code = models.CharField(max_length=3)
+    icao_code = models.CharField(max_length=4, unique=True, db_index=True)
+    iata_code = models.CharField(max_length=3, db_index=True)
     name = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100, blank=True, null=True)
@@ -169,7 +169,7 @@ class Document(models.Model):
 
 # Aircraft model
 class Aircraft(BaseModel):
-    tail_number = models.CharField(max_length=20)
+    tail_number = models.CharField(max_length=20, unique=True, db_index=True)
     company = models.CharField(max_length=255)
     mgtow = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Maximum Gross Takeoff Weight")
     make = models.CharField(max_length=100)
@@ -181,7 +181,7 @@ class Aircraft(BaseModel):
 
 # Transaction model
 class Transaction(BaseModel):
-    key = models.UUIDField(default=uuid.uuid4, editable=False)
+    key = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=[
         ("credit_card", "Credit Card"),
@@ -232,7 +232,7 @@ class Patient(BaseModel):
         ("active", "Active"),
         ("completed", "Completed"),
         ("cancelled", "Cancelled")
-    ], default="pending")
+    ], default="pending", db_index=True)
     letter_of_medical_necessity_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients")
     
     def __str__(self):
@@ -275,7 +275,7 @@ class Quote(BaseModel):
         ("completed", "Completed"),
         ("cancelled", "Cancelled"),
         ("paid", "Paid")
-    ], default="pending")
+    ], default="pending", db_index=True)
     number_of_stops = models.PositiveIntegerField(default=0)
     quote_pdf_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs")
     quote_pdf_status = models.CharField(max_length=20, choices=[
@@ -333,7 +333,7 @@ class Trip(BaseModel):
     post_flight_duty_time = models.DurationField(blank=True, null=True)
     pre_flight_duty_time = models.DurationField(blank=True, null=True)
     aircraft_id = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
-    trip_number = models.CharField(max_length=20)
+    trip_number = models.CharField(max_length=20, unique=True, db_index=True)
     internal_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips")
     customer_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips")
     passengers = models.ManyToManyField(Passenger, related_name="trips", blank=True)
