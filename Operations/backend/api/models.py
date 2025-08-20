@@ -254,7 +254,7 @@ class Quote(BaseModel):
         ("35", "Learjet 35"),
         ("TBD", "To Be Determined")
     ])
-    estimated_fight_time = models.DecimalField(max_digits=5, decimal_places=2)
+    estimated_flight_time = models.DurationField()
     includes_grounds = models.BooleanField(default=False)
     inquiry_date = models.DateTimeField(default=timezone.now)
     medical_team = models.CharField(max_length=20, choices=[
@@ -330,8 +330,8 @@ class Trip(BaseModel):
     ])
     patient_id = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
     estimated_departure_time = models.DateTimeField(blank=True, null=True)
-    post_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    pre_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    post_flight_duty_time = models.DurationField(blank=True, null=True)
+    pre_flight_duty_time = models.DurationField(blank=True, null=True)
     aircraft_id = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
     trip_number = models.CharField(max_length=20)
     internal_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips")
@@ -352,8 +352,8 @@ class TripLine(BaseModel):
     arrival_time_local = models.DateTimeField()
     arrival_time_utc = models.DateTimeField()
     distance = models.DecimalField(max_digits=10, decimal_places=2)
-    flight_time = models.DecimalField(max_digits=5, decimal_places=2)
-    ground_time = models.DecimalField(max_digits=5, decimal_places=2)
+    flight_time = models.DurationField()
+    ground_time = models.DurationField()
     passenger_leg = models.BooleanField(default=True)
     
     def __str__(self):
