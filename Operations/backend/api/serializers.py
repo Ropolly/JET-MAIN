@@ -119,14 +119,18 @@ class UserProfileWriteSerializer(serializers.ModelSerializer):
 class PassengerReadSerializer(serializers.ModelSerializer):
     info = ContactSerializer(read_only=True)
     passport_document = DocumentSerializer(read_only=True)
+    related_passengers = serializers.SerializerMethodField()
     
     class Meta:
         model = Passenger
         fields = [
             'id', 'info', 'date_of_birth', 'nationality', 'passport_number',
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
-            'status', 'created_on'
+            'related_passengers', 'status', 'created_on'
         ]
+    
+    def get_related_passengers(self, obj):
+        return [{'id': p.id, 'info': ContactSerializer(p.info).data} for p in obj.passenger_ids.all()]
 
 class PassengerWriteSerializer(serializers.ModelSerializer):
     info = serializers.PrimaryKeyRelatedField(
@@ -135,13 +139,16 @@ class PassengerWriteSerializer(serializers.ModelSerializer):
     passport_document = serializers.PrimaryKeyRelatedField(
         queryset=Document.objects.all(), write_only=True, required=False, allow_null=True
     )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Passenger.objects.all(), many=True, write_only=True, required=False
+    )
     
     class Meta:
         model = Passenger
         fields = [
             'info', 'date_of_birth', 'nationality', 'passport_number',
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
-            'status'
+            'passenger_ids', 'status'
         ]
 
 # 3) Crew Lines

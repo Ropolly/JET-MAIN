@@ -273,8 +273,7 @@ class Quote(BaseModel):
         ("standard", "Standard"),
         ("full", "Full")
     ])
-    patient_first_name = models.CharField(max_length=100, blank=True, null=True)
-    patient_last_name = models.CharField(max_length=100, blank=True, null=True)
+
     patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes", db_column="patient_id")
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
@@ -312,6 +311,7 @@ class Passenger(BaseModel):
     contact_number = models.CharField(max_length=20, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_passengers", db_column="passport_document_id")
+    passenger_ids = models.ManyToManyField('self', blank=True, symmetrical=False, related_name="related_passengers")
     
     def __str__(self):
         return f"Passenger: {self.info}"
