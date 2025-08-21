@@ -36,10 +36,18 @@ from .models import (
 )
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
-    UserProfileSerializer, ContactSerializer, FBOSerializer, GroundSerializer,
-    AirportSerializer, DocumentSerializer, DocumentUploadSerializer, AircraftSerializer,
-    TransactionSerializer, AgreementSerializer, PatientSerializer, QuoteSerializer,
-    PassengerSerializer, CrewLineSerializer, TripSerializer, TripLineSerializer
+    ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
+    AgreementSerializer, DocumentSerializer,
+    # Standardized CRUD serializers
+    UserProfileReadSerializer, UserProfileWriteSerializer,
+    PassengerReadSerializer, PassengerWriteSerializer,
+    CrewLineReadSerializer, CrewLineWriteSerializer,
+    TripLineReadSerializer, TripLineWriteSerializer,
+    TripReadSerializer, TripWriteSerializer,
+    QuoteReadSerializer, QuoteWriteSerializer,
+    DocumentReadSerializer, DocumentUploadSerializer,
+    TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
+    PatientReadSerializer, PatientWriteSerializer
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -82,15 +90,19 @@ class DepartmentViewSet(BaseViewSet):
 
 # UserProfile ViewSet
 class UserProfileViewSet(BaseViewSet):
-    queryset = UserProfile.objects.all()
-    serializer_class = UserProfileSerializer
+    queryset = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments')
     search_fields = ['first_name', 'last_name', 'email']
     ordering_fields = ['first_name', 'last_name', 'created_on']
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve', 'me'):
+            return UserProfileReadSerializer
+        return UserProfileWriteSerializer
     
     @action(detail=False, methods=['get'])
     def me(self, request):
         try:
-            profile = UserProfile.objects.get(user=request.user)
+            profile = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments').get(user=request.user)
             serializer = self.get_serializer(profile)
             return Response(serializer.data)
         except UserProfile.DoesNotExist:
@@ -143,12 +155,11 @@ class AirportViewSet(BaseViewSet):
 # Document ViewSet
 class DocumentViewSet(BaseViewSet):
     queryset = Document.objects.all()
-    serializer_class = DocumentSerializer
     
     def get_serializer_class(self):
         if self.action in ['create', 'update']:
             return DocumentUploadSerializer
-        return DocumentSerializer
+        return DocumentReadSerializer
     
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -167,7 +178,6 @@ class AircraftViewSet(BaseViewSet):
 # Transaction ViewSet
 class TransactionViewSet(BaseViewSet):
     queryset = Transaction.objects.all()
-    serializer_class = TransactionSerializer
     search_fields = ['key', 'email', 'payment_status']
     ordering_fields = ['payment_date', 'amount', 'created_on']
     permission_classes = [
@@ -176,6 +186,19 @@ class TransactionViewSet(BaseViewSet):
         CanReadTransaction | CanWriteTransaction | CanModifyTransaction | CanDeleteTransaction
     ]
     public_actions = ['retrieve_by_key']
+    
+    def get_serializer_class(self):
+        # Public read by key uses minimal serializer
+        if self.action == 'retrieve_by_key':
+            return TransactionPublicReadSerializer
+        # Staff read operations use full serializer
+        elif self.action in ('list', 'retrieve'):
+            return TransactionReadSerializer
+        # Process payment uses special write serializer
+        elif self.action == 'process_payment':
+            return TransactionProcessWriteSerializer
+        # Default write operations
+        return TransactionProcessWriteSerializer
     
     @action(detail=False, methods=['get'], url_path='pay/(?P<transaction_key>[^/.]+)')
     def retrieve_by_key(self, request, transaction_key=None):
@@ -229,14 +252,18 @@ class AgreementViewSet(BaseViewSet):
 
 # Patient ViewSet
 class PatientViewSet(BaseViewSet):
-    queryset = Patient.objects.all()
-    serializer_class = PatientSerializer
+    queryset = Patient.objects.select_related('info')
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadPatient | CanWritePatient | CanModifyPatient | CanDeletePatient
     ]
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return PatientReadSerializer
+        return PatientWriteSerializer
     
     def get_permissions(self):
         """
@@ -256,14 +283,18 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-    queryset = Quote.objects.all()
-    serializer_class = QuoteSerializer
+    queryset = Quote.objects.select_related('contact_id', 'pickup_airport', 'dropoff_airport', 'patient_id', 'agreements_id').prefetch_related('transactions')
     search_fields = ['contact_id__first_name', 'contact_id__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadQuote | CanWriteQuote | CanModifyQuote | CanDeleteQuote
     ]
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return QuoteReadSerializer
+        return QuoteWriteSerializer
     
     def get_permissions(self):
         """
@@ -298,18 +329,22 @@ class QuoteViewSet(BaseViewSet):
         
         quote.transactions.add(transaction)
         
-        return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
+        return Response(TransactionReadSerializer(transaction).data, status=status.HTTP_201_CREATED)
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
-    queryset = Passenger.objects.all()
-    serializer_class = PassengerSerializer
+    queryset = Passenger.objects.select_related('info', 'passport_document_id')
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadPassenger | CanWritePassenger | CanModifyPassenger | CanDeletePassenger
     ]
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return PassengerReadSerializer
+        return PassengerWriteSerializer
     
     def get_permissions(self):
         """
@@ -329,20 +364,28 @@ class PassengerViewSet(BaseViewSet):
 
 # CrewLine ViewSet
 class CrewLineViewSet(BaseViewSet):
-    queryset = CrewLine.objects.all()
-    serializer_class = CrewLineSerializer
+    queryset = CrewLine.objects.select_related('primary_in_command_id', 'secondary_in_command_id').prefetch_related('medic_ids')
     ordering_fields = ['created_on']
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return CrewLineReadSerializer
+        return CrewLineWriteSerializer
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.all()
-    serializer_class = TripSerializer
+    queryset = Trip.objects.select_related('quote_id', 'patient_id', 'aircraft_id').prefetch_related('trip_lines', 'passengers')
     search_fields = ['trip_number', 'type']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve', 'trip_lines'):
+            return TripReadSerializer
+        return TripWriteSerializer
     
     def get_permissions(self):
         """
@@ -372,18 +415,22 @@ class TripViewSet(BaseViewSet):
     def trip_lines(self, request, pk=None):
         trip = self.get_object()
         trip_lines = trip.trip_lines.all().order_by('departure_time_utc')
-        serializer = TripLineSerializer(trip_lines, many=True)
+        serializer = TripLineReadSerializer(trip_lines, many=True)
         return Response(serializer.data)
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
-    queryset = TripLine.objects.all()
-    serializer_class = TripLineSerializer
+    queryset = TripLine.objects.select_related('trip_id', 'origin_airport', 'destination_airport', 'crew_line_id')
     ordering_fields = ['departure_time_utc', 'created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTripLine | CanWriteTripLine | CanModifyTripLine | CanDeleteTripLine
     ]
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return TripLineReadSerializer
+        return TripLineWriteSerializer
     
     def get_permissions(self):
         """

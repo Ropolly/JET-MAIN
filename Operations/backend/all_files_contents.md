@@ -34,6 +34,27 @@ api/
     migrations/
         __init__.py
         0001_initial.py
+<<<<<<< HEAD
+=======
+    tests/
+        base_test.py
+        test_trip_lines.py
+        test_quotes.py
+        test_passengers.py
+        test_userprofile.py
+        __init__.py
+        test_trips.py
+        test_crew_lines.py
+        test_transactions.py
+        test_patients.py
+        run_all_tests.py
+        test_documents.py
+    management/
+        __init__.py
+        commands/
+            setup_test_data.py
+            __init__.py
+>>>>>>> origin/dev
     external/
         airport.py
         aircraft.py
@@ -999,27 +1020,43 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'is_staff']
+<<<<<<< HEAD
         read_only_fields = ['is_staff']
+=======
+>>>>>>> origin/dev
 
 # Base serializers
 class ModificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Modification
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permission
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'name', 'description', 'created_on', 'created_by', 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'name', 'description', 'permissions', 'created_on', 'created_by', 'status', 'lock']
+>>>>>>> origin/dev
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
+<<<<<<< HEAD
         fields = '__all__'
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -1028,26 +1065,46 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = '__all__'
+=======
+        fields = ['id', 'name', 'description', 'created_on', 'created_by', 'status', 'lock']
+>>>>>>> origin/dev
 
 # Contact and location serializers
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
+                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
+                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
         model = FBO
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'name', 'contact_id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 class GroundSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ground
+<<<<<<< HEAD
         fields = '__all__'
+=======
+        fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
+                 'country', 'notes', 'contacts', 'permission_ids', 'created_on', 'created_by', 
+                 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 class AirportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Airport
+<<<<<<< HEAD
         fields = '__all__'
 
 # Document serializer
@@ -1062,11 +1119,17 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ['id', 'filename', 'content', 'flag']
+=======
+        fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
+                 'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
+                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+>>>>>>> origin/dev
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Aircraft
+<<<<<<< HEAD
         fields = '__all__'
 
 # Transaction serializer
@@ -1074,11 +1137,22 @@ class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
         fields = '__all__'
+=======
+        fields = ['id', 'tail_number', 'company', 'mgtow', 'make', 'model', 'serial_number', 
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
+
+# Document serializer (basic for references)
+class DocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Document
+        fields = ['id', 'filename', 'flag', 'created_on']
+>>>>>>> origin/dev
 
 # Agreement serializer
 class AgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agreement
+<<<<<<< HEAD
         fields = '__all__'
 
 # Patient serializer
@@ -1112,12 +1186,84 @@ class PassengerSerializer(serializers.ModelSerializer):
 
 # Crew Line serializer
 class CrewLineSerializer(serializers.ModelSerializer):
+=======
+        fields = ['id', 'destination_email', 'document_unsigned_id', 'document_signed_id', 
+                 'status', 'created_on', 'created_by', 'modified_on', 'modified_by']
+
+# ========== STANDARDIZED CRUD SERIALIZERS ==========
+
+# 1) User Profiles
+class UserProfileReadSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    roles = RoleSerializer(many=True, read_only=True)
+    departments = DepartmentSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = UserProfile
+        fields = [
+            'id', 'user', 'first_name', 'last_name', 'email', 'phone',
+            'address_line1', 'address_line2', 'city', 'state', 'country', 'zip',
+            'roles', 'departments', 'flags', 'status', 'created_on'
+        ]
+
+class UserProfileWriteSerializer(serializers.ModelSerializer):
+    user_id = serializers.PrimaryKeyRelatedField(
+        source='user', queryset=User.objects.all(), write_only=True
+    )
+    role_ids = serializers.PrimaryKeyRelatedField(
+        source='roles', queryset=Role.objects.all(), many=True, write_only=True
+    )
+    department_ids = serializers.PrimaryKeyRelatedField(
+        source='departments', queryset=Department.objects.all(), many=True, write_only=True
+    )
+    
+    class Meta:
+        model = UserProfile
+        fields = [
+            'user_id', 'first_name', 'last_name', 'email', 'phone',
+            'address_line1', 'address_line2', 'city', 'state', 'country', 'zip',
+            'role_ids', 'department_ids', 'flags', 'status'
+        ]
+
+# 2) Passengers
+class PassengerReadSerializer(serializers.ModelSerializer):
+    info = ContactSerializer(read_only=True)
+    passport_document = DocumentSerializer(source='passport_document_id', read_only=True)
+    
+    class Meta:
+        model = Passenger
+        fields = [
+            'id', 'info', 'date_of_birth', 'nationality', 'passport_number',
+            'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
+            'status', 'created_on'
+        ]
+
+class PassengerWriteSerializer(serializers.ModelSerializer):
+    info_id = serializers.PrimaryKeyRelatedField(
+        source='info', queryset=Contact.objects.all(), write_only=True
+    )
+    passport_document_id = serializers.PrimaryKeyRelatedField(
+        queryset=Document.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    
+    class Meta:
+        model = Passenger
+        fields = [
+            'info_id', 'date_of_birth', 'nationality', 'passport_number',
+            'passport_expiration_date', 'contact_number', 'notes', 'passport_document_id',
+            'status'
+        ]
+
+# 3) Crew Lines
+class CrewLineReadSerializer(serializers.ModelSerializer):
+>>>>>>> origin/dev
     primary_in_command = ContactSerializer(source='primary_in_command_id', read_only=True)
     secondary_in_command = ContactSerializer(source='secondary_in_command_id', read_only=True)
     medics = ContactSerializer(source='medic_ids', many=True, read_only=True)
     
     class Meta:
         model = CrewLine
+<<<<<<< HEAD
         fields = '__all__'
 
 # Trip serializer
@@ -1141,6 +1287,265 @@ class TripSerializer(serializers.ModelSerializer):
         model = Trip
         fields = '__all__'
 
+=======
+        fields = [
+            'id', 'primary_in_command', 'secondary_in_command', 'medics',
+            'status', 'created_on'
+        ]
+
+class CrewLineWriteSerializer(serializers.ModelSerializer):
+    primary_in_command_id = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
+    )
+    secondary_in_command_id = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
+    )
+    medic_ids = serializers.PrimaryKeyRelatedField(
+        source='medic_ids', queryset=Contact.objects.all(), many=True, write_only=True
+    )
+    
+    class Meta:
+        model = CrewLine
+        fields = [
+            'primary_in_command_id', 'secondary_in_command_id', 'medic_ids', 'status'
+        ]
+
+# 4) Trip Lines
+class TripLineReadSerializer(serializers.ModelSerializer):
+    trip = serializers.SerializerMethodField()
+    origin_airport = AirportSerializer(source='origin_airport_id', read_only=True)
+    destination_airport = AirportSerializer(source='destination_airport_id', read_only=True)
+    crew_line = CrewLineReadSerializer(source='crew_line_id', read_only=True)
+    
+    class Meta:
+        model = TripLine
+        fields = [
+            'id', 'trip', 'origin_airport', 'destination_airport', 'crew_line',
+            'departure_time_local', 'departure_time_utc', 'arrival_time_local',
+            'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
+            'passenger_leg', 'status', 'created_on'
+        ]
+    
+    def get_trip(self, obj):
+        # Return minimal trip info to avoid circular references
+        return {
+            'id': obj.trip_id.id,
+            'trip_number': obj.trip_id.trip_number,
+            'type': obj.trip_id.type
+        }
+
+class TripLineWriteSerializer(serializers.ModelSerializer):
+    trip_id = serializers.PrimaryKeyRelatedField(
+        queryset=Trip.objects.all(), write_only=True
+    )
+    origin_airport_id = serializers.PrimaryKeyRelatedField(
+        queryset=Airport.objects.all(), write_only=True
+    )
+    destination_airport_id = serializers.PrimaryKeyRelatedField(
+        queryset=Airport.objects.all(), write_only=True
+    )
+    crew_line_id = serializers.PrimaryKeyRelatedField(
+        queryset=CrewLine.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    
+    class Meta:
+        model = TripLine
+        fields = [
+            'trip_id', 'origin_airport_id', 'destination_airport_id', 'crew_line_id',
+            'departure_time_local', 'departure_time_utc', 'arrival_time_local',
+            'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
+            'passenger_leg', 'status'
+        ]
+
+# 5) Trips
+class TripReadSerializer(serializers.ModelSerializer):
+    quote = serializers.SerializerMethodField()
+    patient = serializers.SerializerMethodField()
+    aircraft = AircraftSerializer(source='aircraft_id', read_only=True)
+    trip_lines = TripLineReadSerializer(many=True, read_only=True)
+    passengers_data = PassengerReadSerializer(source='passengers', many=True, read_only=True)
+    
+    class Meta:
+        model = Trip
+        fields = [
+            'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
+            'trip_lines', 'passengers_data', 'status', 'created_on'
+        ]
+    
+    def get_quote(self, obj):
+        if obj.quote_id:
+            return {
+                'id': obj.quote_id.id,
+                'quoted_amount': obj.quote_id.quoted_amount,
+                'status': obj.quote_id.status
+            }
+        return None
+    
+    def get_patient(self, obj):
+        if obj.patient_id:
+            return {
+                'id': obj.patient_id.id,
+                'status': obj.patient_id.status,
+                'info': ContactSerializer(obj.patient_id.info).data
+            }
+        return None
+
+class TripWriteSerializer(serializers.ModelSerializer):
+    quote_id = serializers.PrimaryKeyRelatedField(
+        queryset=Quote.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    patient_id = serializers.PrimaryKeyRelatedField(
+        queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    aircraft_id = serializers.PrimaryKeyRelatedField(
+        queryset=Aircraft.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        source='passengers', queryset=Passenger.objects.all(), many=True, write_only=True, required=False
+    )
+    
+    class Meta:
+        model = Trip
+        fields = [
+            'email_chain', 'quote_id', 'type', 'patient_id', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft_id', 'trip_number',
+            'passenger_ids', 'status'
+        ]
+
+# 6) Quotes
+class QuoteReadSerializer(serializers.ModelSerializer):
+    contact = ContactSerializer(source='contact_id', read_only=True)
+    pickup_airport = AirportSerializer(source='pickup_airport_id', read_only=True)
+    dropoff_airport = AirportSerializer(source='dropoff_airport_id', read_only=True)
+    patient = serializers.SerializerMethodField()
+    payment_agreement = AgreementSerializer(source='payment_agreement_id', read_only=True)
+    consent_for_transport = AgreementSerializer(source='consent_for_transport_id', read_only=True)
+    patient_service_agreement = AgreementSerializer(source='patient_service_agreement_id', read_only=True)
+    transactions = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Quote
+        fields = [
+            'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
+            'patient', 'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
+            'transactions', 'status', 'created_on'
+        ]
+    
+    def get_patient(self, obj):
+        if obj.patient_id:
+            return {
+                'id': obj.patient_id.id,
+                'status': obj.patient_id.status
+            }
+        return None
+    
+    def get_transactions(self, obj):
+        return [{
+            'id': t.id,
+            'amount': t.amount,
+            'status': t.status
+        } for t in obj.transactions.all()]
+
+class QuoteWriteSerializer(serializers.ModelSerializer):
+    contact_id = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
+    )
+    pickup_airport_id = serializers.PrimaryKeyRelatedField(
+        queryset=Airport.objects.all(), write_only=True
+    )
+    dropoff_airport_id = serializers.PrimaryKeyRelatedField(
+        queryset=Airport.objects.all(), write_only=True
+    )
+    patient_id = serializers.PrimaryKeyRelatedField(
+        queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    payment_agreement_id = serializers.PrimaryKeyRelatedField(
+        queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    consent_for_transport_id = serializers.PrimaryKeyRelatedField(
+        queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    patient_service_agreement_id = serializers.PrimaryKeyRelatedField(
+        queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    transaction_ids = serializers.PrimaryKeyRelatedField(
+        source='transactions', queryset=Transaction.objects.all(), many=True, write_only=True, required=False
+    )
+    
+    class Meta:
+        model = Quote
+        fields = [
+            'quoted_amount', 'contact_id', 'pickup_airport_id', 'dropoff_airport_id',
+            'patient_id', 'payment_agreement_id', 'consent_for_transport_id',
+            'patient_service_agreement_id', 'transaction_ids', 'status'
+        ]
+
+# 7) Documents
+class DocumentReadSerializer(serializers.ModelSerializer):
+    content_type = serializers.SerializerMethodField()
+    download_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Document
+        fields = ['id', 'filename', 'flag', 'content_type', 'download_url', 'created_on']
+    
+    def get_content_type(self, obj):
+        # Return MIME type based on file extension
+        import mimetypes
+        return mimetypes.guess_type(obj.filename)[0] or 'application/octet-stream'
+    
+    def get_download_url(self, obj):
+        # Return download URL for the document
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(f'/api/documents/{obj.id}/download/')
+        return f'/api/documents/{obj.id}/download/'
+
+class DocumentUploadSerializer(serializers.ModelSerializer):
+    content = serializers.FileField(write_only=True)
+    
+    class Meta:
+        model = Document
+        fields = ['id', 'filename', 'content', 'flag']
+
+# 8) Transactions
+class TransactionPublicReadSerializer(serializers.ModelSerializer):
+    """Minimal safe fields for public access by key"""
+    class Meta:
+        model = Transaction
+        fields = ['id', 'amount', 'status', 'created_on']
+
+class TransactionReadSerializer(serializers.ModelSerializer):
+    """Full details for staff access"""
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+
+class TransactionProcessWriteSerializer(serializers.ModelSerializer):
+    """For processing payments with gateway inputs"""
+    class Meta:
+        model = Transaction
+        fields = ['amount', 'status', 'payment_method', 'gateway_response']
+
+# 9) Patient (updated to follow pattern)
+class PatientReadSerializer(serializers.ModelSerializer):
+    info = ContactSerializer(read_only=True)
+    
+    class Meta:
+        model = Patient
+        fields = ['id', 'info', 'status', 'created_on']
+
+class PatientWriteSerializer(serializers.ModelSerializer):
+    info_id = serializers.PrimaryKeyRelatedField(
+        source='info', queryset=Contact.objects.all(), write_only=True
+    )
+    
+    class Meta:
+        model = Patient
+        fields = ['info_id', 'status']
+
+>>>>>>> origin/dev
 ```
 
 
@@ -1490,10 +1895,25 @@ from .models import (
 )
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
+<<<<<<< HEAD
     UserProfileSerializer, ContactSerializer, FBOSerializer, GroundSerializer,
     AirportSerializer, DocumentSerializer, DocumentUploadSerializer, AircraftSerializer,
     TransactionSerializer, AgreementSerializer, PatientSerializer, QuoteSerializer,
     PassengerSerializer, CrewLineSerializer, TripSerializer, TripLineSerializer
+=======
+    ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
+    AgreementSerializer, DocumentSerializer,
+    # Standardized CRUD serializers
+    UserProfileReadSerializer, UserProfileWriteSerializer,
+    PassengerReadSerializer, PassengerWriteSerializer,
+    CrewLineReadSerializer, CrewLineWriteSerializer,
+    TripLineReadSerializer, TripLineWriteSerializer,
+    TripReadSerializer, TripWriteSerializer,
+    QuoteReadSerializer, QuoteWriteSerializer,
+    DocumentReadSerializer, DocumentUploadSerializer,
+    TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
+    PatientReadSerializer, PatientWriteSerializer
+>>>>>>> origin/dev
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -1536,6 +1956,7 @@ class DepartmentViewSet(BaseViewSet):
 
 # UserProfile ViewSet
 class UserProfileViewSet(BaseViewSet):
+<<<<<<< HEAD
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     search_fields = ['first_name', 'last_name', 'email']
@@ -1545,6 +1966,21 @@ class UserProfileViewSet(BaseViewSet):
     def me(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)
+=======
+    queryset = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments')
+    search_fields = ['first_name', 'last_name', 'email']
+    ordering_fields = ['first_name', 'last_name', 'created_on']
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve', 'me'):
+            return UserProfileReadSerializer
+        return UserProfileWriteSerializer
+    
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        try:
+            profile = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments').get(user=request.user)
+>>>>>>> origin/dev
             serializer = self.get_serializer(profile)
             return Response(serializer.data)
         except UserProfile.DoesNotExist:
@@ -1597,12 +2033,19 @@ class AirportViewSet(BaseViewSet):
 # Document ViewSet
 class DocumentViewSet(BaseViewSet):
     queryset = Document.objects.all()
+<<<<<<< HEAD
     serializer_class = DocumentSerializer
+=======
+>>>>>>> origin/dev
     
     def get_serializer_class(self):
         if self.action in ['create', 'update']:
             return DocumentUploadSerializer
+<<<<<<< HEAD
         return DocumentSerializer
+=======
+        return DocumentReadSerializer
+>>>>>>> origin/dev
     
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -1621,7 +2064,10 @@ class AircraftViewSet(BaseViewSet):
 # Transaction ViewSet
 class TransactionViewSet(BaseViewSet):
     queryset = Transaction.objects.all()
+<<<<<<< HEAD
     serializer_class = TransactionSerializer
+=======
+>>>>>>> origin/dev
     search_fields = ['key', 'email', 'payment_status']
     ordering_fields = ['payment_date', 'amount', 'created_on']
     permission_classes = [
@@ -1631,6 +2077,22 @@ class TransactionViewSet(BaseViewSet):
     ]
     public_actions = ['retrieve_by_key']
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        # Public read by key uses minimal serializer
+        if self.action == 'retrieve_by_key':
+            return TransactionPublicReadSerializer
+        # Staff read operations use full serializer
+        elif self.action in ('list', 'retrieve'):
+            return TransactionReadSerializer
+        # Process payment uses special write serializer
+        elif self.action == 'process_payment':
+            return TransactionProcessWriteSerializer
+        # Default write operations
+        return TransactionProcessWriteSerializer
+    
+>>>>>>> origin/dev
     @action(detail=False, methods=['get'], url_path='pay/(?P<transaction_key>[^/.]+)')
     def retrieve_by_key(self, request, transaction_key=None):
         """
@@ -1683,8 +2145,12 @@ class AgreementViewSet(BaseViewSet):
 
 # Patient ViewSet
 class PatientViewSet(BaseViewSet):
+<<<<<<< HEAD
     queryset = Patient.objects.all()
     serializer_class = PatientSerializer
+=======
+    queryset = Patient.objects.select_related('info')
+>>>>>>> origin/dev
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -1692,6 +2158,14 @@ class PatientViewSet(BaseViewSet):
         CanReadPatient | CanWritePatient | CanModifyPatient | CanDeletePatient
     ]
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return PatientReadSerializer
+        return PatientWriteSerializer
+    
+>>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -1710,8 +2184,12 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
+<<<<<<< HEAD
     queryset = Quote.objects.all()
     serializer_class = QuoteSerializer
+=======
+    queryset = Quote.objects.select_related('contact_id', 'pickup_airport', 'dropoff_airport', 'patient_id', 'agreements_id').prefetch_related('transactions')
+>>>>>>> origin/dev
     search_fields = ['contact_id__first_name', 'contact_id__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
@@ -1719,6 +2197,14 @@ class QuoteViewSet(BaseViewSet):
         CanReadQuote | CanWriteQuote | CanModifyQuote | CanDeleteQuote
     ]
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return QuoteReadSerializer
+        return QuoteWriteSerializer
+    
+>>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -1752,12 +2238,20 @@ class QuoteViewSet(BaseViewSet):
         
         quote.transactions.add(transaction)
         
+<<<<<<< HEAD
         return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
     queryset = Passenger.objects.all()
     serializer_class = PassengerSerializer
+=======
+        return Response(TransactionReadSerializer(transaction).data, status=status.HTTP_201_CREATED)
+
+# Passenger ViewSet
+class PassengerViewSet(BaseViewSet):
+    queryset = Passenger.objects.select_related('info', 'passport_document_id')
+>>>>>>> origin/dev
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -1765,6 +2259,14 @@ class PassengerViewSet(BaseViewSet):
         CanReadPassenger | CanWritePassenger | CanModifyPassenger | CanDeletePassenger
     ]
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return PassengerReadSerializer
+        return PassengerWriteSerializer
+    
+>>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -1783,6 +2285,7 @@ class PassengerViewSet(BaseViewSet):
 
 # CrewLine ViewSet
 class CrewLineViewSet(BaseViewSet):
+<<<<<<< HEAD
     queryset = CrewLine.objects.all()
     serializer_class = CrewLineSerializer
     ordering_fields = ['created_on']
@@ -1791,6 +2294,19 @@ class CrewLineViewSet(BaseViewSet):
 class TripViewSet(BaseViewSet):
     queryset = Trip.objects.all()
     serializer_class = TripSerializer
+=======
+    queryset = CrewLine.objects.select_related('primary_in_command_id', 'secondary_in_command_id').prefetch_related('medic_ids')
+    ordering_fields = ['created_on']
+    
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return CrewLineReadSerializer
+        return CrewLineWriteSerializer
+
+# Trip ViewSet
+class TripViewSet(BaseViewSet):
+    queryset = Trip.objects.select_related('quote_id', 'patient_id', 'aircraft_id').prefetch_related('trip_lines', 'passengers')
+>>>>>>> origin/dev
     search_fields = ['trip_number', 'type']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
@@ -1798,6 +2314,14 @@ class TripViewSet(BaseViewSet):
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve', 'trip_lines'):
+            return TripReadSerializer
+        return TripWriteSerializer
+    
+>>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -1826,19 +2350,35 @@ class TripViewSet(BaseViewSet):
     def trip_lines(self, request, pk=None):
         trip = self.get_object()
         trip_lines = trip.trip_lines.all().order_by('departure_time_utc')
+<<<<<<< HEAD
         serializer = TripLineSerializer(trip_lines, many=True)
+=======
+        serializer = TripLineReadSerializer(trip_lines, many=True)
+>>>>>>> origin/dev
         return Response(serializer.data)
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
+<<<<<<< HEAD
     queryset = TripLine.objects.all()
     serializer_class = TripLineSerializer
+=======
+    queryset = TripLine.objects.select_related('trip_id', 'origin_airport', 'destination_airport', 'crew_line_id')
+>>>>>>> origin/dev
     ordering_fields = ['departure_time_utc', 'created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTripLine | CanWriteTripLine | CanModifyTripLine | CanDeleteTripLine
     ]
     
+<<<<<<< HEAD
+=======
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return TripLineReadSerializer
+        return TripLineWriteSerializer
+    
+>>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2343,6 +2883,1908 @@ class Migration(migrations.Migration):
 ```
 
 
+<<<<<<< HEAD
+=======
+# File: api/tests/base_test.py
+
+```python
+"""
+Base test utilities for API endpoint testing.
+Tests are designed to run against a live server.
+"""
+import json
+import requests
+import sys
+from typing import Dict, Any, Optional
+
+
+class APITester:
+    """Base class for testing API endpoints against a running server."""
+    
+    def __init__(self, base_url: str = "http://127.0.0.1:8000", auth_token: Optional[str] = None):
+        self.base_url = base_url.rstrip('/')
+        self.session = requests.Session()
+        
+        if auth_token:
+            self.session.headers.update({
+                'Authorization': f'Bearer {auth_token}'
+            })
+    
+    def authenticate(self, username: str, password: str) -> bool:
+        """Authenticate with the API and store the token."""
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/token/",
+                json={"username": username, "password": password}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                token = data.get('access') or data.get('token')
+                if token:
+                    self.session.headers.update({
+                        'Authorization': f'Bearer {token}'
+                    })
+                    return True
+            return False
+        except Exception as e:
+            print(f"Authentication failed: {e}")
+            return False
+    
+    def print_response(self, response: requests.Response, title: str):
+        """Print formatted response details."""
+        print(f"\n{'='*60}")
+        print(f"TEST: {title}")
+        print(f"{'='*60}")
+        print(f"URL: {response.request.method} {response.url}")
+        print(f"Status Code: {response.status_code}")
+        
+        if response.request.body:
+            print(f"Request Body: {response.request.body}")
+        
+        try:
+            response_data = response.json()
+            print(f"Response Body:")
+            print(json.dumps(response_data, indent=2))
+        except:
+            print(f"Response Body (raw): {response.text}")
+        
+        print(f"{'='*60}\n")
+    
+    def check_no_id_fields(self, data: Any, path: str = "") -> list:
+        """Check for _id fields in response data and return violations."""
+        violations = []
+        
+        if isinstance(data, dict):
+            for key, value in data.items():
+                current_path = f"{path}.{key}" if path else key
+                # Check for _id fields (but allow 'id' itself)
+                if key.endswith('_id') and key != 'id':
+                    violations.append(f"Found _id field '{key}' at path '{current_path}'")
+                violations.extend(self.check_no_id_fields(value, current_path))
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                violations.extend(self.check_no_id_fields(item, f"{path}[{i}]"))
+        
+        return violations
+    
+    def test_endpoint(self, endpoint: str, method: str = "GET", data: Dict = None, 
+                     expect_status: int = 200, title: str = None) -> requests.Response:
+        """Test an endpoint and print results."""
+        url = f"{self.base_url}{endpoint}"
+        title = title or f"{method} {endpoint}"
+        
+        try:
+            if method.upper() == "GET":
+                response = self.session.get(url)
+            elif method.upper() == "POST":
+                response = self.session.post(url, json=data)
+            elif method.upper() == "PUT":
+                response = self.session.put(url, json=data)
+            elif method.upper() == "PATCH":
+                response = self.session.patch(url, json=data)
+            elif method.upper() == "DELETE":
+                response = self.session.delete(url)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+            
+            self.print_response(response, title)
+            
+            # Check for _id fields in GET responses
+            if method.upper() == "GET" and response.status_code == 200:
+                try:
+                    response_data = response.json()
+                    violations = self.check_no_id_fields(response_data)
+                    if violations:
+                        print("⚠️  _ID FIELD VIOLATIONS FOUND:")
+                        for violation in violations:
+                            print(f"   - {violation}")
+                    else:
+                        print("✅ No _id fields found in response")
+                except:
+                    pass
+            
+            # Check status code
+            if response.status_code == expect_status:
+                print(f"✅ Status code matches expected: {expect_status}")
+            else:
+                print(f"❌ Status code {response.status_code} != expected {expect_status}")
+            
+            return response
+            
+        except Exception as e:
+            print(f"❌ Request failed: {e}")
+            return None
+
+
+def main():
+    """Run basic connectivity test."""
+    tester = APITester()
+    
+    print("Testing API connectivity...")
+    response = tester.test_endpoint("/api/", title="API Root Connectivity Test")
+    
+    if response and response.status_code < 500:
+        print("✅ API server is reachable")
+    else:
+        print("❌ API server is not reachable")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+
+# File: api/tests/test_trip_lines.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test TripLine endpoints (/api/trip-lines/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_trip_line_endpoints():
+    """Test TripLine CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING TRIP LINE ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List trip lines (GET /api/trip-lines/)
+    print("\n📋 TEST 1: List Trip Lines")
+    response = tester.test_endpoint(
+        "/api/trip-lines/",
+        method="GET",
+        title="List Trip Lines"
+    )
+    
+    # Test 2: Get specific trip line (if we have data)
+    trip_line_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                trip_line_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Trip Line (ID: {trip_line_id})")
+                tester.test_endpoint(
+                    f"/api/trip-lines/{trip_line_id}/",
+                    method="GET",
+                    title=f"Get Trip Line {trip_line_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract trip line ID for detail test")
+    
+    # Test 3: Create new trip line (POST /api/trip-lines/)
+    print("\n➕ TEST 3: Create Trip Line (Write Serializer Test)")
+    create_data = {
+        "trip_id": 1,  # Expects Trip ID only
+        "origin_airport_id": 1,  # Expects Airport ID only
+        "destination_airport_id": 2,  # Expects Airport ID only
+        "crew_line_id": 1,  # Expects CrewLine ID only
+        "departure_date": "2024-12-01T10:00:00Z",
+        "arrival_date": "2024-12-01T14:00:00Z",
+        "flight_time": "04:00:00",
+        "status": "scheduled",
+        "notes": "Test trip line creation"
+    }
+    
+    tester.test_endpoint(
+        "/api/trip-lines/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Trip Line with IDs only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Trip Line with Nested Objects (Should Fail)")
+    invalid_data = {
+        "trip": {  # Should be trip_id
+            "trip_number": "TR001"
+        },
+        "origin_airport": {  # Should be origin_airport_id
+            "icao_code": "KORD"
+        },
+        "destination_airport": {  # Should be destination_airport_id
+            "icao_code": "KLAX"
+        },
+        "crew_line": {  # Should be crew_line_id
+            "status": "active"
+        },
+        "departure_date": "2024-12-01T10:00:00Z",
+        "arrival_date": "2024-12-01T14:00:00Z"
+    }
+    
+    tester.test_endpoint(
+        "/api/trip-lines/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Trip Line with nested objects (should fail)"
+    )
+    
+    # Test 5: Update trip line (if we have an ID)
+    if trip_line_id:
+        print(f"\n✏️  TEST 5: Update Trip Line (ID: {trip_line_id})")
+        update_data = {
+            "trip_id": 1,
+            "origin_airport_id": 2,  # Changed origin
+            "destination_airport_id": 1,  # Changed destination (reverse)
+            "crew_line_id": 2,  # Changed crew
+            "departure_date": "2024-12-02T11:00:00Z",  # Changed time
+            "arrival_date": "2024-12-02T15:00:00Z",
+            "flight_time": "04:00:00",
+            "status": "in_progress",  # Changed status
+            "notes": "Updated trip line"
+        }
+        
+        tester.test_endpoint(
+            f"/api/trip-lines/{trip_line_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Trip Line {trip_line_id} with IDs only"
+        )
+    
+    print("\n✅ Trip Line endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_trip_line_endpoints()
+
+```
+
+
+# File: api/tests/test_quotes.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Quote endpoints (/api/quotes/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_quote_endpoints():
+    """Test Quote CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING QUOTE ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List quotes (GET /api/quotes/)
+    print("\n📋 TEST 1: List Quotes")
+    response = tester.test_endpoint(
+        "/api/quotes/",
+        method="GET",
+        title="List Quotes"
+    )
+    
+    # Test 2: Get specific quote (if we have data)
+    quote_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                quote_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Quote (ID: {quote_id})")
+                tester.test_endpoint(
+                    f"/api/quotes/{quote_id}/",
+                    method="GET",
+                    title=f"Get Quote {quote_id}"
+                )
+                
+                # Test create transaction for this quote
+                print(f"\n💳 TEST 2b: Create Transaction for Quote {quote_id}")
+                transaction_data = {
+                    "amount": 1000.00,
+                    "payment_method": "credit_card",
+                    "email": "test@example.com"
+                }
+                tester.test_endpoint(
+                    f"/api/quotes/{quote_id}/create_transaction/",
+                    method="POST",
+                    data=transaction_data,
+                    title=f"Create Transaction for Quote {quote_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract quote ID for detail test")
+    
+    # Test 3: Create new quote (POST /api/quotes/)
+    print("\n➕ TEST 3: Create Quote (Write Serializer Test)")
+    create_data = {
+        "contact_id": 1,  # Expects Contact ID only
+        "pickup_airport_id": 1,  # Expects Airport ID only
+        "dropoff_airport_id": 2,  # Expects Airport ID only
+        "patient_id": 1,  # Expects Patient ID only
+        "agreements_id": 1,  # Expects Agreement ID only
+        "quoted_amount": 7500.00,
+        "status": "pending",
+        "departure_date": "2024-12-01T10:00:00Z",
+        "arrival_date": "2024-12-01T14:00:00Z",
+        "notes": "Test quote creation"
+    }
+    
+    tester.test_endpoint(
+        "/api/quotes/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Quote with IDs only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Quote with Nested Objects (Should Fail)")
+    invalid_data = {
+        "contact": {  # Should be contact_id
+            "first_name": "John",
+            "last_name": "Doe"
+        },
+        "pickup_airport": {  # Should be pickup_airport_id
+            "icao_code": "KORD"
+        },
+        "dropoff_airport": {  # Should be dropoff_airport_id
+            "icao_code": "KLAX"
+        },
+        "patient": {  # Should be patient_id
+            "status": "active"
+        },
+        "quoted_amount": 8500.00,
+        "status": "pending"
+    }
+    
+    tester.test_endpoint(
+        "/api/quotes/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Quote with nested objects (should fail)"
+    )
+    
+    # Test 5: Update quote (if we have an ID)
+    if quote_id:
+        print(f"\n✏️  TEST 5: Update Quote (ID: {quote_id})")
+        update_data = {
+            "contact_id": 1,
+            "pickup_airport_id": 1,
+            "dropoff_airport_id": 2,
+            "patient_id": 1,
+            "agreements_id": 1,
+            "quoted_amount": 8000.00,  # Changed amount
+            "status": "accepted",  # Changed status
+            "notes": "Updated quote"
+        }
+        
+        tester.test_endpoint(
+            f"/api/quotes/{quote_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Quote {quote_id} with IDs only"
+        )
+    
+    print("\n✅ Quote endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_quote_endpoints()
+
+```
+
+
+# File: api/tests/test_passengers.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Passenger endpoints (/api/passengers/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_passenger_endpoints():
+    """Test Passenger CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING PASSENGER ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List passengers (GET /api/passengers/)
+    print("\n📋 TEST 1: List Passengers")
+    response = tester.test_endpoint(
+        "/api/passengers/",
+        method="GET",
+        title="List Passengers"
+    )
+    
+    # Test 2: Get specific passenger (if we have data)
+    passenger_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                passenger_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Passenger (ID: {passenger_id})")
+                tester.test_endpoint(
+                    f"/api/passengers/{passenger_id}/",
+                    method="GET",
+                    title=f"Get Passenger {passenger_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract passenger ID for detail test")
+    
+    # Test 3: Create new passenger (POST /api/passengers/)
+    print("\n➕ TEST 3: Create Passenger (Write Serializer Test)")
+    create_data = {
+        "info_id": 1,  # Expects Contact ID only
+        "date_of_birth": "1990-01-01",
+        "nationality": "US",
+        "passport_number": "123456789",
+        "passport_expiration_date": "2030-01-01",
+        "contact_number": "+1234567890",
+        "passport_document_id": 1,  # Expects Document ID only
+        "status": "active"
+    }
+    
+    tester.test_endpoint(
+        "/api/passengers/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Passenger with IDs only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Passenger with Nested Objects (Should Fail)")
+    invalid_data = {
+        "info": {  # Should be info_id
+            "first_name": "John",
+            "last_name": "Doe"
+        },
+        "passport_document": {  # Should be passport_document_id
+            "filename": "passport.pdf"
+        },
+        "date_of_birth": "1990-01-01",
+        "nationality": "US"
+    }
+    
+    tester.test_endpoint(
+        "/api/passengers/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Passenger with nested objects (should fail)"
+    )
+    
+    # Test 5: Update passenger (if we have an ID)
+    if passenger_id:
+        print(f"\n✏️  TEST 5: Update Passenger (ID: {passenger_id})")
+        update_data = {
+            "info_id": 1,
+            "date_of_birth": "1990-01-01",
+            "nationality": "CA",  # Changed nationality
+            "passport_number": "987654321",  # Changed passport
+            "passport_expiration_date": "2031-01-01",
+            "contact_number": "+1987654321",
+            "status": "active"
+        }
+        
+        tester.test_endpoint(
+            f"/api/passengers/{passenger_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Passenger {passenger_id} with IDs only"
+        )
+    
+    print("\n✅ Passenger endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_passenger_endpoints()
+
+```
+
+
+# File: api/tests/test_userprofile.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test UserProfile endpoints (/api/users/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_userprofile_endpoints():
+    """Test UserProfile CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING USERPROFILE ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication first (you may need to adjust credentials)
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):  # Adjust credentials as needed
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List users (GET /api/users/)
+    print("\n📋 TEST 1: List Users")
+    response = tester.test_endpoint(
+        "/api/users/",
+        method="GET",
+        title="List UserProfiles"
+    )
+    
+    # Test 2: Get current user (GET /api/users/me/)
+    print("\n👤 TEST 2: Get Current User")
+    response = tester.test_endpoint(
+        "/api/users/me/",
+        method="GET",
+        title="Get Current User Profile"
+    )
+    
+    # Test 3: Try to get a specific user (if we have an ID from list)
+    if response and response.status_code == 200:
+        try:
+            user_data = response.json()
+            user_id = user_data.get('id')
+            if user_id:
+                print(f"\n🔍 TEST 3: Get Specific User (ID: {user_id})")
+                tester.test_endpoint(
+                    f"/api/users/{user_id}/",
+                    method="GET",
+                    title=f"Get UserProfile {user_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract user ID for detail test")
+    
+    # Test 4: Create new user (POST /api/users/)
+    print("\n➕ TEST 4: Create User (Write Serializer Test)")
+    create_data = {
+        "user_id": 1,  # This will likely fail, but shows the expected format
+        "first_name": "Test",
+        "last_name": "User",
+        "email": "test@example.com",
+        "phone": "+1234567890",
+        "role_ids": [1],  # Expects only IDs
+        "department_ids": [1],  # Expects only IDs
+        "status": "active"
+    }
+    
+    tester.test_endpoint(
+        "/api/users/",
+        method="POST",
+        data=create_data,
+        expect_status=201,  # May fail due to constraints, but tests serializer
+        title="Create UserProfile with IDs only"
+    )
+    
+    # Test 5: Try to create with nested objects (should fail)
+    print("\n❌ TEST 5: Create User with Nested Objects (Should Fail)")
+    invalid_data = {
+        "user": {"username": "invalid"},  # Should be user_id
+        "roles": [{"name": "invalid"}],   # Should be role_ids
+        "first_name": "Invalid",
+        "last_name": "User"
+    }
+    
+    tester.test_endpoint(
+        "/api/users/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create UserProfile with nested objects (should fail)"
+    )
+    
+    print("\n✅ UserProfile endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_userprofile_endpoints()
+
+```
+
+
+# File: api/tests/__init__.py
+
+```python
+# Test package for API endpoints
+
+```
+
+
+# File: api/tests/test_trips.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Trip endpoints (/api/trips/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_trip_endpoints():
+    """Test Trip CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING TRIP ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List trips (GET /api/trips/)
+    print("\n📋 TEST 1: List Trips")
+    response = tester.test_endpoint(
+        "/api/trips/",
+        method="GET",
+        title="List Trips"
+    )
+    
+    # Test 2: Get specific trip (if we have data)
+    trip_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                trip_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Trip (ID: {trip_id})")
+                tester.test_endpoint(
+                    f"/api/trips/{trip_id}/",
+                    method="GET",
+                    title=f"Get Trip {trip_id}"
+                )
+                
+                # Test trip lines for this trip
+                print(f"\n🔗 TEST 2b: Get Trip Lines for Trip {trip_id}")
+                tester.test_endpoint(
+                    f"/api/trips/{trip_id}/trip_lines/",
+                    method="GET",
+                    title=f"Get Trip Lines for Trip {trip_id}"
+                )
+                
+                # Test generate itineraries
+                print(f"\n📅 TEST 2c: Generate Itineraries for Trip {trip_id}")
+                tester.test_endpoint(
+                    f"/api/trips/{trip_id}/generate_itineraries/",
+                    method="POST",
+                    title=f"Generate Itineraries for Trip {trip_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract trip ID for detail test")
+    
+    # Test 3: Create new trip (POST /api/trips/)
+    print("\n➕ TEST 3: Create Trip (Write Serializer Test)")
+    create_data = {
+        "quote_id": 1,  # Expects Quote ID only
+        "patient_id": 1,  # Expects Patient ID only
+        "aircraft_id": 1,  # Expects Aircraft ID only
+        "trip_number": "TR001",
+        "type": "medical",
+        "status": "scheduled",
+        "passenger_ids": [1, 2],  # Expects list of Passenger IDs
+        "departure_date": "2024-12-01T10:00:00Z",
+        "arrival_date": "2024-12-01T14:00:00Z"
+    }
+    
+    tester.test_endpoint(
+        "/api/trips/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Trip with IDs only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Trip with Nested Objects (Should Fail)")
+    invalid_data = {
+        "quote": {  # Should be quote_id
+            "quoted_amount": 5000.00
+        },
+        "patient": {  # Should be patient_id
+            "status": "active"
+        },
+        "aircraft": {  # Should be aircraft_id
+            "tail_number": "N123AB"
+        },
+        "passengers": [  # Should be passenger_ids
+            {"info": {"first_name": "John"}}
+        ],
+        "trip_number": "TR002",
+        "type": "charter"
+    }
+    
+    tester.test_endpoint(
+        "/api/trips/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Trip with nested objects (should fail)"
+    )
+    
+    # Test 5: Update trip (if we have an ID)
+    if trip_id:
+        print(f"\n✏️  TEST 5: Update Trip (ID: {trip_id})")
+        update_data = {
+            "quote_id": 1,
+            "patient_id": 1,
+            "aircraft_id": 1,
+            "trip_number": "TR001-UPDATED",
+            "type": "charter",  # Changed type
+            "status": "in_progress",  # Changed status
+            "passenger_ids": [1]
+        }
+        
+        tester.test_endpoint(
+            f"/api/trips/{trip_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Trip {trip_id} with IDs only"
+        )
+    
+    print("\n✅ Trip endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_trip_endpoints()
+
+```
+
+
+# File: api/tests/test_crew_lines.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test CrewLine endpoints (/api/crew-lines/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_crew_line_endpoints():
+    """Test CrewLine CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING CREW LINE ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List crew lines (GET /api/crew-lines/)
+    print("\n📋 TEST 1: List Crew Lines")
+    response = tester.test_endpoint(
+        "/api/crew-lines/",
+        method="GET",
+        title="List Crew Lines"
+    )
+    
+    # Test 2: Get specific crew line (if we have data)
+    crew_line_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                crew_line_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Crew Line (ID: {crew_line_id})")
+                tester.test_endpoint(
+                    f"/api/crew-lines/{crew_line_id}/",
+                    method="GET",
+                    title=f"Get Crew Line {crew_line_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract crew line ID for detail test")
+    
+    # Test 3: Create new crew line (POST /api/crew-lines/)
+    print("\n➕ TEST 3: Create Crew Line (Write Serializer Test)")
+    create_data = {
+        "primary_in_command_id": 1,  # Expects Contact ID only
+        "secondary_in_command_id": 2,  # Expects Contact ID only
+        "medic_ids": [3, 4],  # Expects list of Contact IDs
+        "status": "active",
+        "notes": "Test crew line creation"
+    }
+    
+    tester.test_endpoint(
+        "/api/crew-lines/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Crew Line with IDs only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Crew Line with Nested Objects (Should Fail)")
+    invalid_data = {
+        "primary_in_command": {  # Should be primary_in_command_id
+            "first_name": "John",
+            "last_name": "Pilot"
+        },
+        "secondary_in_command": {  # Should be secondary_in_command_id
+            "first_name": "Jane",
+            "last_name": "Copilot"
+        },
+        "medics": [  # Should be medic_ids
+            {"first_name": "Dr. Smith"},
+            {"first_name": "Nurse Johnson"}
+        ],
+        "status": "active"
+    }
+    
+    tester.test_endpoint(
+        "/api/crew-lines/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Crew Line with nested objects (should fail)"
+    )
+    
+    # Test 5: Update crew line (if we have an ID)
+    if crew_line_id:
+        print(f"\n✏️  TEST 5: Update Crew Line (ID: {crew_line_id})")
+        update_data = {
+            "primary_in_command_id": 2,  # Changed primary
+            "secondary_in_command_id": 3,  # Changed secondary
+            "medic_ids": [4],  # Changed medics list
+            "status": "standby",  # Changed status
+            "notes": "Updated crew line"
+        }
+        
+        tester.test_endpoint(
+            f"/api/crew-lines/{crew_line_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Crew Line {crew_line_id} with IDs only"
+        )
+    
+    print("\n✅ Crew Line endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_crew_line_endpoints()
+
+```
+
+
+# File: api/tests/test_transactions.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Transaction endpoints (/api/transactions/)
+Run this against a live server to test the standardized CRUD endpoints.
+Special focus on public vs staff access patterns.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_transaction_endpoints():
+    """Test Transaction CRUD endpoints with special public/staff logic."""
+    tester = APITester()
+    
+    print("🧪 TESTING TRANSACTION ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    authenticated = tester.authenticate("admin", "admin")
+    if not authenticated:
+        print("⚠️  Authentication failed, will test public access...")
+    
+    # Test 1: List transactions (GET /api/transactions/) - Staff only
+    print("\n📋 TEST 1: List Transactions (Staff Access)")
+    response = tester.test_endpoint(
+        "/api/transactions/",
+        method="GET",
+        title="List Transactions (Staff)"
+    )
+    
+    # Test 2: Get specific transaction (if we have data)
+    transaction_id = None
+    transaction_key = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                transaction_id = results[0].get('id')
+                transaction_key = results[0].get('key')
+                
+                print(f"\n🔍 TEST 2: Get Specific Transaction (ID: {transaction_id})")
+                tester.test_endpoint(
+                    f"/api/transactions/{transaction_id}/",
+                    method="GET",
+                    title=f"Get Transaction {transaction_id} (Staff)"
+                )
+        except:
+            print("\n⚠️  Could not extract transaction data for detail test")
+    
+    # Test 3: Public read by key (no authentication required)
+    if transaction_key:
+        print(f"\n🌐 TEST 3: Public Read by Key (Key: {transaction_key})")
+        
+        # Remove authentication for public test
+        public_tester = APITester()  # No auth
+        
+        public_tester.test_endpoint(
+            f"/api/transactions/by-key/{transaction_key}/",
+            method="GET",
+            title=f"Public Read Transaction by Key {transaction_key}"
+        )
+        
+        # Restore authentication for remaining tests
+        if authenticated:
+            tester.authenticate("admin", "admin")
+    
+    # Test 4: Create new transaction (POST /api/transactions/)
+    print("\n➕ TEST 4: Create Transaction")
+    create_data = {
+        "amount": 2500.00,
+        "payment_method": "credit_card",
+        "email": "customer@example.com",
+        "payment_status": "pending",
+        "description": "Test transaction creation"
+    }
+    
+    response = tester.test_endpoint(
+        "/api/transactions/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Transaction"
+    )
+    
+    # Get the created transaction ID for further tests
+    created_transaction_id = None
+    if response and response.status_code == 201:
+        try:
+            created_data = response.json()
+            created_transaction_id = created_data.get('id')
+        except:
+            pass
+    
+    # Test 5: Process payment (special endpoint)
+    if created_transaction_id:
+        print(f"\n💳 TEST 5: Process Payment (ID: {created_transaction_id})")
+        payment_data = {
+            "payment_status": "completed",
+            "payment_method": "credit_card",
+            "transaction_reference": "ref_12345"
+        }
+        
+        tester.test_endpoint(
+            f"/api/transactions/{created_transaction_id}/process_payment/",
+            method="POST",
+            data=payment_data,
+            expect_status=200,
+            title=f"Process Payment for Transaction {created_transaction_id}"
+        )
+    
+    # Test 6: Update transaction (if we have an ID)
+    if transaction_id:
+        print(f"\n✏️  TEST 6: Update Transaction (ID: {transaction_id})")
+        update_data = {
+            "amount": 3000.00,  # Changed amount
+            "payment_method": "bank_transfer",  # Changed method
+            "payment_status": "processing",  # Changed status
+            "email": "updated@example.com"
+        }
+        
+        tester.test_endpoint(
+            f"/api/transactions/{transaction_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Transaction {transaction_id}"
+        )
+    
+    # Test 7: Test access control differences
+    print("\n🔒 TEST 7: Access Control Verification")
+    
+    # Test without authentication
+    no_auth_tester = APITester()
+    
+    print("\n   7a: List transactions without auth (should fail)")
+    no_auth_tester.test_endpoint(
+        "/api/transactions/",
+        method="GET",
+        expect_status=401,
+        title="List Transactions (No Auth - Should Fail)"
+    )
+    
+    if transaction_id:
+        print(f"\n   7b: Get transaction detail without auth (should fail)")
+        no_auth_tester.test_endpoint(
+            f"/api/transactions/{transaction_id}/",
+            method="GET",
+            expect_status=401,
+            title=f"Get Transaction {transaction_id} (No Auth - Should Fail)"
+        )
+    
+    if transaction_key:
+        print(f"\n   7c: Public read by key without auth (should succeed)")
+        no_auth_tester.test_endpoint(
+            f"/api/transactions/by-key/{transaction_key}/",
+            method="GET",
+            expect_status=200,
+            title=f"Public Read by Key {transaction_key} (No Auth - Should Succeed)"
+        )
+    
+    print("\n✅ Transaction endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_transaction_endpoints()
+
+```
+
+
+# File: api/tests/test_patients.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Patient endpoints (/api/patients/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_patient_endpoints():
+    """Test Patient CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING PATIENT ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List patients (GET /api/patients/)
+    print("\n📋 TEST 1: List Patients")
+    response = tester.test_endpoint(
+        "/api/patients/",
+        method="GET",
+        title="List Patients"
+    )
+    
+    # Test 2: Get specific patient (if we have data)
+    patient_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                patient_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Patient (ID: {patient_id})")
+                tester.test_endpoint(
+                    f"/api/patients/{patient_id}/",
+                    method="GET",
+                    title=f"Get Patient {patient_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract patient ID for detail test")
+    
+    # Test 3: Create new patient (POST /api/patients/)
+    print("\n➕ TEST 3: Create Patient (Write Serializer Test)")
+    create_data = {
+        "info_id": 1,  # Expects Contact ID only
+        "status": "active",
+        "medical_notes": "Test patient creation",
+        "emergency_contact": "Emergency Contact Name",
+        "emergency_phone": "+1234567890"
+    }
+    
+    tester.test_endpoint(
+        "/api/patients/",
+        method="POST",
+        data=create_data,
+        expect_status=201,
+        title="Create Patient with ID only"
+    )
+    
+    # Test 4: Try to create with nested objects (should fail)
+    print("\n❌ TEST 4: Create Patient with Nested Objects (Should Fail)")
+    invalid_data = {
+        "info": {  # Should be info_id
+            "first_name": "John",
+            "last_name": "Patient",
+            "email": "patient@example.com"
+        },
+        "status": "active",
+        "medical_notes": "Invalid patient creation"
+    }
+    
+    tester.test_endpoint(
+        "/api/patients/",
+        method="POST",
+        data=invalid_data,
+        expect_status=400,
+        title="Create Patient with nested objects (should fail)"
+    )
+    
+    # Test 5: Update patient (if we have an ID)
+    if patient_id:
+        print(f"\n✏️  TEST 5: Update Patient (ID: {patient_id})")
+        update_data = {
+            "info_id": 1,
+            "status": "inactive",  # Changed status
+            "medical_notes": "Updated patient medical notes",
+            "emergency_contact": "Updated Emergency Contact",
+            "emergency_phone": "+1987654321"
+        }
+        
+        tester.test_endpoint(
+            f"/api/patients/{patient_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Patient {patient_id} with ID only"
+        )
+    
+    print("\n✅ Patient endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_patient_endpoints()
+
+```
+
+
+# File: api/tests/run_all_tests.py
+
+```python
+#!/usr/bin/env python3
+"""
+Run all API endpoint tests against a live server.
+This script runs all individual test files and provides a summary.
+"""
+import sys
+import os
+import subprocess
+import time
+from datetime import datetime
+
+# Add current directory to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def check_server_connectivity():
+    """Check if the API server is running and accessible."""
+    print("🔍 Checking server connectivity...")
+    tester = APITester()
+    
+    try:
+        # Use requests directly to avoid status code checking
+        import requests
+        response = requests.get(f"{tester.base_url}/api/")
+        tester.print_response(response, "Server Connectivity Check")
+        
+        # Accept 401 as valid since /api/ requires authentication
+        status_code = response.status_code
+        print(f"DEBUG: Response status code: {status_code}")
+        if status_code in [200, 401]:
+            print("✅ API server is reachable")
+            return True
+        else:
+            print(f"❌ API server returned error status: {status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Cannot connect to API server: {e}")
+        return False
+
+
+def run_test_file(test_file):
+    """Run a single test file and capture output."""
+    print(f"\n{'='*80}")
+    print(f"🧪 RUNNING: {test_file}")
+    print(f"{'='*80}")
+    
+    try:
+        # Run the test file
+        result = subprocess.run(
+            [sys.executable, test_file],
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout per test file
+        )
+        
+        # Print the output
+        if result.stdout:
+            print(result.stdout)
+        
+        if result.stderr:
+            print("STDERR:")
+            print(result.stderr)
+        
+        return result.returncode == 0
+    
+    except subprocess.TimeoutExpired:
+        print(f"❌ Test {test_file} timed out after 60 seconds")
+        return False
+    except Exception as e:
+        print(f"❌ Error running {test_file}: {e}")
+        return False
+
+
+def main():
+    """Run all API tests."""
+    print("🚀 JET-MAIN API ENDPOINT TEST SUITE")
+    print("=" * 80)
+    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 80)
+    
+    # Check server connectivity first
+    if not check_server_connectivity():
+        print("\n❌ Cannot connect to API server. Please ensure the server is running at http://localhost:8000")
+        print("Start the server with: python manage.py runserver")
+        sys.exit(1)
+    
+    # Define test files in order
+    test_files = [
+        "test_userprofile.py",
+        "test_passengers.py", 
+        "test_crew_lines.py",
+        "test_trip_lines.py",
+        "test_trips.py",
+        "test_quotes.py",
+        "test_patients.py",
+        "test_documents.py",
+        "test_transactions.py"
+    ]
+    
+    # Track results
+    results = {}
+    start_time = time.time()
+    
+    # Run each test file
+    for test_file in test_files:
+        if os.path.exists(test_file):
+            success = run_test_file(test_file)
+            results[test_file] = success
+        else:
+            print(f"⚠️  Test file {test_file} not found, skipping...")
+            results[test_file] = False
+    
+    # Print summary
+    end_time = time.time()
+    duration = end_time - start_time
+    
+    print(f"\n{'='*80}")
+    print("📊 TEST SUMMARY")
+    print(f"{'='*80}")
+    print(f"Total duration: {duration:.2f} seconds")
+    print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print()
+    
+    passed = 0
+    failed = 0
+    
+    for test_file, success in results.items():
+        status = "✅ PASSED" if success else "❌ FAILED"
+        print(f"{test_file:<25} {status}")
+        if success:
+            passed += 1
+        else:
+            failed += 1
+    
+    print(f"\n📈 RESULTS: {passed} passed, {failed} failed out of {len(results)} tests")
+    
+    if failed > 0:
+        print("\n⚠️  Some tests failed. Check the output above for details.")
+        print("Common issues:")
+        print("- Authentication credentials may need adjustment")
+        print("- Test data (IDs) may not exist in the database")
+        print("- Permissions may not be configured correctly")
+        print("- Some endpoints may not be implemented yet")
+    else:
+        print("\n🎉 All tests completed successfully!")
+    
+    print(f"\n{'='*80}")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = main()
+    sys.exit(0 if success else 1)
+
+```
+
+
+# File: api/tests/test_documents.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test Document endpoints (/api/documents/)
+Run this against a live server to test the standardized CRUD endpoints.
+"""
+import sys
+import os
+import base64
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from base_test import APITester
+
+
+def test_document_endpoints():
+    """Test Document CRUD endpoints."""
+    tester = APITester()
+    
+    print("🧪 TESTING DOCUMENT ENDPOINTS")
+    print("=" * 80)
+    
+    # Test authentication
+    print("Attempting authentication...")
+    if not tester.authenticate("admin", "admin"):
+        print("⚠️  Authentication failed, continuing without auth...")
+    
+    # Test 1: List documents (GET /api/documents/)
+    print("\n📋 TEST 1: List Documents")
+    response = tester.test_endpoint(
+        "/api/documents/",
+        method="GET",
+        title="List Documents"
+    )
+    
+    # Test 2: Get specific document (if we have data)
+    document_id = None
+    if response and response.status_code == 200:
+        try:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                document_id = results[0].get('id')
+                print(f"\n🔍 TEST 2: Get Specific Document (ID: {document_id})")
+                detail_response = tester.test_endpoint(
+                    f"/api/documents/{document_id}/",
+                    method="GET",
+                    title=f"Get Document {document_id}"
+                )
+                
+                # Check for enhanced fields in read serializer
+                if detail_response and detail_response.status_code == 200:
+                    try:
+                        doc_data = detail_response.json()
+                        enhanced_fields = ['content_type', 'download_url']
+                        found_fields = [field for field in enhanced_fields if field in doc_data]
+                        missing_fields = [field for field in enhanced_fields if field not in doc_data]
+                        
+                        if found_fields:
+                            print(f"✅ Enhanced fields found: {found_fields}")
+                        if missing_fields:
+                            print(f"⚠️  Enhanced fields missing: {missing_fields}")
+                    except:
+                        pass
+                
+                # Test download endpoint
+                print(f"\n⬇️  TEST 2b: Download Document (ID: {document_id})")
+                tester.test_endpoint(
+                    f"/api/documents/{document_id}/download/",
+                    method="GET",
+                    title=f"Download Document {document_id}"
+                )
+        except:
+            print("\n⚠️  Could not extract document ID for detail test")
+    
+    # Test 3: Upload new document (POST /api/documents/)
+    print("\n📤 TEST 3: Upload Document")
+    
+    # Create sample file content
+    sample_content = b"This is a test document content for API testing."
+    encoded_content = base64.b64encode(sample_content).decode('utf-8')
+    
+    upload_data = {
+        "filename": "test_upload.txt",
+        "flag": "contract",
+        "content": encoded_content,  # Base64 encoded content
+        "description": "Test document upload via API"
+    }
+    
+    response = tester.test_endpoint(
+        "/api/documents/",
+        method="POST",
+        data=upload_data,
+        expect_status=201,
+        title="Upload Document"
+    )
+    
+    # Get the uploaded document ID for further tests
+    uploaded_document_id = None
+    if response and response.status_code == 201:
+        try:
+            uploaded_data = response.json()
+            uploaded_document_id = uploaded_data.get('id')
+        except:
+            pass
+    
+    # Test 4: Try alternative upload format
+    print("\n📤 TEST 4: Upload Document (Alternative Format)")
+    upload_data_alt = {
+        "filename": "test_upload_2.pdf",
+        "flag": "passport",
+        "content": sample_content,  # Raw bytes (may need different handling)
+        "description": "Alternative upload test"
+    }
+    
+    tester.test_endpoint(
+        "/api/documents/",
+        method="POST",
+        data=upload_data_alt,
+        expect_status=201,
+        title="Upload Document (Alternative Format)"
+    )
+    
+    # Test 5: Update document (if we have an ID)
+    if uploaded_document_id:
+        print(f"\n✏️  TEST 5: Update Document (ID: {uploaded_document_id})")
+        update_data = {
+            "filename": "updated_test_file.txt",
+            "flag": "medical_record",  # Changed flag
+            "content": base64.b64encode(b"Updated document content").decode('utf-8'),
+            "description": "Updated document description"
+        }
+        
+        tester.test_endpoint(
+            f"/api/documents/{uploaded_document_id}/",
+            method="PUT",
+            data=update_data,
+            expect_status=200,
+            title=f"Update Document {uploaded_document_id}"
+        )
+        
+        # Test download of updated document
+        print(f"\n⬇️  TEST 5b: Download Updated Document")
+        tester.test_endpoint(
+            f"/api/documents/{uploaded_document_id}/download/",
+            method="GET",
+            title=f"Download Updated Document {uploaded_document_id}"
+        )
+    
+    # Test 6: Partial update (PATCH)
+    if document_id:
+        print(f"\n🔧 TEST 6: Partial Update Document (ID: {document_id})")
+        patch_data = {
+            "description": "Partially updated description",
+            "flag": "updated_flag"
+        }
+        
+        tester.test_endpoint(
+            f"/api/documents/{document_id}/",
+            method="PATCH",
+            data=patch_data,
+            expect_status=200,
+            title=f"Partial Update Document {document_id}"
+        )
+    
+    # Test 7: Test file type validation (if implemented)
+    print("\n❌ TEST 7: Invalid File Upload (Testing Validation)")
+    invalid_upload = {
+        "filename": "",  # Empty filename
+        "flag": "invalid_flag",
+        "content": "invalid_content_format"
+    }
+    
+    tester.test_endpoint(
+        "/api/documents/",
+        method="POST",
+        data=invalid_upload,
+        expect_status=400,
+        title="Invalid Document Upload (Should Fail)"
+    )
+    
+    print("\n✅ Document endpoint tests completed!")
+
+
+if __name__ == "__main__":
+    test_document_endpoints()
+
+```
+
+
+# File: api/management/__init__.py
+
+```python
+
+```
+
+
+# File: api/management/commands/setup_test_data.py
+
+```python
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
+from django.db import transaction
+from api.models import (
+    Contact, UserProfile, Role, Department, Airport, Aircraft, 
+    Passenger, CrewLine, Trip, TripLine, Quote, Patient, Document, Transaction
+)
+import os
+
+
+class Command(BaseCommand):
+    help = 'Set up test data for API endpoint testing'
+
+    def handle(self, *args, **options):
+        self.stdout.write(self.style.SUCCESS('Setting up test data...'))
+        
+        with transaction.atomic():
+            # Create admin user
+            admin_user, created = User.objects.get_or_create(
+                username='admin',
+                defaults={
+                    'email': 'admin@jetmain.com',
+                    'first_name': 'Admin',
+                    'last_name': 'User',
+                    'is_staff': True,
+                    'is_superuser': True
+                }
+            )
+            if created:
+                admin_user.set_password('admin')
+                admin_user.save()
+                self.stdout.write(f'✅ Created admin user: admin/admin')
+            else:
+                self.stdout.write(f'✅ Admin user already exists')
+
+            # Create test user
+            test_user, created = User.objects.get_or_create(
+                username='testuser',
+                defaults={
+                    'email': 'test@jetmain.com',
+                    'first_name': 'Test',
+                    'last_name': 'User',
+                    'is_staff': False,
+                    'is_superuser': False
+                }
+            )
+            if created:
+                test_user.set_password('testpass')
+                test_user.save()
+                self.stdout.write(f'✅ Created test user: testuser/testpass')
+
+            # Create roles
+            pilot_role, _ = Role.objects.get_or_create(
+                name='Pilot',
+                defaults={'description': 'Aircraft pilot'}
+            )
+            medic_role, _ = Role.objects.get_or_create(
+                name='Medic',
+                defaults={'description': 'Medical personnel'}
+            )
+            admin_role, _ = Role.objects.get_or_create(
+                name='Admin',
+                defaults={'description': 'Administrator'}
+            )
+
+            # Create departments
+            flight_dept, _ = Department.objects.get_or_create(
+                name='Flight Operations',
+                defaults={'description': 'Flight operations department'}
+            )
+            medical_dept, _ = Department.objects.get_or_create(
+                name='Medical',
+                defaults={'description': 'Medical department'}
+            )
+
+            # Create contacts
+            contacts = []
+            for i in range(1, 6):
+                contact, _ = Contact.objects.get_or_create(
+                    email=f'contact{i}@jetmain.com',
+                    defaults={
+                        'first_name': f'Contact{i}',
+                        'last_name': f'User{i}',
+                        'phone': f'+123456789{i}',
+                        'address_line1': f'{i}00 Test Street',
+                        'city': 'Test City',
+                        'state': 'TS',
+                        'zip': f'1234{i}',
+                        'country': 'USA'
+                    }
+                )
+                contacts.append(contact)
+
+            # Create UserProfiles
+            admin_profile, _ = UserProfile.objects.get_or_create(
+                user=admin_user,
+                defaults={
+                    'first_name': 'Admin',
+                    'last_name': 'User',
+                    'phone': '+1234567890',
+                    'address_line1': '123 Admin Street',
+                    'city': 'Admin City',
+                    'state': 'AC',
+                    'zip': '12345',
+                    'country': 'USA'
+                }
+            )
+            admin_profile.roles.add(admin_role)
+            admin_profile.departments.add(flight_dept)
+
+            test_profile, _ = UserProfile.objects.get_or_create(
+                user=test_user,
+                defaults={
+                    'first_name': 'Test',
+                    'last_name': 'User',
+                    'phone': '+1234567891',
+                    'address_line1': '456 Test Street',
+                    'city': 'Test City',
+                    'state': 'TC',
+                    'zip': '54321',
+                    'country': 'USA'
+                }
+            )
+            test_profile.roles.add(pilot_role)
+            test_profile.departments.add(flight_dept)
+
+            # Create airports
+            airports = []
+            airport_data = [
+                ('KORD', 'Chicago O\'Hare', 'Chicago', 'IL'),
+                ('KLAX', 'Los Angeles International', 'Los Angeles', 'CA'),
+                ('KJFK', 'John F Kennedy International', 'New York', 'NY'),
+                ('KDEN', 'Denver International', 'Denver', 'CO')
+            ]
+            
+            for icao, name, city, state in airport_data:
+                airport, _ = Airport.objects.get_or_create(
+                    icao_code=icao,
+                    defaults={
+                        'name': name,
+                        'city': city,
+                        'state': state,
+                        'country': 'USA',
+                        'latitude': 40.0,
+                        'longitude': -87.0
+                    }
+                )
+                airports.append(airport)
+
+            # Create aircraft
+            aircraft, _ = Aircraft.objects.get_or_create(
+                tail_number='N123JM',
+                defaults={
+                    'company': 'JET-MAIN',
+                    'make': 'Cessna',
+                    'model': 'Citation X',
+                    'serial_number': 'SN123456',
+                    'mgtow': 15000.00
+                }
+            )
+
+            # Create passengers
+            passengers = []
+            for i, contact in enumerate(contacts[:3]):
+                passenger, _ = Passenger.objects.get_or_create(
+                    info=contact,
+                    defaults={
+                        'passport_number': f'P{i+1}234567',
+                        'passport_expiration_date': '2030-12-31',
+                        'contact_number': f'+198765432{i+1}',
+                        'notes': f'No known allergies for passenger {i+1}',
+                        'nationality': 'USA'
+                    }
+                )
+                passengers.append(passenger)
+
+            # Create patients
+            patients = []
+            for i, contact in enumerate(contacts[3:]):
+                patient, _ = Patient.objects.get_or_create(
+                    info=contact,
+                    defaults={
+                        'date_of_birth': '1990-01-01',
+                        'nationality': 'USA',
+                        'passport_number': f'PT{i+1}234567',
+                        'passport_expiration_date': '2030-12-31',
+                        'status': 'active',
+                        'special_instructions': f'Patient {i+1} medical history',
+                        'bed_at_origin': False,
+                        'bed_at_destination': False
+                    }
+                )
+                patients.append(patient)
+
+            # Create crew lines
+            crew_lines = []
+            for i in range(2):
+                crew_line, _ = CrewLine.objects.get_or_create(
+                    primary_in_command_id=contacts[0],
+                    secondary_in_command_id=contacts[1]
+                )
+                crew_line.medic_ids.add(contacts[2])
+                crew_lines.append(crew_line)
+
+            # Create quotes
+            quotes = []
+            for i in range(2):
+                quote, _ = Quote.objects.get_or_create(
+                    quoted_amount=15000.00,
+                    contact_id=contacts[0],
+                    pickup_airport_id=airports[0],
+                    dropoff_airport_id=airports[1],
+                    defaults={
+                        'patient_id': patients[0] if patients else None,
+                        'aircraft_type': 'TBD',
+                        'estimated_fight_time': 4.0,
+                        'medical_team': 'standard',
+                        'status': 'pending',
+                        'quote_pdf_email': f'quote{i+1}@jetmain.com',
+                        'includes_grounds': False,
+                        'number_of_stops': 0
+                    }
+                )
+                quotes.append(quote)
+
+            # Create trips
+            trips = []
+            for i, quote in enumerate(quotes):
+                trip, _ = Trip.objects.get_or_create(
+                    trip_number=f'TR{i+1:04d}',
+                    defaults={
+                        'quote_id': quote,
+                        'patient_id': patients[0] if patients else None,
+                        'aircraft_id': aircraft,
+                        'type': 'medical',
+                        'estimated_departure_time': '2024-12-01T10:00:00Z'
+                    }
+                )
+                trip.passengers.add(passengers[0])
+                trips.append(trip)
+
+            # Create trip lines
+            for i, trip in enumerate(trips):
+                trip_line, _ = TripLine.objects.get_or_create(
+                    trip_id=trip,
+                    origin_airport_id=airports[i],
+                    destination_airport_id=airports[i+1],
+                    defaults={
+                        'crew_line_id': crew_lines[0],
+                        'departure_time_local': '2024-12-01T10:00:00',
+                        'departure_time_utc': '2024-12-01T15:00:00Z',
+                        'arrival_time_local': '2024-12-01T14:00:00',
+                        'arrival_time_utc': '2024-12-01T19:00:00Z',
+                        'distance': 1000.00,
+                        'flight_time': 4.0,
+                        'ground_time': 1.0,
+                        'passenger_leg': True
+                    }
+                )
+
+            # Create documents
+            doc, _ = Document.objects.get_or_create(
+                filename='test_document.pdf',
+                defaults={
+                    'content': b'Test document content',
+                    'flag': 0
+                }
+            )
+
+            # Create transactions
+            for i, quote in enumerate(quotes):
+                transaction_obj, _ = Transaction.objects.get_or_create(
+                    amount=quote.quoted_amount,
+                    email=f'transaction{i+1}@jetmain.com',
+                    defaults={
+                        'payment_method': 'credit_card',
+                        'payment_status': 'pending'
+                    }
+                )
+
+        self.stdout.write(self.style.SUCCESS('✅ Test data setup completed!'))
+        self.stdout.write(self.style.SUCCESS(''))
+        self.stdout.write(self.style.SUCCESS('Test Accounts:'))
+        self.stdout.write(self.style.SUCCESS('  Admin: admin/admin'))
+        self.stdout.write(self.style.SUCCESS('  User:  testuser/testpass'))
+        self.stdout.write(self.style.SUCCESS(''))
+        self.stdout.write(self.style.SUCCESS('You can now run the API tests!'))
+
+```
+
+
+# File: api/management/commands/__init__.py
+
+```python
+
+```
+
+
+>>>>>>> origin/dev
 # File: api/external/airport.py
 
 ```python
