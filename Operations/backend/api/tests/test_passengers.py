@@ -50,13 +50,13 @@ def test_passenger_endpoints():
     # Test 3: Create new passenger (POST /api/passengers/)
     print("\n➕ TEST 3: Create Passenger (Write Serializer Test)")
     create_data = {
-        "info_id": 1,  # Expects Contact ID only
+        "info": 1,  # Expects Contact ID only
         "date_of_birth": "1990-01-01",
         "nationality": "US",
         "passport_number": "123456789",
         "passport_expiration_date": "2030-01-01",
         "contact_number": "+1234567890",
-        "passport_document_id": 1,  # Expects Document ID only
+        "passport_document": 1,  # Expects Document ID only
         "status": "active"
     }
     
@@ -94,7 +94,7 @@ def test_passenger_endpoints():
     if passenger_id:
         print(f"\n✏️  TEST 5: Update Passenger (ID: {passenger_id})")
         update_data = {
-            "info_id": 1,
+            "info": 1,
             "date_of_birth": "1990-01-01",
             "nationality": "CA",  # Changed nationality
             "passport_number": "987654321",  # Changed passport

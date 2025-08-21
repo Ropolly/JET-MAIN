@@ -66,9 +66,9 @@ def test_trip_endpoints():
     # Test 3: Create new trip (POST /api/trips/)
     print("\n➕ TEST 3: Create Trip (Write Serializer Test)")
     create_data = {
-        "quote_id": 1,  # Expects Quote ID only
-        "patient_id": 1,  # Expects Patient ID only
-        "aircraft_id": 1,  # Expects Aircraft ID only
+        "quote": 1,  # Expects Quote ID only
+        "patient": 1,  # Expects Patient ID only
+        "aircraft": 1,  # Expects Aircraft ID only
         "trip_number": "TR001",
         "type": "medical",
         "status": "scheduled",
@@ -116,9 +116,9 @@ def test_trip_endpoints():
     if trip_id:
         print(f"\n✏️  TEST 5: Update Trip (ID: {trip_id})")
         update_data = {
-            "quote_id": 1,
-            "patient_id": 1,
-            "aircraft_id": 1,
+            "quote": 1,
+            "patient": 1,
+            "aircraft": 1,
             "trip_number": "TR001-UPDATED",
             "type": "charter",  # Changed type
             "status": "in_progress",  # Changed status

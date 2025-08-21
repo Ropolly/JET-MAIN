@@ -14,7 +14,7 @@ class BaseModel(models.Model):
     modified_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)s_modified"
     )
-    status = models.CharField(max_length=50, default="active")
+    status = models.CharField(max_length=50, default="active", db_index=True)
     lock = models.BooleanField(default=False)
     
     class Meta:
@@ -102,7 +102,7 @@ class Contact(BaseModel):
     state = models.CharField(max_length=100, blank=True, null=True)
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="contacts")
+
     
     def __str__(self):
         if self.business_name:
@@ -124,7 +124,7 @@ class FBO(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="fbos")
     notes = models.TextField(blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="fbos")
+
     
     def __str__(self):
         return self.name
@@ -140,15 +140,15 @@ class Ground(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="grounds")
-    permission_ids = models.ManyToManyField(Permission, related_name="grounds")
+
     
     def __str__(self):
         return self.name
 
 # Airport model
 class Airport(BaseModel):
-    icao_code = models.CharField(max_length=4)
-    iata_code = models.CharField(max_length=3)
+    icao_code = models.CharField(max_length=4, unique=True, db_index=True)
+    iata_code = models.CharField(max_length=3, db_index=True)
     name = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100, blank=True, null=True)
@@ -159,7 +159,7 @@ class Airport(BaseModel):
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     timezone = models.CharField(max_length=50)
-    permission_ids = models.ManyToManyField(Permission, related_name="airports")
+
     
     def __str__(self):
         return f"{self.name} ({self.icao_code}/{self.iata_code})"
@@ -177,7 +177,7 @@ class Document(models.Model):
 
 # Aircraft model
 class Aircraft(BaseModel):
-    tail_number = models.CharField(max_length=20)
+    tail_number = models.CharField(max_length=20, unique=True, db_index=True)
     company = models.CharField(max_length=255)
     mgtow = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Maximum Gross Takeoff Weight")
     make = models.CharField(max_length=100)
@@ -189,7 +189,7 @@ class Aircraft(BaseModel):
 
 # Transaction model
 class Transaction(BaseModel):
-    key = models.UUIDField(default=uuid.uuid4, editable=False)
+    key = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=[
         ("credit_card", "Credit Card"),
@@ -210,8 +210,8 @@ class Transaction(BaseModel):
 # Agreement model
 class Agreement(BaseModel):
     destination_email = models.EmailField()
-    document_unsigned_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="unsigned_agreements")
-    document_signed_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="signed_agreements")
+    document_unsigned = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="unsigned_agreements", db_column="document_unsigned_id")
+    document_signed = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="signed_agreements", db_column="document_signed_id")
     status = models.CharField(max_length=20, choices=[
         ("created", "Created"),
         ("pending", "Pending"),
@@ -232,7 +232,7 @@ class Patient(BaseModel):
     nationality = models.CharField(max_length=100)
     passport_number = models.CharField(max_length=100)
     passport_expiration_date = models.DateField()
-    passport_document_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients")
+    passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients", db_column="passport_document_id")
     special_instructions = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
@@ -240,8 +240,8 @@ class Patient(BaseModel):
         ("active", "Active"),
         ("completed", "Completed"),
         ("cancelled", "Cancelled")
-    ], default="pending")
-    letter_of_medical_necessity_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients")
+    ], default="pending", db_index=True)
+    letter_of_medical_necessity = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients", db_column="letter_of_medical_necessity_id")
     
     def __str__(self):
         return f"Patient: {self.info}"
@@ -249,20 +249,20 @@ class Patient(BaseModel):
 # Quote model
 class Quote(BaseModel):
     quoted_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    contact_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="quotes")
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="quotes", db_column="contact_id")
     documents = models.ManyToManyField(Document, related_name="quotes")
     cruise_doctor_first_name = models.CharField(max_length=100, blank=True, null=True)
     cruise_doctor_last_name = models.CharField(max_length=100, blank=True, null=True)
     cruise_line = models.CharField(max_length=100, blank=True, null=True)
     cruise_ship = models.CharField(max_length=100, blank=True, null=True)
-    pickup_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes")
-    dropoff_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes")
+    pickup_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes", db_column="pickup_airport_id")
+    dropoff_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes", db_column="dropoff_airport_id")
     aircraft_type = models.CharField(max_length=20, choices=[
         ("65", "Learjet 65"),
         ("35", "Learjet 35"),
         ("TBD", "To Be Determined")
     ])
-    estimated_fight_time = models.DecimalField(max_digits=5, decimal_places=2)
+    estimated_flight_time = models.DurationField()
     includes_grounds = models.BooleanField(default=False)
     inquiry_date = models.DateTimeField(default=timezone.now)
     medical_team = models.CharField(max_length=20, choices=[
@@ -273,9 +273,8 @@ class Quote(BaseModel):
         ("standard", "Standard"),
         ("full", "Full")
     ])
-    patient_first_name = models.CharField(max_length=100, blank=True, null=True)
-    patient_last_name = models.CharField(max_length=100, blank=True, null=True)
-    patient_id = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes")
+
+    patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes", db_column="patient_id")
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
         ("confirmed", "Confirmed"),
@@ -283,9 +282,9 @@ class Quote(BaseModel):
         ("completed", "Completed"),
         ("cancelled", "Cancelled"),
         ("paid", "Paid")
-    ], default="pending")
+    ], default="pending", db_index=True)
     number_of_stops = models.PositiveIntegerField(default=0)
-    quote_pdf_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs")
+    quote_pdf = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs", db_column="quote_pdf_id")
     quote_pdf_status = models.CharField(max_length=20, choices=[
         ("created", "Created"),
         ("pending", "Pending"),
@@ -294,9 +293,9 @@ class Quote(BaseModel):
         ("denied", "Denied")
     ], default="created")
     quote_pdf_email = models.EmailField()
-    payment_agreement_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="payment_quotes")
-    consent_for_transport_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="consent_quotes")
-    patient_service_agreement_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_quotes")
+    payment_agreement = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="payment_quotes", db_column="payment_agreement_id")
+    consent_for_transport = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="consent_quotes", db_column="consent_for_transport_id")
+    patient_service_agreement = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_quotes", db_column="patient_service_agreement_id")
     transactions = models.ManyToManyField(Transaction, related_name="quotes", blank=True)
     
     def __str__(self):
@@ -311,24 +310,25 @@ class Passenger(BaseModel):
     passport_expiration_date = models.DateField(blank=True, null=True)
     contact_number = models.CharField(max_length=20, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
-    passport_document_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_passengers")
+    passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_passengers", db_column="passport_document_id")
+    passenger_ids = models.ManyToManyField('self', blank=True, symmetrical=False, related_name="related_passengers")
     
     def __str__(self):
         return f"Passenger: {self.info}"
 
 # Crew Line model
 class CrewLine(BaseModel):
-    primary_in_command_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="primary_crew_lines")
-    secondary_in_command_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="secondary_crew_lines")
+    primary_in_command = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="primary_crew_lines", db_column="primary_in_command_id")
+    secondary_in_command = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="secondary_crew_lines", db_column="secondary_in_command_id")
     medic_ids = models.ManyToManyField(Contact, related_name="medic_crew_lines")
     
     def __str__(self):
-        return f"Crew: {self.primary_in_command_id} and {self.secondary_in_command_id}"
+        return f"Crew: {self.primary_in_command} and {self.secondary_in_command}"
 
 # Trip model
 class Trip(BaseModel):
     email_chain = models.JSONField(default=list, blank=True)
-    quote_id = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name="trips", null=True, blank=True)
+    quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name="trips", null=True, blank=True, db_column="quote_id")
     type = models.CharField(max_length=20, choices=[
         ("medical", "Medical"),
         ("charter", "Charter"),
@@ -336,14 +336,14 @@ class Trip(BaseModel):
         ("other", "Other"),
         ("maintenance", "Maintenance")
     ])
-    patient_id = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
+    patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips", db_column="patient_id")
     estimated_departure_time = models.DateTimeField(blank=True, null=True)
-    post_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    pre_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    aircraft_id = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
-    trip_number = models.CharField(max_length=20)
-    internal_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips")
-    customer_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips")
+    post_flight_duty_time = models.DurationField(blank=True, null=True)
+    pre_flight_duty_time = models.DurationField(blank=True, null=True)
+    aircraft = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips", db_column="aircraft_id")
+    trip_number = models.CharField(max_length=20, unique=True, db_index=True)
+    internal_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips", db_column="internal_itinerary_id")
+    customer_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips", db_column="customer_itinerary_id")
     passengers = models.ManyToManyField(Passenger, related_name="trips", blank=True)
     
     def __str__(self):
@@ -351,21 +351,21 @@ class Trip(BaseModel):
 
 # Trip Line model
 class TripLine(BaseModel):
-    trip_id = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="trip_lines")
-    origin_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="origin_trip_lines")
-    destination_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="destination_trip_lines")
-    crew_line_id = models.ForeignKey(CrewLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_lines")
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="trip_lines", db_column="trip_id")
+    origin_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="origin_trip_lines", db_column="origin_airport_id")
+    destination_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="destination_trip_lines", db_column="destination_airport_id")
+    crew_line = models.ForeignKey(CrewLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_lines", db_column="crew_line_id")
     departure_time_local = models.DateTimeField()
     departure_time_utc = models.DateTimeField()
     arrival_time_local = models.DateTimeField()
     arrival_time_utc = models.DateTimeField()
     distance = models.DecimalField(max_digits=10, decimal_places=2)
-    flight_time = models.DecimalField(max_digits=5, decimal_places=2)
-    ground_time = models.DecimalField(max_digits=5, decimal_places=2)
+    flight_time = models.DurationField()
+    ground_time = models.DurationField()
     passenger_leg = models.BooleanField(default=True)
     
     def __str__(self):
-        return f"Trip Line: {self.origin_airport_id} to {self.destination_airport_id}"
+        return f"Trip Line: {self.origin_airport} to {self.destination_airport}"
     
     class Meta:
         ordering = ['departure_time_utc']

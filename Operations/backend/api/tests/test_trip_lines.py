@@ -50,10 +50,10 @@ def test_trip_line_endpoints():
     # Test 3: Create new trip line (POST /api/trip-lines/)
     print("\n➕ TEST 3: Create Trip Line (Write Serializer Test)")
     create_data = {
-        "trip_id": 1,  # Expects Trip ID only
-        "origin_airport_id": 1,  # Expects Airport ID only
-        "destination_airport_id": 2,  # Expects Airport ID only
-        "crew_line_id": 1,  # Expects CrewLine ID only
+        "trip": 1,  # Expects Trip ID only
+        "origin_airport": 1,  # Expects Airport ID only
+        "destination_airport": 2,  # Expects Airport ID only
+        "crew_line": 1,  # Expects CrewLine ID only
         "departure_date": "2024-12-01T10:00:00Z",
         "arrival_date": "2024-12-01T14:00:00Z",
         "flight_time": "04:00:00",
@@ -100,10 +100,10 @@ def test_trip_line_endpoints():
     if trip_line_id:
         print(f"\n✏️  TEST 5: Update Trip Line (ID: {trip_line_id})")
         update_data = {
-            "trip_id": 1,
-            "origin_airport_id": 2,  # Changed origin
-            "destination_airport_id": 1,  # Changed destination (reverse)
-            "crew_line_id": 2,  # Changed crew
+            "trip": 1,
+            "origin_airport": 2,  # Changed origin
+            "destination_airport": 1,  # Changed destination (reverse)
+            "crew_line": 2,  # Changed crew
             "departure_date": "2024-12-02T11:00:00Z",  # Changed time
             "arrival_date": "2024-12-02T15:00:00Z",
             "flight_time": "04:00:00",
