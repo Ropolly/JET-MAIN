@@ -50,7 +50,7 @@ def test_patient_endpoints():
     # Test 3: Create new patient (POST /api/patients/)
     print("\n➕ TEST 3: Create Patient (Write Serializer Test)")
     create_data = {
-        "info_id": 1,  # Expects Contact ID only
+        "info": 1,  # Expects Contact ID only
         "status": "active",
         "medical_notes": "Test patient creation",
         "emergency_contact": "Emergency Contact Name",
@@ -89,7 +89,7 @@ def test_patient_endpoints():
     if patient_id:
         print(f"\n✏️  TEST 5: Update Patient (ID: {patient_id})")
         update_data = {
-            "info_id": 1,
+            "info": 1,
             "status": "inactive",  # Changed status
             "medical_notes": "Updated patient medical notes",
             "emergency_contact": "Updated Emergency Contact",

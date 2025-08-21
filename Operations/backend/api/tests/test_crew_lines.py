@@ -50,8 +50,8 @@ def test_crew_line_endpoints():
     # Test 3: Create new crew line (POST /api/crew-lines/)
     print("\n➕ TEST 3: Create Crew Line (Write Serializer Test)")
     create_data = {
-        "primary_in_command_id": 1,  # Expects Contact ID only
-        "secondary_in_command_id": 2,  # Expects Contact ID only
+        "primary_in_command": 1,  # Expects Contact ID only
+        "secondary_in_command": 2,  # Expects Contact ID only
         "medic_ids": [3, 4],  # Expects list of Contact IDs
         "status": "active",
         "notes": "Test crew line creation"
@@ -95,8 +95,8 @@ def test_crew_line_endpoints():
     if crew_line_id:
         print(f"\n✏️  TEST 5: Update Crew Line (ID: {crew_line_id})")
         update_data = {
-            "primary_in_command_id": 2,  # Changed primary
-            "secondary_in_command_id": 3,  # Changed secondary
+            "primary_in_command": 2,  # Changed primary
+            "secondary_in_command": 3,  # Changed secondary
             "medic_ids": [4],  # Changed medics list
             "status": "standby",  # Changed status
             "notes": "Updated crew line"

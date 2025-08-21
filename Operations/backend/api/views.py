@@ -283,8 +283,8 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-    queryset = Quote.objects.select_related('contact_id', 'pickup_airport', 'dropoff_airport', 'patient_id', 'agreements_id').prefetch_related('transactions')
-    search_fields = ['contact_id__first_name', 'contact_id__last_name', 'status']
+    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient').prefetch_related('transactions')
+    search_fields = ['contact__first_name', 'contact__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -333,7 +333,7 @@ class QuoteViewSet(BaseViewSet):
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
-    queryset = Passenger.objects.select_related('info', 'passport_document_id')
+    queryset = Passenger.objects.select_related('info', 'passport_document')
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -364,7 +364,7 @@ class PassengerViewSet(BaseViewSet):
 
 # CrewLine ViewSet
 class CrewLineViewSet(BaseViewSet):
-    queryset = CrewLine.objects.select_related('primary_in_command_id', 'secondary_in_command_id').prefetch_related('medic_ids')
+    queryset = CrewLine.objects.select_related('primary_in_command', 'secondary_in_command').prefetch_related('medic_ids')
     ordering_fields = ['created_on']
     
     def get_serializer_class(self):
@@ -374,7 +374,7 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote_id', 'patient_id', 'aircraft_id').prefetch_related('trip_lines', 'passengers')
+    queryset = Trip.objects.select_related('quote', 'patient', 'aircraft').prefetch_related('trip_lines', 'passengers')
     search_fields = ['trip_number', 'type']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
@@ -420,7 +420,7 @@ class TripViewSet(BaseViewSet):
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
-    queryset = TripLine.objects.select_related('trip_id', 'origin_airport', 'destination_airport', 'crew_line_id')
+    queryset = TripLine.objects.select_related('trip', 'origin_airport', 'destination_airport', 'crew_line')
     ordering_fields = ['departure_time_utc', 'created_on']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -450,7 +450,7 @@ class TripLineViewSet(BaseViewSet):
     
     def perform_create(self, serializer):
         trip_line = serializer.save(created_by=self.request.user)
-        trip = trip_line.trip_id
+        trip = trip_line.trip
         
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
@@ -458,7 +458,7 @@ class TripLineViewSet(BaseViewSet):
     
     def perform_update(self, serializer):
         trip_line = serializer.save()
-        trip = trip_line.trip_id
+        trip = trip_line.trip
         
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
