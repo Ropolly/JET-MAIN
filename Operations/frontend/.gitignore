@@ -1,3 +1,5 @@
+/src/assets/css
+
 # Logs
 logs
 *.log
@@ -8,17 +10,39 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.DS_Store
 dist
 dist-ssr
+coverage
 *.local
+
+/cypress/videos/
+/cypress/screenshots/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Claude AI files
+.claude/
+CLAUDE.md
+.claude_history
+claude-session-*
+.claude-session-*
+claude_session_*
+.claude_session_*
+claude-*.md
+claude_*.md
+.claude-*.json
+.claude_*.json
+claude-*.json
+claude_*.json
+.anthropic/
+anthropic-*
+.anthropic-*
