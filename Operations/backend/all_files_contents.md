@@ -32,10 +32,9 @@ api/
     urls.py
     views.py
     migrations/
+        0002_role_modified_by_role_modified_on.py
         __init__.py
         0001_initial.py
-<<<<<<< HEAD
-=======
     tests/
         base_test.py
         test_trip_lines.py
@@ -54,7 +53,6 @@ api/
         commands/
             setup_test_data.py
             __init__.py
->>>>>>> origin/dev
     external/
         airport.py
         aircraft.py
@@ -686,6 +684,10 @@ class Role(BaseModel):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
     permissions = models.ManyToManyField(Permission, related_name="roles")
+    modified_on = models.DateTimeField(auto_now=True)
+    modified_by = models.ForeignKey(User, null=True, blank=True,
+                                    on_delete=models.SET_NULL,
+                                    related_name="%(class)s_modified")
     
     def __str__(self):
         return self.name
@@ -1020,124 +1022,59 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'is_staff']
-<<<<<<< HEAD
-        read_only_fields = ['is_staff']
-=======
->>>>>>> origin/dev
 
 # Base serializers
 class ModificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Modification
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'created_on', 'created_by', 'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permission
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'name', 'description', 'created_on', 'created_by', 'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'name', 'description', 'permissions', 'created_on', 'created_by', 'status', 'lock']
->>>>>>> origin/dev
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-<<<<<<< HEAD
-        fields = '__all__'
-
-class UserProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    
-    class Meta:
-        model = UserProfile
-        fields = '__all__'
-=======
         fields = ['id', 'name', 'description', 'created_on', 'created_by', 'status', 'lock']
->>>>>>> origin/dev
 
 # Contact and location serializers
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
                  'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
                  'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
         model = FBO
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'name', 'contact_id', 'created_on', 'created_by', 'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 class GroundSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ground
-<<<<<<< HEAD
-        fields = '__all__'
-=======
         fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
                  'country', 'notes', 'contacts', 'permission_ids', 'created_on', 'created_by', 
                  'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 class AirportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Airport
-<<<<<<< HEAD
-        fields = '__all__'
-
-# Document serializer
-class DocumentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Document
-        fields = ['id', 'filename', 'flag', 'created_on']
-
-class DocumentUploadSerializer(serializers.ModelSerializer):
-    content = serializers.FileField()
-    
-    class Meta:
-        model = Document
-        fields = ['id', 'filename', 'content', 'flag']
-=======
         fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
                  'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
                  'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
->>>>>>> origin/dev
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Aircraft
-<<<<<<< HEAD
-        fields = '__all__'
-
-# Transaction serializer
-class TransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Transaction
-        fields = '__all__'
-=======
         fields = ['id', 'tail_number', 'company', 'mgtow', 'make', 'model', 'serial_number', 
                  'created_on', 'created_by', 'modified_on', 'modified_by']
 
@@ -1146,47 +1083,11 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ['id', 'filename', 'flag', 'created_on']
->>>>>>> origin/dev
 
 # Agreement serializer
 class AgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agreement
-<<<<<<< HEAD
-        fields = '__all__'
-
-# Patient serializer
-class PatientSerializer(serializers.ModelSerializer):
-    info = ContactSerializer(read_only=True)
-    info_id = serializers.PrimaryKeyRelatedField(
-        queryset=Contact.objects.all(),
-        source='info',
-        write_only=True
-    )
-    
-    class Meta:
-        model = Patient
-        fields = '__all__'
-
-# Quote serializer
-class QuoteSerializer(serializers.ModelSerializer):
-    contact = ContactSerializer(source='contact_id', read_only=True)
-    
-    class Meta:
-        model = Quote
-        fields = '__all__'
-
-# Passenger serializer
-class PassengerSerializer(serializers.ModelSerializer):
-    info = ContactSerializer(read_only=True)
-    
-    class Meta:
-        model = Passenger
-        fields = '__all__'
-
-# Crew Line serializer
-class CrewLineSerializer(serializers.ModelSerializer):
-=======
         fields = ['id', 'destination_email', 'document_unsigned_id', 'document_signed_id', 
                  'status', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
@@ -1256,38 +1157,12 @@ class PassengerWriteSerializer(serializers.ModelSerializer):
 
 # 3) Crew Lines
 class CrewLineReadSerializer(serializers.ModelSerializer):
->>>>>>> origin/dev
     primary_in_command = ContactSerializer(source='primary_in_command_id', read_only=True)
     secondary_in_command = ContactSerializer(source='secondary_in_command_id', read_only=True)
     medics = ContactSerializer(source='medic_ids', many=True, read_only=True)
     
     class Meta:
         model = CrewLine
-<<<<<<< HEAD
-        fields = '__all__'
-
-# Trip serializer
-class TripLineSerializer(serializers.ModelSerializer):
-    origin_airport = AirportSerializer(source='origin_airport_id', read_only=True)
-    destination_airport = AirportSerializer(source='destination_airport_id', read_only=True)
-    crew_line = CrewLineSerializer(source='crew_line_id', read_only=True)
-    
-    class Meta:
-        model = TripLine
-        fields = '__all__'
-
-class TripSerializer(serializers.ModelSerializer):
-    quote = QuoteSerializer(source='quote_id', read_only=True)
-    patient = PatientSerializer(source='patient_id', read_only=True)
-    aircraft = AircraftSerializer(source='aircraft_id', read_only=True)
-    trip_lines = TripLineSerializer(many=True, read_only=True)
-    passengers_data = PassengerSerializer(source='passengers', many=True, read_only=True)
-    
-    class Meta:
-        model = Trip
-        fields = '__all__'
-
-=======
         fields = [
             'id', 'primary_in_command', 'secondary_in_command', 'medics',
             'status', 'created_on'
@@ -1310,12 +1185,17 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
             'primary_in_command_id', 'secondary_in_command_id', 'medic_ids', 'status'
         ]
 
-# 4) Trip Lines
+class TripMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Trip
+        fields = ("id", "trip_number", "type")
+
+
 class TripLineReadSerializer(serializers.ModelSerializer):
-    trip = serializers.SerializerMethodField()
-    origin_airport = AirportSerializer(source='origin_airport_id', read_only=True)
-    destination_airport = AirportSerializer(source='destination_airport_id', read_only=True)
-    crew_line = CrewLineReadSerializer(source='crew_line_id', read_only=True)
+    trip = TripMiniSerializer(source="trip_id", read_only=True)
+    origin_airport = AirportSerializer(source="origin_airport_id", read_only=True)
+    destination_airport = AirportSerializer(source="destination_airport_id", read_only=True)
+    crew_line = CrewLineReadSerializer(source="crew_line_id", read_only=True)
     
     class Meta:
         model = TripLine
@@ -1545,7 +1425,6 @@ class PatientWriteSerializer(serializers.ModelSerializer):
         model = Patient
         fields = ['info_id', 'status']
 
->>>>>>> origin/dev
 ```
 
 
@@ -1849,6 +1728,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
+    path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
 ]
 
 ```
@@ -1895,12 +1775,6 @@ from .models import (
 )
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
-<<<<<<< HEAD
-    UserProfileSerializer, ContactSerializer, FBOSerializer, GroundSerializer,
-    AirportSerializer, DocumentSerializer, DocumentUploadSerializer, AircraftSerializer,
-    TransactionSerializer, AgreementSerializer, PatientSerializer, QuoteSerializer,
-    PassengerSerializer, CrewLineSerializer, TripSerializer, TripLineSerializer
-=======
     ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
     AgreementSerializer, DocumentSerializer,
     # Standardized CRUD serializers
@@ -1913,7 +1787,6 @@ from .serializers import (
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
     PatientReadSerializer, PatientWriteSerializer
->>>>>>> origin/dev
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -1956,17 +1829,6 @@ class DepartmentViewSet(BaseViewSet):
 
 # UserProfile ViewSet
 class UserProfileViewSet(BaseViewSet):
-<<<<<<< HEAD
-    queryset = UserProfile.objects.all()
-    serializer_class = UserProfileSerializer
-    search_fields = ['first_name', 'last_name', 'email']
-    ordering_fields = ['first_name', 'last_name', 'created_on']
-    
-    @action(detail=False, methods=['get'])
-    def me(self, request):
-        try:
-            profile = UserProfile.objects.get(user=request.user)
-=======
     queryset = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments')
     search_fields = ['first_name', 'last_name', 'email']
     ordering_fields = ['first_name', 'last_name', 'created_on']
@@ -1980,7 +1842,6 @@ class UserProfileViewSet(BaseViewSet):
     def me(self, request):
         try:
             profile = UserProfile.objects.select_related('user').prefetch_related('roles', 'departments').get(user=request.user)
->>>>>>> origin/dev
             serializer = self.get_serializer(profile)
             return Response(serializer.data)
         except UserProfile.DoesNotExist:
@@ -2033,19 +1894,11 @@ class AirportViewSet(BaseViewSet):
 # Document ViewSet
 class DocumentViewSet(BaseViewSet):
     queryset = Document.objects.all()
-<<<<<<< HEAD
-    serializer_class = DocumentSerializer
-=======
->>>>>>> origin/dev
     
     def get_serializer_class(self):
         if self.action in ['create', 'update']:
             return DocumentUploadSerializer
-<<<<<<< HEAD
-        return DocumentSerializer
-=======
         return DocumentReadSerializer
->>>>>>> origin/dev
     
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -2064,10 +1917,6 @@ class AircraftViewSet(BaseViewSet):
 # Transaction ViewSet
 class TransactionViewSet(BaseViewSet):
     queryset = Transaction.objects.all()
-<<<<<<< HEAD
-    serializer_class = TransactionSerializer
-=======
->>>>>>> origin/dev
     search_fields = ['key', 'email', 'payment_status']
     ordering_fields = ['payment_date', 'amount', 'created_on']
     permission_classes = [
@@ -2077,8 +1926,6 @@ class TransactionViewSet(BaseViewSet):
     ]
     public_actions = ['retrieve_by_key']
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         # Public read by key uses minimal serializer
         if self.action == 'retrieve_by_key':
@@ -2092,7 +1939,6 @@ class TransactionViewSet(BaseViewSet):
         # Default write operations
         return TransactionProcessWriteSerializer
     
->>>>>>> origin/dev
     @action(detail=False, methods=['get'], url_path='pay/(?P<transaction_key>[^/.]+)')
     def retrieve_by_key(self, request, transaction_key=None):
         """
@@ -2145,12 +1991,7 @@ class AgreementViewSet(BaseViewSet):
 
 # Patient ViewSet
 class PatientViewSet(BaseViewSet):
-<<<<<<< HEAD
-    queryset = Patient.objects.all()
-    serializer_class = PatientSerializer
-=======
     queryset = Patient.objects.select_related('info')
->>>>>>> origin/dev
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -2158,14 +1999,11 @@ class PatientViewSet(BaseViewSet):
         CanReadPatient | CanWritePatient | CanModifyPatient | CanDeletePatient
     ]
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
             return PatientReadSerializer
         return PatientWriteSerializer
     
->>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2184,12 +2022,7 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-<<<<<<< HEAD
-    queryset = Quote.objects.all()
-    serializer_class = QuoteSerializer
-=======
     queryset = Quote.objects.select_related('contact_id', 'pickup_airport', 'dropoff_airport', 'patient_id', 'agreements_id').prefetch_related('transactions')
->>>>>>> origin/dev
     search_fields = ['contact_id__first_name', 'contact_id__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
@@ -2197,14 +2030,11 @@ class QuoteViewSet(BaseViewSet):
         CanReadQuote | CanWriteQuote | CanModifyQuote | CanDeleteQuote
     ]
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
             return QuoteReadSerializer
         return QuoteWriteSerializer
     
->>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2238,20 +2068,11 @@ class QuoteViewSet(BaseViewSet):
         
         quote.transactions.add(transaction)
         
-<<<<<<< HEAD
-        return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
-
-# Passenger ViewSet
-class PassengerViewSet(BaseViewSet):
-    queryset = Passenger.objects.all()
-    serializer_class = PassengerSerializer
-=======
         return Response(TransactionReadSerializer(transaction).data, status=status.HTTP_201_CREATED)
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
     queryset = Passenger.objects.select_related('info', 'passport_document_id')
->>>>>>> origin/dev
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -2259,14 +2080,11 @@ class PassengerViewSet(BaseViewSet):
         CanReadPassenger | CanWritePassenger | CanModifyPassenger | CanDeletePassenger
     ]
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
             return PassengerReadSerializer
         return PassengerWriteSerializer
     
->>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2285,16 +2103,6 @@ class PassengerViewSet(BaseViewSet):
 
 # CrewLine ViewSet
 class CrewLineViewSet(BaseViewSet):
-<<<<<<< HEAD
-    queryset = CrewLine.objects.all()
-    serializer_class = CrewLineSerializer
-    ordering_fields = ['created_on']
-
-# Trip ViewSet
-class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.all()
-    serializer_class = TripSerializer
-=======
     queryset = CrewLine.objects.select_related('primary_in_command_id', 'secondary_in_command_id').prefetch_related('medic_ids')
     ordering_fields = ['created_on']
     
@@ -2306,7 +2114,6 @@ class TripViewSet(BaseViewSet):
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
     queryset = Trip.objects.select_related('quote_id', 'patient_id', 'aircraft_id').prefetch_related('trip_lines', 'passengers')
->>>>>>> origin/dev
     search_fields = ['trip_number', 'type']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
@@ -2314,14 +2121,11 @@ class TripViewSet(BaseViewSet):
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve', 'trip_lines'):
             return TripReadSerializer
         return TripWriteSerializer
     
->>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2350,35 +2154,23 @@ class TripViewSet(BaseViewSet):
     def trip_lines(self, request, pk=None):
         trip = self.get_object()
         trip_lines = trip.trip_lines.all().order_by('departure_time_utc')
-<<<<<<< HEAD
-        serializer = TripLineSerializer(trip_lines, many=True)
-=======
         serializer = TripLineReadSerializer(trip_lines, many=True)
->>>>>>> origin/dev
         return Response(serializer.data)
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
-<<<<<<< HEAD
-    queryset = TripLine.objects.all()
-    serializer_class = TripLineSerializer
-=======
     queryset = TripLine.objects.select_related('trip_id', 'origin_airport', 'destination_airport', 'crew_line_id')
->>>>>>> origin/dev
     ordering_fields = ['departure_time_utc', 'created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTripLine | CanWriteTripLine | CanModifyTripLine | CanDeleteTripLine
     ]
     
-<<<<<<< HEAD
-=======
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
             return TripLineReadSerializer
         return TripLineWriteSerializer
     
->>>>>>> origin/dev
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2441,6 +2233,156 @@ class ModificationViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(modifications, many=True)
         return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats(request):
+    """
+    Get dashboard statistics for JET ICU Operations
+    """
+    from django.db.models import Count, Sum, Q
+    from datetime import datetime, timedelta
+    from django.utils import timezone
+    
+    now = timezone.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    # Trip statistics
+    total_trips = Trip.objects.count()
+    active_trips = Trip.objects.filter(
+        Q(estimated_departure_time__gte=now) | 
+        Q(estimated_departure_time__isnull=True)
+    ).exclude(status='completed').count()
+    
+    completed_trips_30_days = Trip.objects.filter(
+        status='completed',
+        created_on__gte=thirty_days_ago
+    ).count()
+    
+    # Quote statistics
+    total_quotes = Quote.objects.count()
+    pending_quotes = Quote.objects.filter(status='pending').count()
+    active_quotes = Quote.objects.filter(status='active').count()
+    completed_quotes = Quote.objects.filter(status='completed').count()
+    
+    # Patient statistics
+    total_patients = Patient.objects.count()
+    active_patients = Patient.objects.filter(status__in=['confirmed', 'active']).count()
+    
+    # Aircraft statistics
+    total_aircraft = Aircraft.objects.count()
+    
+    # Financial statistics
+    total_revenue = Quote.objects.filter(
+        status__in=['completed', 'paid']
+    ).aggregate(Sum('quoted_amount'))['quoted_amount__sum'] or 0
+    
+    pending_revenue = Quote.objects.filter(
+        status='active'
+    ).aggregate(Sum('quoted_amount'))['quoted_amount__sum'] or 0
+    
+    # Recent activity
+    recent_quotes = Quote.objects.filter(
+        created_on__gte=thirty_days_ago
+    ).order_by('-created_on')[:5]
+    
+    recent_trips = Trip.objects.filter(
+        created_on__gte=thirty_days_ago
+    ).order_by('-created_on')[:5]
+    
+    # Trip types breakdown
+    trip_types = Trip.objects.values('type').annotate(count=Count('type'))
+    
+    # Status breakdown for quotes
+    quote_statuses = Quote.objects.values('status').annotate(count=Count('status'))
+    
+    return Response({
+        'trip_stats': {
+            'total': total_trips,
+            'active': active_trips,
+            'completed_30_days': completed_trips_30_days,
+            'types_breakdown': list(trip_types)
+        },
+        'quote_stats': {
+            'total': total_quotes,
+            'pending': pending_quotes,
+            'active': active_quotes,
+            'completed': completed_quotes,
+            'statuses_breakdown': list(quote_statuses)
+        },
+        'patient_stats': {
+            'total': total_patients,
+            'active': active_patients
+        },
+        'aircraft_stats': {
+            'total': total_aircraft
+        },
+        'financial_stats': {
+            'total_revenue': float(total_revenue),
+            'pending_revenue': float(pending_revenue)
+        },
+        'recent_activity': {
+            'quotes': [
+                {
+                    'id': str(q.id),
+                    'amount': float(q.quoted_amount),
+                    'status': q.status,
+                    'created_on': q.created_on,
+                    'patient_name': f"{q.patient_first_name or ''} {q.patient_last_name or ''}".strip()
+                } for q in recent_quotes
+            ],
+            'trips': [
+                {
+                    'id': str(t.id),
+                    'trip_number': t.trip_number,
+                    'type': t.type,
+                    'status': t.status,
+                    'created_on': t.created_on,
+                    'estimated_departure': t.estimated_departure_time
+                } for t in recent_trips
+            ]
+        }
+    })
+
+```
+
+
+# File: api/migrations/0002_role_modified_by_role_modified_on.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-21 06:46
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0001_initial"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="role",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="role",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+    ]
 
 ```
 
@@ -2883,8 +2825,6 @@ class Migration(migrations.Migration):
 ```
 
 
-<<<<<<< HEAD
-=======
 # File: api/tests/base_test.py
 
 ```python
@@ -4784,7 +4724,6 @@ class Command(BaseCommand):
 ```
 
 
->>>>>>> origin/dev
 # File: api/external/airport.py
 
 ```python

@@ -247,8 +247,14 @@ const fetchRecentTrips = async () => {
   if (!props.contact?.id) return;
   
   try {
-    const response = await ApiService.get(`/trips/?${getContactFilterParam()}=${props.contact.id}&limit=5`);
-    recentTrips.value = response.data.results || response.data || [];
+    // Since trips don't have direct contact filtering, get all trips and filter client-side
+    const response = await ApiService.get(`/trips/?limit=50`);
+    const allTrips = response.data.results || response.data || [];
+    
+    // Filter trips where the quote's contact matches this contact
+    recentTrips.value = allTrips
+      .filter(trip => trip.quote && trip.quote.contact && trip.quote.contact.id === props.contact.id)
+      .slice(0, 5);
   } catch (error) {
     console.error('Error fetching recent trips:', error);
   }

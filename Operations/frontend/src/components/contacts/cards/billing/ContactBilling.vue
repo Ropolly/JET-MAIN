@@ -366,17 +366,27 @@ const fetchBillingData = async () => {
   if (!props.contact?.id) return;
   
   try {
-    // Fetch invoices
-    const invoicesResponse = await ApiService.get(`/invoices/?${getContactFilterParam()}=${props.contact.id}&limit=10`);
-    recentInvoices.value = invoicesResponse.data.results || invoicesResponse.data || [];
-
-    // Fetch payments
-    const paymentsResponse = await ApiService.get(`/payments/?${getContactFilterParam()}=${props.contact.id}&limit=10`);
-    paymentHistory.value = paymentsResponse.data.results || paymentsResponse.data || [];
-
-    // Fetch quotes
-    const quotesResponse = await ApiService.get(`/quotes/?${getContactFilterParam()}=${props.contact.id}&limit=10`);
+    // Fetch quotes (this endpoint exists)
+    const quotesResponse = await ApiService.get(`/quotes/?contact_id=${props.contact.id}&limit=10`);
     quotes.value = quotesResponse.data.results || quotesResponse.data || [];
+    
+    // Fetch transactions related to quotes for this contact
+    try {
+      const transactionsResponse = await ApiService.get(`/transactions/?limit=10`);
+      const allTransactions = transactionsResponse.data.results || transactionsResponse.data || [];
+      // Filter transactions by contact through quotes
+      paymentHistory.value = allTransactions.filter(transaction => 
+        quotes.value.some(quote => 
+          quote.transactions && quote.transactions.some(t => t.id === transaction.id)
+        )
+      );
+    } catch (error) {
+      console.warn('Could not fetch transactions:', error);
+      paymentHistory.value = [];
+    }
+    
+    // Invoices endpoint doesn't exist - use empty array
+    recentInvoices.value = [];
   } catch (error) {
     console.error('Error fetching billing data:', error);
   }

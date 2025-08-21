@@ -207,7 +207,7 @@ interface Quote {
   id: string;
   quoted_amount: number;
   patient_id?: string;
-  customer_id?: string;
+  contact_id?: string;  // Changed from customer_id to match backend
   patient_first_name: string;
   patient_last_name: string;
   medical_team: string;

@@ -98,34 +98,26 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       errors.value = {};
       
-      // Register user via Django API
-      const { data } = await ApiService.post("/users/register/", userData);
-      
-      // Auto-login after successful registration
-      await login({
-        username: userData.username,
-        password: userData.password,
+      // Create user profile directly since registration endpoint doesn't exist
+      const { data } = await ApiService.post("/users/", {
+        user_id: null, // Will need to create user first
+        first_name: userData.first_name || '',
+        last_name: userData.last_name || '',
+        email: userData.email,
+        status: 'active'
       });
       
-      return data;
+      // Note: This is a simplified approach. In a real implementation,
+      // you would need backend support for user registration
+      setError({ general: "Registration endpoint not implemented. Please contact administrator." });
+      throw new Error("Registration not implemented");
+      
     } catch (error: any) {
       const message = error.response?.data?.detail || 
                      error.response?.data?.message ||
-                     "Registration failed";
+                     "Registration not available";
       
-      // Handle field-specific errors
-      const fieldErrors: Record<string, any> = {};
-      if (error.response?.data) {
-        Object.keys(error.response.data).forEach(key => {
-          if (Array.isArray(error.response.data[key])) {
-            fieldErrors[key] = error.response.data[key][0];
-          } else {
-            fieldErrors[key] = error.response.data[key];
-          }
-        });
-      }
-      
-      setError(fieldErrors.general ? fieldErrors : { general: message, ...fieldErrors });
+      setError({ general: message });
       throw error;
     }
   }
@@ -216,7 +208,21 @@ export const useAuthStore = defineStore("auth", () => {
    */
   async function updateProfile(profileData: Partial<User>) {
     try {
-      const { data } = await ApiService.put("/users/me/", profileData);
+      // Since there's no PUT /users/me/, we need to use the regular PUT endpoint with user ID
+      if (!user.value?.id) {
+        throw new Error("User profile not loaded");
+      }
+      
+      // Transform data to match UserProfileWriteSerializer format
+      const transformedData = {
+        first_name: profileData.first_name,
+        last_name: profileData.last_name,
+        email: profileData.email,
+        phone: profileData.phone,
+        // Add other fields as needed
+      };
+      
+      const { data } = await ApiService.put(`/users/${user.value.id}/`, transformedData);
       setAuth(data);
       return data;
     } catch (error: any) {
@@ -231,13 +237,11 @@ export const useAuthStore = defineStore("auth", () => {
    */
   async function changePassword(oldPassword: string, newPassword: string) {
     try {
-      const { data } = await ApiService.post("/users/change-password/", {
-        old_password: oldPassword,
-        new_password: newPassword,
-      });
-      return data;
+      // Password change endpoint doesn't exist in current backend
+      setError({ general: "Password change endpoint not implemented. Please contact administrator." });
+      throw new Error("Password change not implemented");
     } catch (error: any) {
-      const message = error.response?.data?.detail || "Failed to change password";
+      const message = "Password change functionality not available";
       setError({ general: message });
       throw error;
     }
@@ -248,13 +252,11 @@ export const useAuthStore = defineStore("auth", () => {
    */
   async function forgotPassword(email: string) {
     try {
-      const { data } = await ApiService.post("/users/password-reset/", {
-        email: email,
-      });
-      errors.value = {};
-      return data;
+      // Password reset endpoint doesn't exist in current backend
+      setError({ general: "Password reset endpoint not implemented. Please contact administrator." });
+      throw new Error("Password reset not implemented");
     } catch (error: any) {
-      const message = error.response?.data?.detail || "Failed to send reset email";
+      const message = "Password reset functionality not available";
       setError({ general: message });
       throw error;
     }

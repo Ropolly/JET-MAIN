@@ -44,12 +44,13 @@ interface Trip {
   trip_number: string;
   type: string;
   status: string;
-  priority?: string;
   patient_id?: string;
   patient?: any;
   aircraft_id?: string;
   aircraft?: any;
-  departure_airport?: string;
+  quote_id?: string;
+  quote?: any;
+  // Removed priority and departure_airport as they don't exist in backend Trip model
   arrival_airport?: string;
   estimated_departure_time?: string;
   estimated_arrival_time?: string;
@@ -86,29 +87,14 @@ export default defineComponent({
         error.value = null;
         const tripId = route.params.id as string;
         
-        // Fetch trip details
+        // Fetch trip details - the TripReadSerializer already includes patient and aircraft data
         const response = await ApiService.get(`/trips/${tripId}/`);
         trip.value = response.data;
         
-        // If patient_id exists, fetch patient details
-        if (trip.value?.patient_id) {
-          try {
-            const patientResponse = await ApiService.get(`/patients/${trip.value.patient_id}/`);
-            trip.value.patient = patientResponse.data;
-          } catch (err) {
-            console.error('Error fetching patient:', err);
-          }
-        }
-        
-        // If aircraft_id exists, fetch aircraft details
-        if (trip.value?.aircraft_id) {
-          try {
-            const aircraftResponse = await ApiService.get(`/aircraft/${trip.value.aircraft_id}/`);
-            trip.value.aircraft = aircraftResponse.data;
-          } catch (err) {
-            console.error('Error fetching aircraft:', err);
-          }
-        }
+        // No need for additional API calls - patient and aircraft data are already included in the response
+        // The TripReadSerializer includes:
+        // - patient: serialized patient data if patient_id exists
+        // - aircraft: serialized aircraft data if aircraft_id exists
       } catch (err: any) {
         error.value = err.response?.data?.detail || "Failed to fetch trip details";
         console.error("Error fetching trip:", err);

@@ -214,10 +214,10 @@ interface Trip {
   status: string;
   patient_id: any;
   aircraft_id: any;
+  quote_id?: any;
   estimated_departure_time: string;
   created_on: string;
-  departure_airport?: string;
-  arrival_airport?: string;
+  // Removed departure_airport and arrival_airport as they're TripLine fields
   route?: string;
 }
 

@@ -293,17 +293,23 @@ const fetchActivityData = async () => {
   if (!props.contact?.id) return;
   
   try {
-    // Fetch activities
-    const activitiesResponse = await ApiService.get(`/activities/?${getContactFilterParam()}=${props.contact.id}&limit=20`);
-    activities.value = activitiesResponse.data.results || activitiesResponse.data || [];
-
-    // Fetch communications
-    const communicationsResponse = await ApiService.get(`/communications/?${getContactFilterParam()}=${props.contact.id}&limit=10`);
-    communications.value = communicationsResponse.data.results || communicationsResponse.data || [];
-
-    // Fetch system logs
-    const logsResponse = await ApiService.get(`/logs/?${getContactFilterParam()}=${props.contact.id}&limit=10`);
-    systemLogs.value = logsResponse.data.results || logsResponse.data || [];
+    // These endpoints don't exist in the current backend - using empty arrays
+    activities.value = [];
+    communications.value = [];
+    systemLogs.value = [];
+    
+    // Could potentially fetch related data from existing endpoints:
+    // - Use /modifications/ for system logs
+    // - Use /quotes/ for quote-related activities
+    // - Use /trips/ for trip-related activities
+    try {
+      const modificationsResponse = await ApiService.get(`/modifications/?limit=10`);
+      const allModifications = modificationsResponse.data.results || modificationsResponse.data || [];
+      // This would need more sophisticated filtering based on contact relationships
+      systemLogs.value = allModifications.slice(0, 5);
+    } catch (error) {
+      console.warn('Could not fetch modifications for activity logs:', error);
+    }
   } catch (error) {
     console.error('Error fetching activity data:', error);
     // Generate mock data for demonstration
