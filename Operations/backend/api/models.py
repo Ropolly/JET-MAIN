@@ -102,7 +102,7 @@ class Contact(BaseModel):
     state = models.CharField(max_length=100, blank=True, null=True)
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="contacts")
+
     
     def __str__(self):
         if self.business_name:
@@ -124,7 +124,7 @@ class FBO(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="fbos")
     notes = models.TextField(blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="fbos")
+
     
     def __str__(self):
         return self.name
@@ -140,7 +140,7 @@ class Ground(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="grounds")
-    permission_ids = models.ManyToManyField(Permission, related_name="grounds")
+
     
     def __str__(self):
         return self.name
@@ -159,7 +159,7 @@ class Airport(BaseModel):
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     timezone = models.CharField(max_length=50)
-    permission_ids = models.ManyToManyField(Permission, related_name="airports")
+
     
     def __str__(self):
         return f"{self.name} ({self.icao_code}/{self.iata_code})"

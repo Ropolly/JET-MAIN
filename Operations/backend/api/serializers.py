@@ -39,7 +39,7 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
                  'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
@@ -50,7 +50,7 @@ class GroundSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ground
         fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
-                 'country', 'notes', 'contacts', 'permission_ids', 'created_on', 'created_by', 
+                 'country', 'notes', 'contacts', 'created_on', 'created_by', 
                  'modified_on', 'modified_by']
 
 class AirportSerializer(serializers.ModelSerializer):
@@ -58,7 +58,7 @@ class AirportSerializer(serializers.ModelSerializer):
         model = Airport
         fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
                  'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
