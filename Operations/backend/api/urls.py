@@ -27,4 +27,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
+    path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
 ]
