@@ -64,11 +64,11 @@ def test_quote_endpoints():
     # Test 3: Create new quote (POST /api/quotes/)
     print("\n➕ TEST 3: Create Quote (Write Serializer Test)")
     create_data = {
-        "contact_id": 1,  # Expects Contact ID only
-        "pickup_airport_id": 1,  # Expects Airport ID only
-        "dropoff_airport_id": 2,  # Expects Airport ID only
-        "patient_id": 1,  # Expects Patient ID only
-        "agreements_id": 1,  # Expects Agreement ID only
+        "contact": 1,  # Expects Contact ID only
+        "pickup_airport": 1,  # Expects Airport ID only
+        "dropoff_airport": 2,  # Expects Airport ID only
+        "patient": 1,  # Expects Patient ID only
+        "payment_agreement": 1,  # Expects Agreement ID only
         "quoted_amount": 7500.00,
         "status": "pending",
         "departure_date": "2024-12-01T10:00:00Z",
@@ -116,11 +116,11 @@ def test_quote_endpoints():
     if quote_id:
         print(f"\n✏️  TEST 5: Update Quote (ID: {quote_id})")
         update_data = {
-            "contact_id": 1,
-            "pickup_airport_id": 1,
-            "dropoff_airport_id": 2,
-            "patient_id": 1,
-            "agreements_id": 1,
+            "contact": 1,
+            "pickup_airport": 1,
+            "dropoff_airport": 2,
+            "patient": 1,
+            "payment_agreement": 1,
             "quoted_amount": 8000.00,  # Changed amount
             "status": "accepted",  # Changed status
             "notes": "Updated quote"

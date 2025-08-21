@@ -39,18 +39,18 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
                  'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
         model = FBO
-        fields = ['id', 'name', 'contact_id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+        fields = ['id', 'name', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 class GroundSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ground
         fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
-                 'country', 'notes', 'contacts', 'permission_ids', 'created_on', 'created_by', 
+                 'country', 'notes', 'contacts', 'created_on', 'created_by', 
                  'modified_on', 'modified_by']
 
 class AirportSerializer(serializers.ModelSerializer):
@@ -58,7 +58,7 @@ class AirportSerializer(serializers.ModelSerializer):
         model = Airport
         fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
                  'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
@@ -77,7 +77,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 class AgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agreement
-        fields = ['id', 'destination_email', 'document_unsigned_id', 'document_signed_id', 
+        fields = ['id', 'destination_email', 'document_unsigned', 'document_signed', 
                  'status', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # ========== STANDARDIZED CRUD SERIALIZERS ==========
@@ -118,36 +118,43 @@ class UserProfileWriteSerializer(serializers.ModelSerializer):
 # 2) Passengers
 class PassengerReadSerializer(serializers.ModelSerializer):
     info = ContactSerializer(read_only=True)
-    passport_document = DocumentSerializer(source='passport_document_id', read_only=True)
+    passport_document = DocumentSerializer(read_only=True)
+    related_passengers = serializers.SerializerMethodField()
     
     class Meta:
         model = Passenger
         fields = [
             'id', 'info', 'date_of_birth', 'nationality', 'passport_number',
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
-            'status', 'created_on'
+            'related_passengers', 'status', 'created_on'
         ]
+    
+    def get_related_passengers(self, obj):
+        return [{'id': p.id, 'info': ContactSerializer(p.info).data} for p in obj.passenger_ids.all()]
 
 class PassengerWriteSerializer(serializers.ModelSerializer):
-    info_id = serializers.PrimaryKeyRelatedField(
-        source='info', queryset=Contact.objects.all(), write_only=True
+    info = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
     )
-    passport_document_id = serializers.PrimaryKeyRelatedField(
+    passport_document = serializers.PrimaryKeyRelatedField(
         queryset=Document.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Passenger.objects.all(), many=True, write_only=True, required=False
     )
     
     class Meta:
         model = Passenger
         fields = [
-            'info_id', 'date_of_birth', 'nationality', 'passport_number',
-            'passport_expiration_date', 'contact_number', 'notes', 'passport_document_id',
-            'status'
+            'info', 'date_of_birth', 'nationality', 'passport_number',
+            'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
+            'passenger_ids', 'status'
         ]
 
 # 3) Crew Lines
 class CrewLineReadSerializer(serializers.ModelSerializer):
-    primary_in_command = ContactSerializer(source='primary_in_command_id', read_only=True)
-    secondary_in_command = ContactSerializer(source='secondary_in_command_id', read_only=True)
+    primary_in_command = ContactSerializer(read_only=True)
+    secondary_in_command = ContactSerializer(read_only=True)
     medics = ContactSerializer(source='medic_ids', many=True, read_only=True)
     
     class Meta:
@@ -158,10 +165,10 @@ class CrewLineReadSerializer(serializers.ModelSerializer):
         ]
 
 class CrewLineWriteSerializer(serializers.ModelSerializer):
-    primary_in_command_id = serializers.PrimaryKeyRelatedField(
+    primary_in_command = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    secondary_in_command_id = serializers.PrimaryKeyRelatedField(
+    secondary_in_command = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
     medic_ids = serializers.PrimaryKeyRelatedField(
@@ -171,7 +178,7 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = CrewLine
         fields = [
-            'primary_in_command_id', 'secondary_in_command_id', 'medic_ids', 'status'
+            'primary_in_command', 'secondary_in_command', 'medic_ids', 'status'
         ]
 
 class TripMiniSerializer(serializers.ModelSerializer):
@@ -198,29 +205,29 @@ class TripLineReadSerializer(serializers.ModelSerializer):
     def get_trip(self, obj):
         # Return minimal trip info to avoid circular references
         return {
-            'id': obj.trip_id.id,
-            'trip_number': obj.trip_id.trip_number,
-            'type': obj.trip_id.type
+            'id': obj.trip.id,
+            'trip_number': obj.trip.trip_number,
+            'type': obj.trip.type
         }
 
 class TripLineWriteSerializer(serializers.ModelSerializer):
-    trip_id = serializers.PrimaryKeyRelatedField(
+    trip = serializers.PrimaryKeyRelatedField(
         queryset=Trip.objects.all(), write_only=True
     )
-    origin_airport_id = serializers.PrimaryKeyRelatedField(
+    origin_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    destination_airport_id = serializers.PrimaryKeyRelatedField(
+    destination_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    crew_line_id = serializers.PrimaryKeyRelatedField(
+    crew_line = serializers.PrimaryKeyRelatedField(
         queryset=CrewLine.objects.all(), write_only=True, required=False, allow_null=True
     )
     
     class Meta:
         model = TripLine
         fields = [
-            'trip_id', 'origin_airport_id', 'destination_airport_id', 'crew_line_id',
+            'trip', 'origin_airport', 'destination_airport', 'crew_line',
             'departure_time_local', 'departure_time_utc', 'arrival_time_local',
             'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
             'passenger_leg', 'status'
@@ -230,7 +237,7 @@ class TripLineWriteSerializer(serializers.ModelSerializer):
 class TripReadSerializer(serializers.ModelSerializer):
     quote = serializers.SerializerMethodField()
     patient = serializers.SerializerMethodField()
-    aircraft = AircraftSerializer(source='aircraft_id', read_only=True)
+    aircraft = AircraftSerializer(read_only=True)
     trip_lines = TripLineReadSerializer(many=True, read_only=True)
     passengers_data = PassengerReadSerializer(source='passengers', many=True, read_only=True)
     
@@ -243,31 +250,31 @@ class TripReadSerializer(serializers.ModelSerializer):
         ]
     
     def get_quote(self, obj):
-        if obj.quote_id:
+        if obj.quote:
             return {
-                'id': obj.quote_id.id,
-                'quoted_amount': obj.quote_id.quoted_amount,
-                'status': obj.quote_id.status
+                'id': obj.quote.id,
+                'quoted_amount': obj.quote.quoted_amount,
+                'status': obj.quote.status
             }
         return None
     
     def get_patient(self, obj):
-        if obj.patient_id:
+        if obj.patient:
             return {
-                'id': obj.patient_id.id,
-                'status': obj.patient_id.status,
-                'info': ContactSerializer(obj.patient_id.info).data
+                'id': obj.patient.id,
+                'status': obj.patient.status,
+                'info': ContactSerializer(obj.patient.info).data
             }
         return None
 
 class TripWriteSerializer(serializers.ModelSerializer):
-    quote_id = serializers.PrimaryKeyRelatedField(
+    quote = serializers.PrimaryKeyRelatedField(
         queryset=Quote.objects.all(), write_only=True, required=False, allow_null=True
     )
-    patient_id = serializers.PrimaryKeyRelatedField(
+    patient = serializers.PrimaryKeyRelatedField(
         queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
     )
-    aircraft_id = serializers.PrimaryKeyRelatedField(
+    aircraft = serializers.PrimaryKeyRelatedField(
         queryset=Aircraft.objects.all(), write_only=True, required=False, allow_null=True
     )
     passenger_ids = serializers.PrimaryKeyRelatedField(
@@ -277,20 +284,20 @@ class TripWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trip
         fields = [
-            'email_chain', 'quote_id', 'type', 'patient_id', 'estimated_departure_time',
-            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft_id', 'trip_number',
+            'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'passenger_ids', 'status'
         ]
 
 # 6) Quotes
 class QuoteReadSerializer(serializers.ModelSerializer):
-    contact = ContactSerializer(source='contact_id', read_only=True)
-    pickup_airport = AirportSerializer(source='pickup_airport_id', read_only=True)
-    dropoff_airport = AirportSerializer(source='dropoff_airport_id', read_only=True)
+    contact = ContactSerializer(read_only=True)
+    pickup_airport = AirportSerializer(read_only=True)
+    dropoff_airport = AirportSerializer(read_only=True)
     patient = serializers.SerializerMethodField()
-    payment_agreement = AgreementSerializer(source='payment_agreement_id', read_only=True)
-    consent_for_transport = AgreementSerializer(source='consent_for_transport_id', read_only=True)
-    patient_service_agreement = AgreementSerializer(source='patient_service_agreement_id', read_only=True)
+    payment_agreement = AgreementSerializer(read_only=True)
+    consent_for_transport = AgreementSerializer(read_only=True)
+    patient_service_agreement = AgreementSerializer(read_only=True)
     transactions = serializers.SerializerMethodField()
     
     class Meta:
@@ -302,10 +309,10 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         ]
     
     def get_patient(self, obj):
-        if obj.patient_id:
+        if obj.patient:
             return {
-                'id': obj.patient_id.id,
-                'status': obj.patient_id.status
+                'id': obj.patient.id,
+                'status': obj.patient.status
             }
         return None
     
@@ -317,25 +324,25 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         } for t in obj.transactions.all()]
 
 class QuoteWriteSerializer(serializers.ModelSerializer):
-    contact_id = serializers.PrimaryKeyRelatedField(
+    contact = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    pickup_airport_id = serializers.PrimaryKeyRelatedField(
+    pickup_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    dropoff_airport_id = serializers.PrimaryKeyRelatedField(
+    dropoff_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    patient_id = serializers.PrimaryKeyRelatedField(
+    patient = serializers.PrimaryKeyRelatedField(
         queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
     )
-    payment_agreement_id = serializers.PrimaryKeyRelatedField(
+    payment_agreement = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
-    consent_for_transport_id = serializers.PrimaryKeyRelatedField(
+    consent_for_transport = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
-    patient_service_agreement_id = serializers.PrimaryKeyRelatedField(
+    patient_service_agreement = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
     transaction_ids = serializers.PrimaryKeyRelatedField(
@@ -345,9 +352,9 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quote
         fields = [
-            'quoted_amount', 'contact_id', 'pickup_airport_id', 'dropoff_airport_id',
-            'patient_id', 'payment_agreement_id', 'consent_for_transport_id',
-            'patient_service_agreement_id', 'transaction_ids', 'status'
+            'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
+            'patient', 'payment_agreement', 'consent_for_transport',
+            'patient_service_agreement', 'transaction_ids', 'status'
         ]
 
 # 7) Documents
@@ -406,10 +413,10 @@ class PatientReadSerializer(serializers.ModelSerializer):
         fields = ['id', 'info', 'status', 'created_on']
 
 class PatientWriteSerializer(serializers.ModelSerializer):
-    info_id = serializers.PrimaryKeyRelatedField(
-        source='info', queryset=Contact.objects.all(), write_only=True
+    info = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
     )
     
     class Meta:
         model = Patient
-        fields = ['info_id', 'status']
+        fields = ['info', 'status']
