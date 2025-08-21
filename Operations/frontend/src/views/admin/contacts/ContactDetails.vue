@@ -377,7 +377,8 @@ export default defineComponent({
             endpoint = `/patients/${contactId}/`;
             break;
           case 'customers':
-            endpoint = `/customers/${contactId}/`;
+            // Customers are just contacts, use contacts endpoint
+            endpoint = `/contacts/${contactId}/`;
             break;
           default:
             endpoint = `/contacts/${contactId}/`;

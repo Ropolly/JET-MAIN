@@ -255,8 +255,16 @@ const fetchTrips = async () => {
   if (!props.contact?.id) return;
   
   try {
-    const response = await ApiService.get(`/trips/?${getContactFilterParam()}=${props.contact.id}`);
-    trips.value = response.data.results || response.data || [];
+    // Since trips don't have direct contact filtering, we need to:
+    // 1. Get all trips and filter client-side, or
+    // 2. Filter by related quote's contact_id
+    const response = await ApiService.get(`/trips/`);
+    const allTrips = response.data.results || response.data || [];
+    
+    // Filter trips where the quote's contact matches this contact
+    trips.value = allTrips.filter(trip => 
+      trip.quote && trip.quote.contact && trip.quote.contact.id === props.contact.id
+    );
   } catch (error) {
     console.error('Error fetching trips:', error);
   }

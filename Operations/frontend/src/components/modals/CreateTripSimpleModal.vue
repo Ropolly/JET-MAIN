@@ -258,19 +258,17 @@ const handleSubmit = async (e: Event) => {
   isSubmitting.value = true;
   
   try {
-    // Prepare data for API
+    // Prepare data for API - match TripWriteSerializer fields
     const tripData: any = {
       trip_number: formData.trip_number,
       type: formData.type,
       status: formData.status,
-      priority: formData.priority,
-      departure_airport: formData.departure_airport || null,
-      arrival_airport: formData.arrival_airport || null,
-      notes: formData.notes || '',
       // Combine date and time for departure
       estimated_departure_time: formData.departure_date && formData.departure_time 
         ? `${formData.departure_date}T${formData.departure_time}:00` 
         : null,
+      // Initialize empty email_chain array
+      email_chain: []
     };
     
     // Only include patient_id and aircraft_id if they have values

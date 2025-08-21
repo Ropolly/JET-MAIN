@@ -332,8 +332,26 @@ export default defineComponent({
 
     const handleSave = async (userData: any) => {
       try {
+        // Transform data to match backend UserProfileWriteSerializer format
+        const profileData = {
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          email: userData.email,
+          phone: userData.phone,
+          address_line1: userData.address_line1,
+          address_line2: userData.address_line2,
+          city: userData.city,
+          state: userData.state,
+          country: userData.country,
+          zip: userData.zip,
+          role_ids: userData.roles || [],
+          department_ids: userData.departments || [],
+          status: userData.status
+        };
+
         if (isEdit.value && selectedUser.value) {
-          await ApiService.put(`/users/${selectedUser.value.id}/`, userData);
+          // For updates, don't include user_id
+          await ApiService.put(`/users/${selectedUser.value.id}/`, profileData);
           Swal.fire({
             title: "Success!",
             text: "User updated successfully",
@@ -341,13 +359,15 @@ export default defineComponent({
             confirmButtonText: "OK"
           });
         } else {
-          await ApiService.post("/users/", userData);
+          // For creation, we need to handle user creation differently
+          // This is a limitation - the backend doesn't support user registration
           Swal.fire({
-            title: "Success!",
-            text: "User created successfully",
-            icon: "success",
+            title: "Error!",
+            text: "User creation not implemented. Please contact administrator.",
+            icon: "error",
             confirmButtonText: "OK"
           });
+          return;
         }
         
         showModal.value = false;
