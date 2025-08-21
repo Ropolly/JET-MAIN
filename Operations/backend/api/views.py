@@ -494,3 +494,114 @@ class ModificationViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(modifications, many=True)
         return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats(request):
+    """
+    Get dashboard statistics for JET ICU Operations
+    """
+    from django.db.models import Count, Sum, Q
+    from datetime import datetime, timedelta
+    from django.utils import timezone
+    
+    now = timezone.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    # Trip statistics
+    total_trips = Trip.objects.count()
+    active_trips = Trip.objects.filter(
+        Q(estimated_departure_time__gte=now) | 
+        Q(estimated_departure_time__isnull=True)
+    ).exclude(status='completed').count()
+    
+    completed_trips_30_days = Trip.objects.filter(
+        status='completed',
+        created_on__gte=thirty_days_ago
+    ).count()
+    
+    # Quote statistics
+    total_quotes = Quote.objects.count()
+    pending_quotes = Quote.objects.filter(status='pending').count()
+    active_quotes = Quote.objects.filter(status='active').count()
+    completed_quotes = Quote.objects.filter(status='completed').count()
+    
+    # Patient statistics
+    total_patients = Patient.objects.count()
+    active_patients = Patient.objects.filter(status__in=['confirmed', 'active']).count()
+    
+    # Aircraft statistics
+    total_aircraft = Aircraft.objects.count()
+    
+    # Financial statistics
+    total_revenue = Quote.objects.filter(
+        status__in=['completed', 'paid']
+    ).aggregate(Sum('quoted_amount'))['quoted_amount__sum'] or 0
+    
+    pending_revenue = Quote.objects.filter(
+        status='active'
+    ).aggregate(Sum('quoted_amount'))['quoted_amount__sum'] or 0
+    
+    # Recent activity
+    recent_quotes = Quote.objects.filter(
+        created_on__gte=thirty_days_ago
+    ).order_by('-created_on')[:5]
+    
+    recent_trips = Trip.objects.filter(
+        created_on__gte=thirty_days_ago
+    ).order_by('-created_on')[:5]
+    
+    # Trip types breakdown
+    trip_types = Trip.objects.values('type').annotate(count=Count('type'))
+    
+    # Status breakdown for quotes
+    quote_statuses = Quote.objects.values('status').annotate(count=Count('status'))
+    
+    return Response({
+        'trip_stats': {
+            'total': total_trips,
+            'active': active_trips,
+            'completed_30_days': completed_trips_30_days,
+            'types_breakdown': list(trip_types)
+        },
+        'quote_stats': {
+            'total': total_quotes,
+            'pending': pending_quotes,
+            'active': active_quotes,
+            'completed': completed_quotes,
+            'statuses_breakdown': list(quote_statuses)
+        },
+        'patient_stats': {
+            'total': total_patients,
+            'active': active_patients
+        },
+        'aircraft_stats': {
+            'total': total_aircraft
+        },
+        'financial_stats': {
+            'total_revenue': float(total_revenue),
+            'pending_revenue': float(pending_revenue)
+        },
+        'recent_activity': {
+            'quotes': [
+                {
+                    'id': str(q.id),
+                    'amount': float(q.quoted_amount),
+                    'status': q.status,
+                    'created_on': q.created_on,
+                    'patient_name': f"{q.patient_first_name or ''} {q.patient_last_name or ''}".strip()
+                } for q in recent_quotes
+            ],
+            'trips': [
+                {
+                    'id': str(t.id),
+                    'trip_number': t.trip_number,
+                    'type': t.type,
+                    'status': t.status,
+                    'created_on': t.created_on,
+                    'estimated_departure': t.estimated_departure_time
+                } for t in recent_trips
+            ]
+        }
+    })

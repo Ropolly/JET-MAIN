@@ -10,6 +10,10 @@ class BaseModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_on = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="%(class)s_created")
+    modified_on = models.DateTimeField(auto_now=True)
+    modified_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)s_modified"
+    )
     status = models.CharField(max_length=50, default="active", db_index=True)
     lock = models.BooleanField(default=False)
     
@@ -47,6 +51,10 @@ class Role(BaseModel):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
     permissions = models.ManyToManyField(Permission, related_name="roles")
+    modified_on = models.DateTimeField(auto_now=True)
+    modified_by = models.ForeignKey(User, null=True, blank=True,
+                                    on_delete=models.SET_NULL,
+                                    related_name="%(class)s_modified")
     
     def __str__(self):
         return self.name

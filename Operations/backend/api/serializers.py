@@ -174,12 +174,17 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
             'primary_in_command', 'secondary_in_command', 'medic_ids', 'status'
         ]
 
-# 4) Trip Lines
+class TripMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Trip
+        fields = ("id", "trip_number", "type")
+
+
 class TripLineReadSerializer(serializers.ModelSerializer):
-    trip = serializers.SerializerMethodField()
-    origin_airport = AirportSerializer(read_only=True)
-    destination_airport = AirportSerializer(read_only=True)
-    crew_line = CrewLineReadSerializer(read_only=True)
+    trip = TripMiniSerializer(source="trip_id", read_only=True)
+    origin_airport = AirportSerializer(source="origin_airport_id", read_only=True)
+    destination_airport = AirportSerializer(source="destination_airport_id", read_only=True)
+    crew_line = CrewLineReadSerializer(source="crew_line_id", read_only=True)
     
     class Meta:
         model = TripLine
