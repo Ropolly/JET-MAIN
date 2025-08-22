@@ -590,7 +590,7 @@ def dashboard_stats(request):
                     'amount': float(q.quoted_amount),
                     'status': q.status,
                     'created_on': q.created_on,
-                    'patient_name': f"{q.patient_first_name or ''} {q.patient_last_name or ''}".strip()
+                    'patient_name': f"{q.patient.info.first_name or ''} {q.patient.info.last_name or ''}".strip() if q.patient and q.patient.info else 'No patient'
                 } for q in recent_quotes
             ],
             'trips': [

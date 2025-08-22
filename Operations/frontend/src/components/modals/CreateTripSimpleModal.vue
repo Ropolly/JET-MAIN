@@ -48,10 +48,11 @@
                 <label class="required fs-6 fw-semibold mb-2">Trip Type</label>
                 <select name="trip_type" class="form-select form-select-solid" v-model="formData.type">
                   <option value="">Select trip type...</option>
-                  <option value="medical">Medical Transport</option>
-                  <option value="charter">Charter Flight</option>
-                  <option value="part91">Part 91 Flight</option>
-                  <option value="maintenance">Maintenance Flight</option>
+                  <option value="medical">Medical</option>
+                  <option value="charter">Charter</option>
+                  <option value="part 91">Part 91</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
             </div>
@@ -60,23 +61,21 @@
             <!--begin::Input group-->
             <div class="row g-9 mb-8">
               <div class="col-md-6 fv-row">
-                <label class="fs-6 fw-semibold mb-2">Departure Airport</label>
+                <label class="required fs-6 fw-semibold mb-2">Departure Airport</label>
                 <select name="departure_airport" class="form-select form-select-solid" v-model="formData.departure_airport">
                   <option value="">Select departure...</option>
-                  <option value="KORD">Chicago O'Hare (KORD)</option>
-                  <option value="KMDW">Chicago Midway (KMDW)</option>
-                  <option value="KLAX">Los Angeles (KLAX)</option>
-                  <option value="KJFK">JFK New York (KJFK)</option>
+                  <option v-for="airport in airports" :key="airport.id" :value="airport.id">
+                    {{ airport.name }} ({{ airport.icao_code }}{{ airport.iata_code ? '/' + airport.iata_code : '' }})
+                  </option>
                 </select>
               </div>
               <div class="col-md-6 fv-row">
-                <label class="fs-6 fw-semibold mb-2">Arrival Airport</label>
+                <label class="required fs-6 fw-semibold mb-2">Arrival Airport</label>
                 <select name="arrival_airport" class="form-select form-select-solid" v-model="formData.arrival_airport">
                   <option value="">Select arrival...</option>
-                  <option value="KORD">Chicago O'Hare (KORD)</option>
-                  <option value="KMDW">Chicago Midway (KMDW)</option>
-                  <option value="KLAX">Los Angeles (KLAX)</option>
-                  <option value="KJFK">JFK New York (KJFK)</option>
+                  <option v-for="airport in airports" :key="airport.id" :value="airport.id">
+                    {{ airport.name }} ({{ airport.icao_code }}{{ airport.iata_code ? '/' + airport.iata_code : '' }})
+                  </option>
                 </select>
               </div>
             </div>
@@ -111,8 +110,8 @@
               <select name="patient_id" class="form-select form-select-solid" v-model="formData.patient_id">
                 <option value="">Select patient...</option>
                 <option v-for="patient in patients" :key="patient.id" :value="patient.id">
-                  {{ patient.first_name }} {{ patient.last_name }} 
-                  <span v-if="patient.date_of_birth">(DOB: {{ patient.date_of_birth }})</span>
+                  {{ patient.info.first_name }} {{ patient.info.last_name }}
+                  <span v-if="patient.info.email"> - {{ patient.info.email }}</span>
                 </option>
               </select>
             </div>
@@ -124,7 +123,7 @@
               <select name="aircraft_id" class="form-select form-select-solid" v-model="formData.aircraft_id">
                 <option value="">Select aircraft...</option>
                 <option v-for="plane in aircraft" :key="plane.id" :value="plane.id">
-                  {{ plane.registration || plane.tail_number }} - {{ plane.model || plane.aircraft_type || 'Unknown Model' }}
+                  {{ plane.tail_number }} - {{ plane.make }} {{ plane.model }}
                 </option>
               </select>
             </div>
@@ -212,11 +211,12 @@ const formData = reactive({
 // Dropdown data
 const patients = ref<any[]>([]);
 const aircraft = ref<any[]>([]);
+const airports = ref<any[]>([]);
 
 // Emit event to parent to refresh trips list
 const emit = defineEmits(['tripCreated']);
 
-// Fetch patients and aircraft for dropdowns
+// Fetch patients, aircraft, and airports for dropdowns
 const fetchDropdownData = async () => {
   try {
     // Fetch patients
@@ -235,6 +235,15 @@ const fetchDropdownData = async () => {
   } catch (error) {
     console.error('Error fetching aircraft:', error);
   }
+  
+  try {
+    // Fetch airports
+    const airportsResponse = await ApiService.get('/airports/');
+    airports.value = airportsResponse.data.results || airportsResponse.data || [];
+    console.log('Loaded airports:', airports.value);
+  } catch (error) {
+    console.error('Error fetching airports:', error);
+  }
 };
 
 onMounted(() => {
@@ -245,10 +254,10 @@ const handleSubmit = async (e: Event) => {
   e.preventDefault();
   
   // Basic validation
-  if (!formData.trip_number || !formData.type) {
+  if (!formData.trip_number || !formData.type || !formData.departure_airport || !formData.arrival_airport) {
     Swal.fire({
       title: "Validation Error",
-      text: "Please fill in all required fields (Trip Number and Type)",
+      text: "Please fill in all required fields (Trip Number, Type, Departure and Arrival Airports)",
       icon: "warning",
       confirmButtonText: "OK"
     });
@@ -271,20 +280,57 @@ const handleSubmit = async (e: Event) => {
       email_chain: []
     };
     
-    // Only include patient_id and aircraft_id if they have values
+    // Only include patient and aircraft if they have values (using correct field names for TripWriteSerializer)
     if (formData.patient_id) {
-      tripData.patient_id = formData.patient_id;
+      tripData.patient = formData.patient_id;
     }
     
     if (formData.aircraft_id) {
-      tripData.aircraft_id = formData.aircraft_id;
+      tripData.aircraft = formData.aircraft_id;
     }
     
     console.log('Creating trip with data:', tripData);
     
-    // Make actual API call
+    // Make actual API call to create trip
     const response = await ApiService.post('/trips/', tripData);
     console.log('Trip created successfully:', response.data);
+    
+    // If airports are selected, create a basic trip line
+    if (formData.departure_airport && formData.arrival_airport) {
+      try {
+        const tripLineData = {
+          trip: response.data.id,
+          origin_airport: formData.departure_airport,
+          destination_airport: formData.arrival_airport,
+          // Set basic departure/arrival times if date/time provided
+          departure_time_local: formData.departure_date && formData.departure_time 
+            ? `${formData.departure_date}T${formData.departure_time}:00` 
+            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T08:00:00`,
+          departure_time_utc: formData.departure_date && formData.departure_time 
+            ? `${formData.departure_date}T${formData.departure_time}:00` 
+            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T08:00:00`,
+          // Set arrival time 2 hours after departure as default
+          arrival_time_local: formData.departure_date && formData.departure_time 
+            ? `${formData.departure_date}T${String(parseInt(formData.departure_time.split(':')[0]) + 2).padStart(2, '0')}:${formData.departure_time.split(':')[1]}:00`
+            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T10:00:00`,
+          arrival_time_utc: formData.departure_date && formData.departure_time 
+            ? `${formData.departure_date}T${String(parseInt(formData.departure_time.split(':')[0]) + 2).padStart(2, '0')}:${formData.departure_time.split(':')[1]}:00`
+            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T10:00:00`,
+          distance: '0.00', // Default distance
+          flight_time: '02:00:00', // Default 2 hour flight time
+          ground_time: '00:30:00', // Default 30 min ground time
+          passenger_leg: true,
+          status: 'pending'
+        };
+        
+        console.log('Creating trip line with data:', tripLineData);
+        const tripLineResponse = await ApiService.post('/trip-lines/', tripLineData);
+        console.log('Trip line created successfully:', tripLineResponse.data);
+      } catch (tripLineError) {
+        console.error('Error creating trip line:', tripLineError);
+        // Don't fail the whole operation if trip line creation fails
+      }
+    }
     
     Swal.fire({
       title: "Success!",

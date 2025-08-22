@@ -405,6 +405,16 @@ const routes: Array<RouteRecordRaw> = [
           breadcrumbs: ["Crafted", "Widgets"],
         },
       },
+      {
+        path: "/account/settings",
+        name: "user-account-settings", 
+        component: () => import("@/views/account/Settings.vue"),
+        meta: {
+          pageTitle: "Account Settings",
+          breadcrumbs: ["Account", "Settings"],
+          middleware: "auth",
+        },
+      },
       // Administration Routes
       {
         path: "/admin/users",
