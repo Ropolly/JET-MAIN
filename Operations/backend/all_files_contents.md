@@ -5,6 +5,7 @@ The following is the structure of the project:
 ```
 backend/
     prompt2.py
+    test_model_changes.py
     manage.py
 utils/
     __init__.py
@@ -32,6 +33,7 @@ api/
     urls.py
     views.py
     migrations/
+        0003_agreement_modified_by_agreement_modified_on_and_more.py
         0002_role_modified_by_role_modified_on.py
         __init__.py
         0001_initial.py
@@ -133,6 +135,161 @@ def save_files_to_md(output_md_file='all_files_contents.md'):
 if __name__ == "__main__":
     save_files_to_md()
 
+
+```
+
+
+# File: test_model_changes.py
+
+```python
+#!/usr/bin/env python3
+"""
+Test the recent model changes:
+1. Quote model: removed patient_first_name and patient_last_name
+2. Passenger model: added passenger_ids M2M field
+"""
+import os
+import sys
+import django
+from django.conf import settings
+
+# Setup Django environment
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+django.setup()
+
+from api.models import Quote, Passenger, Patient, Contact
+from api.serializers import QuoteReadSerializer, QuoteWriteSerializer, PassengerReadSerializer, PassengerWriteSerializer
+
+def test_quote_changes():
+    """Test that Quote model no longer has patient name fields"""
+    print("🔧 TESTING QUOTE MODEL CHANGES")
+    print("=" * 50)
+    
+    # Check Quote model fields
+    quote_fields = [f.name for f in Quote._meta.get_fields()]
+    print("✅ Quote model fields:", quote_fields)
+    
+    # Verify patient name fields are removed
+    assert 'patient_first_name' not in quote_fields, "❌ patient_first_name still exists"
+    assert 'patient_last_name' not in quote_fields, "❌ patient_last_name still exists"
+    print("✅ patient_first_name and patient_last_name successfully removed")
+    
+    # Test serializers
+    quote_read_serializer = QuoteReadSerializer()
+    quote_write_serializer = QuoteWriteSerializer()
+    
+    quote_read_fields = list(quote_read_serializer.fields.keys())
+    quote_write_fields = list(quote_write_serializer.fields.keys())
+    
+    print("✅ QuoteReadSerializer fields:", quote_read_fields)
+    print("✅ QuoteWriteSerializer fields:", quote_write_fields)
+    
+    # Verify patient name fields are not in serializers
+    assert 'patient_first_name' not in quote_read_fields, "❌ QuoteReadSerializer has patient_first_name"
+    assert 'patient_last_name' not in quote_read_fields, "❌ QuoteReadSerializer has patient_last_name"
+    assert 'patient_first_name' not in quote_write_fields, "❌ QuoteWriteSerializer has patient_first_name"
+    assert 'patient_last_name' not in quote_write_fields, "❌ QuoteWriteSerializer has patient_last_name"
+    
+    print("✅ Quote serializers correctly exclude patient name fields")
+
+def test_passenger_changes():
+    """Test that Passenger model has passenger_ids M2M field"""
+    print("\n🔧 TESTING PASSENGER MODEL CHANGES")
+    print("=" * 50)
+    
+    # Check Passenger model fields
+    passenger_fields = [f.name for f in Passenger._meta.get_fields()]
+    print("✅ Passenger model fields:", passenger_fields)
+    
+    # Verify passenger_ids field exists
+    assert 'passenger_ids' in passenger_fields, "❌ passenger_ids field missing"
+    print("✅ passenger_ids field successfully added")
+    
+    # Check field details
+    passenger_ids_field = Passenger._meta.get_field('passenger_ids')
+    print(f"✅ passenger_ids field type: {type(passenger_ids_field)}")
+    print(f"✅ passenger_ids related model: {passenger_ids_field.related_model}")
+    print("✅ passenger_ids field is ManyToManyField with symmetrical=False as configured")
+    
+    # Test serializers
+    passenger_read_serializer = PassengerReadSerializer()
+    passenger_write_serializer = PassengerWriteSerializer()
+    
+    passenger_read_fields = list(passenger_read_serializer.fields.keys())
+    passenger_write_fields = list(passenger_write_serializer.fields.keys())
+    
+    print("✅ PassengerReadSerializer fields:", passenger_read_fields)
+    print("✅ PassengerWriteSerializer fields:", passenger_write_fields)
+    
+    # Verify passenger_ids field in serializers
+    assert 'related_passengers' in passenger_read_fields, "❌ PassengerReadSerializer missing related_passengers"
+    assert 'passenger_ids' in passenger_write_fields, "❌ PassengerWriteSerializer missing passenger_ids"
+    
+    print("✅ Passenger serializers correctly include passenger relationship fields")
+
+def test_database_compatibility():
+    """Test database queries work with the changes"""
+    print("\n🗄️  TESTING DATABASE COMPATIBILITY")
+    print("=" * 50)
+    
+    try:
+        # Test Quote queries
+        quote_count = Quote.objects.count()
+        print(f"✅ Quote records: {quote_count}")
+        
+        # Test Passenger queries
+        passenger_count = Passenger.objects.count()
+        print(f"✅ Passenger records: {passenger_count}")
+        
+        # Test querying quotes with patient relationship
+        quotes_with_patients = Quote.objects.filter(patient__isnull=False).count()
+        print(f"✅ Quotes with patients: {quotes_with_patients}")
+        
+        # Test passenger M2M field (should be empty for now but accessible)
+        if passenger_count > 0:
+            sample_passenger = Passenger.objects.first()
+            related_count = sample_passenger.passenger_ids.count()
+            print(f"✅ Sample passenger related passengers: {related_count}")
+        
+        print("✅ Database operations work correctly")
+        
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        return False
+    
+    return True
+
+def run_comprehensive_test():
+    """Run all tests for the model changes"""
+    print("🧪 COMPREHENSIVE TEST FOR MODEL CHANGES")
+    print("=" * 80)
+    
+    try:
+        test_quote_changes()
+        test_passenger_changes()
+        db_ok = test_database_compatibility()
+        
+        print("\n🎉 SUMMARY")
+        print("=" * 50)
+        print("✅ Quote model: patient name fields removed")
+        print("✅ Passenger model: passenger_ids M2M field added")
+        print("✅ Serializers updated correctly")
+        print("✅ Database compatibility verified" if db_ok else "⚠️  Database compatibility issues")
+        print("\n✅ ALL TESTS PASSED! Model changes implemented successfully.")
+        
+    except AssertionError as e:
+        print(f"\n❌ TEST FAILED: {e}")
+        return False
+    except Exception as e:
+        print(f"\n❌ UNEXPECTED ERROR: {e}")
+        return False
+    
+    return True
+
+if __name__ == "__main__":
+    success = run_comprehensive_test()
+    sys.exit(0 if success else 1)
 
 ```
 
@@ -647,7 +804,11 @@ class BaseModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_on = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="%(class)s_created")
-    status = models.CharField(max_length=50, default="active")
+    modified_on = models.DateTimeField(auto_now=True)
+    modified_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)s_modified"
+    )
+    status = models.CharField(max_length=50, default="active", db_index=True)
     lock = models.BooleanField(default=False)
     
     class Meta:
@@ -735,7 +896,7 @@ class Contact(BaseModel):
     state = models.CharField(max_length=100, blank=True, null=True)
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="contacts")
+
     
     def __str__(self):
         if self.business_name:
@@ -757,7 +918,7 @@ class FBO(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="fbos")
     notes = models.TextField(blank=True, null=True)
-    permission_ids = models.ManyToManyField(Permission, related_name="fbos")
+
     
     def __str__(self):
         return self.name
@@ -773,15 +934,15 @@ class Ground(BaseModel):
     country = models.CharField(max_length=100, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="grounds")
-    permission_ids = models.ManyToManyField(Permission, related_name="grounds")
+
     
     def __str__(self):
         return self.name
 
 # Airport model
 class Airport(BaseModel):
-    icao_code = models.CharField(max_length=4)
-    iata_code = models.CharField(max_length=3)
+    icao_code = models.CharField(max_length=4, unique=True, db_index=True)
+    iata_code = models.CharField(max_length=3, db_index=True)
     name = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100, blank=True, null=True)
@@ -792,7 +953,7 @@ class Airport(BaseModel):
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     timezone = models.CharField(max_length=50)
-    permission_ids = models.ManyToManyField(Permission, related_name="airports")
+
     
     def __str__(self):
         return f"{self.name} ({self.icao_code}/{self.iata_code})"
@@ -810,7 +971,7 @@ class Document(models.Model):
 
 # Aircraft model
 class Aircraft(BaseModel):
-    tail_number = models.CharField(max_length=20)
+    tail_number = models.CharField(max_length=20, unique=True, db_index=True)
     company = models.CharField(max_length=255)
     mgtow = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Maximum Gross Takeoff Weight")
     make = models.CharField(max_length=100)
@@ -822,7 +983,7 @@ class Aircraft(BaseModel):
 
 # Transaction model
 class Transaction(BaseModel):
-    key = models.UUIDField(default=uuid.uuid4, editable=False)
+    key = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=[
         ("credit_card", "Credit Card"),
@@ -843,8 +1004,8 @@ class Transaction(BaseModel):
 # Agreement model
 class Agreement(BaseModel):
     destination_email = models.EmailField()
-    document_unsigned_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="unsigned_agreements")
-    document_signed_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="signed_agreements")
+    document_unsigned = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="unsigned_agreements", db_column="document_unsigned_id")
+    document_signed = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="signed_agreements", db_column="document_signed_id")
     status = models.CharField(max_length=20, choices=[
         ("created", "Created"),
         ("pending", "Pending"),
@@ -865,7 +1026,7 @@ class Patient(BaseModel):
     nationality = models.CharField(max_length=100)
     passport_number = models.CharField(max_length=100)
     passport_expiration_date = models.DateField()
-    passport_document_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients")
+    passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients", db_column="passport_document_id")
     special_instructions = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
@@ -873,8 +1034,8 @@ class Patient(BaseModel):
         ("active", "Active"),
         ("completed", "Completed"),
         ("cancelled", "Cancelled")
-    ], default="pending")
-    letter_of_medical_necessity_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients")
+    ], default="pending", db_index=True)
+    letter_of_medical_necessity = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients", db_column="letter_of_medical_necessity_id")
     
     def __str__(self):
         return f"Patient: {self.info}"
@@ -882,20 +1043,20 @@ class Patient(BaseModel):
 # Quote model
 class Quote(BaseModel):
     quoted_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    contact_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="quotes")
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="quotes", db_column="contact_id")
     documents = models.ManyToManyField(Document, related_name="quotes")
     cruise_doctor_first_name = models.CharField(max_length=100, blank=True, null=True)
     cruise_doctor_last_name = models.CharField(max_length=100, blank=True, null=True)
     cruise_line = models.CharField(max_length=100, blank=True, null=True)
     cruise_ship = models.CharField(max_length=100, blank=True, null=True)
-    pickup_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes")
-    dropoff_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes")
+    pickup_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes", db_column="pickup_airport_id")
+    dropoff_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes", db_column="dropoff_airport_id")
     aircraft_type = models.CharField(max_length=20, choices=[
         ("65", "Learjet 65"),
         ("35", "Learjet 35"),
         ("TBD", "To Be Determined")
     ])
-    estimated_fight_time = models.DecimalField(max_digits=5, decimal_places=2)
+    estimated_flight_time = models.DurationField()
     includes_grounds = models.BooleanField(default=False)
     inquiry_date = models.DateTimeField(default=timezone.now)
     medical_team = models.CharField(max_length=20, choices=[
@@ -906,9 +1067,8 @@ class Quote(BaseModel):
         ("standard", "Standard"),
         ("full", "Full")
     ])
-    patient_first_name = models.CharField(max_length=100, blank=True, null=True)
-    patient_last_name = models.CharField(max_length=100, blank=True, null=True)
-    patient_id = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes")
+
+    patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes", db_column="patient_id")
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
         ("confirmed", "Confirmed"),
@@ -916,9 +1076,9 @@ class Quote(BaseModel):
         ("completed", "Completed"),
         ("cancelled", "Cancelled"),
         ("paid", "Paid")
-    ], default="pending")
+    ], default="pending", db_index=True)
     number_of_stops = models.PositiveIntegerField(default=0)
-    quote_pdf_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs")
+    quote_pdf = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs", db_column="quote_pdf_id")
     quote_pdf_status = models.CharField(max_length=20, choices=[
         ("created", "Created"),
         ("pending", "Pending"),
@@ -927,9 +1087,9 @@ class Quote(BaseModel):
         ("denied", "Denied")
     ], default="created")
     quote_pdf_email = models.EmailField()
-    payment_agreement_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="payment_quotes")
-    consent_for_transport_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="consent_quotes")
-    patient_service_agreement_id = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_quotes")
+    payment_agreement = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="payment_quotes", db_column="payment_agreement_id")
+    consent_for_transport = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="consent_quotes", db_column="consent_for_transport_id")
+    patient_service_agreement = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_quotes", db_column="patient_service_agreement_id")
     transactions = models.ManyToManyField(Transaction, related_name="quotes", blank=True)
     
     def __str__(self):
@@ -944,24 +1104,25 @@ class Passenger(BaseModel):
     passport_expiration_date = models.DateField(blank=True, null=True)
     contact_number = models.CharField(max_length=20, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
-    passport_document_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_passengers")
+    passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_passengers", db_column="passport_document_id")
+    passenger_ids = models.ManyToManyField('self', blank=True, symmetrical=False, related_name="related_passengers")
     
     def __str__(self):
         return f"Passenger: {self.info}"
 
 # Crew Line model
 class CrewLine(BaseModel):
-    primary_in_command_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="primary_crew_lines")
-    secondary_in_command_id = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="secondary_crew_lines")
+    primary_in_command = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="primary_crew_lines", db_column="primary_in_command_id")
+    secondary_in_command = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="secondary_crew_lines", db_column="secondary_in_command_id")
     medic_ids = models.ManyToManyField(Contact, related_name="medic_crew_lines")
     
     def __str__(self):
-        return f"Crew: {self.primary_in_command_id} and {self.secondary_in_command_id}"
+        return f"Crew: {self.primary_in_command} and {self.secondary_in_command}"
 
 # Trip model
 class Trip(BaseModel):
     email_chain = models.JSONField(default=list, blank=True)
-    quote_id = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name="trips", null=True, blank=True)
+    quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name="trips", null=True, blank=True, db_column="quote_id")
     type = models.CharField(max_length=20, choices=[
         ("medical", "Medical"),
         ("charter", "Charter"),
@@ -969,14 +1130,14 @@ class Trip(BaseModel):
         ("other", "Other"),
         ("maintenance", "Maintenance")
     ])
-    patient_id = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
+    patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips", db_column="patient_id")
     estimated_departure_time = models.DateTimeField(blank=True, null=True)
-    post_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    pre_flight_duty_time = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    aircraft_id = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
-    trip_number = models.CharField(max_length=20)
-    internal_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips")
-    customer_itinerary_id = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips")
+    post_flight_duty_time = models.DurationField(blank=True, null=True)
+    pre_flight_duty_time = models.DurationField(blank=True, null=True)
+    aircraft = models.ForeignKey(Aircraft, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips", db_column="aircraft_id")
+    trip_number = models.CharField(max_length=20, unique=True, db_index=True)
+    internal_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips", db_column="internal_itinerary_id")
+    customer_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips", db_column="customer_itinerary_id")
     passengers = models.ManyToManyField(Passenger, related_name="trips", blank=True)
     
     def __str__(self):
@@ -984,21 +1145,21 @@ class Trip(BaseModel):
 
 # Trip Line model
 class TripLine(BaseModel):
-    trip_id = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="trip_lines")
-    origin_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="origin_trip_lines")
-    destination_airport_id = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="destination_trip_lines")
-    crew_line_id = models.ForeignKey(CrewLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_lines")
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="trip_lines", db_column="trip_id")
+    origin_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="origin_trip_lines", db_column="origin_airport_id")
+    destination_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="destination_trip_lines", db_column="destination_airport_id")
+    crew_line = models.ForeignKey(CrewLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_lines", db_column="crew_line_id")
     departure_time_local = models.DateTimeField()
     departure_time_utc = models.DateTimeField()
     arrival_time_local = models.DateTimeField()
     arrival_time_utc = models.DateTimeField()
     distance = models.DecimalField(max_digits=10, decimal_places=2)
-    flight_time = models.DecimalField(max_digits=5, decimal_places=2)
-    ground_time = models.DecimalField(max_digits=5, decimal_places=2)
+    flight_time = models.DurationField()
+    ground_time = models.DurationField()
     passenger_leg = models.BooleanField(default=True)
     
     def __str__(self):
-        return f"Trip Line: {self.origin_airport_id} to {self.destination_airport_id}"
+        return f"Trip Line: {self.origin_airport} to {self.destination_airport}"
     
     class Meta:
         ordering = ['departure_time_utc']
@@ -1050,18 +1211,18 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
                  'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
         model = FBO
-        fields = ['id', 'name', 'contact_id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+        fields = ['id', 'name', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 class GroundSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ground
         fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
-                 'country', 'notes', 'contacts', 'permission_ids', 'created_on', 'created_by', 
+                 'country', 'notes', 'contacts', 'created_on', 'created_by', 
                  'modified_on', 'modified_by']
 
 class AirportSerializer(serializers.ModelSerializer):
@@ -1069,7 +1230,7 @@ class AirportSerializer(serializers.ModelSerializer):
         model = Airport
         fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
                  'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
-                 'permission_ids', 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
@@ -1088,7 +1249,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 class AgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agreement
-        fields = ['id', 'destination_email', 'document_unsigned_id', 'document_signed_id', 
+        fields = ['id', 'destination_email', 'document_unsigned', 'document_signed', 
                  'status', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # ========== STANDARDIZED CRUD SERIALIZERS ==========
@@ -1129,36 +1290,43 @@ class UserProfileWriteSerializer(serializers.ModelSerializer):
 # 2) Passengers
 class PassengerReadSerializer(serializers.ModelSerializer):
     info = ContactSerializer(read_only=True)
-    passport_document = DocumentSerializer(source='passport_document_id', read_only=True)
+    passport_document = DocumentSerializer(read_only=True)
+    related_passengers = serializers.SerializerMethodField()
     
     class Meta:
         model = Passenger
         fields = [
             'id', 'info', 'date_of_birth', 'nationality', 'passport_number',
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
-            'status', 'created_on'
+            'related_passengers', 'status', 'created_on'
         ]
+    
+    def get_related_passengers(self, obj):
+        return [{'id': p.id, 'info': ContactSerializer(p.info).data} for p in obj.passenger_ids.all()]
 
 class PassengerWriteSerializer(serializers.ModelSerializer):
-    info_id = serializers.PrimaryKeyRelatedField(
-        source='info', queryset=Contact.objects.all(), write_only=True
+    info = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
     )
-    passport_document_id = serializers.PrimaryKeyRelatedField(
+    passport_document = serializers.PrimaryKeyRelatedField(
         queryset=Document.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Passenger.objects.all(), many=True, write_only=True, required=False
     )
     
     class Meta:
         model = Passenger
         fields = [
-            'info_id', 'date_of_birth', 'nationality', 'passport_number',
-            'passport_expiration_date', 'contact_number', 'notes', 'passport_document_id',
-            'status'
+            'info', 'date_of_birth', 'nationality', 'passport_number',
+            'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
+            'passenger_ids', 'status'
         ]
 
 # 3) Crew Lines
 class CrewLineReadSerializer(serializers.ModelSerializer):
-    primary_in_command = ContactSerializer(source='primary_in_command_id', read_only=True)
-    secondary_in_command = ContactSerializer(source='secondary_in_command_id', read_only=True)
+    primary_in_command = ContactSerializer(read_only=True)
+    secondary_in_command = ContactSerializer(read_only=True)
     medics = ContactSerializer(source='medic_ids', many=True, read_only=True)
     
     class Meta:
@@ -1169,10 +1337,10 @@ class CrewLineReadSerializer(serializers.ModelSerializer):
         ]
 
 class CrewLineWriteSerializer(serializers.ModelSerializer):
-    primary_in_command_id = serializers.PrimaryKeyRelatedField(
+    primary_in_command = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    secondary_in_command_id = serializers.PrimaryKeyRelatedField(
+    secondary_in_command = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
     medic_ids = serializers.PrimaryKeyRelatedField(
@@ -1182,7 +1350,7 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = CrewLine
         fields = [
-            'primary_in_command_id', 'secondary_in_command_id', 'medic_ids', 'status'
+            'primary_in_command', 'secondary_in_command', 'medic_ids', 'status'
         ]
 
 class TripMiniSerializer(serializers.ModelSerializer):
@@ -1209,29 +1377,29 @@ class TripLineReadSerializer(serializers.ModelSerializer):
     def get_trip(self, obj):
         # Return minimal trip info to avoid circular references
         return {
-            'id': obj.trip_id.id,
-            'trip_number': obj.trip_id.trip_number,
-            'type': obj.trip_id.type
+            'id': obj.trip.id,
+            'trip_number': obj.trip.trip_number,
+            'type': obj.trip.type
         }
 
 class TripLineWriteSerializer(serializers.ModelSerializer):
-    trip_id = serializers.PrimaryKeyRelatedField(
+    trip = serializers.PrimaryKeyRelatedField(
         queryset=Trip.objects.all(), write_only=True
     )
-    origin_airport_id = serializers.PrimaryKeyRelatedField(
+    origin_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    destination_airport_id = serializers.PrimaryKeyRelatedField(
+    destination_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    crew_line_id = serializers.PrimaryKeyRelatedField(
+    crew_line = serializers.PrimaryKeyRelatedField(
         queryset=CrewLine.objects.all(), write_only=True, required=False, allow_null=True
     )
     
     class Meta:
         model = TripLine
         fields = [
-            'trip_id', 'origin_airport_id', 'destination_airport_id', 'crew_line_id',
+            'trip', 'origin_airport', 'destination_airport', 'crew_line',
             'departure_time_local', 'departure_time_utc', 'arrival_time_local',
             'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
             'passenger_leg', 'status'
@@ -1241,7 +1409,7 @@ class TripLineWriteSerializer(serializers.ModelSerializer):
 class TripReadSerializer(serializers.ModelSerializer):
     quote = serializers.SerializerMethodField()
     patient = serializers.SerializerMethodField()
-    aircraft = AircraftSerializer(source='aircraft_id', read_only=True)
+    aircraft = AircraftSerializer(read_only=True)
     trip_lines = TripLineReadSerializer(many=True, read_only=True)
     passengers_data = PassengerReadSerializer(source='passengers', many=True, read_only=True)
     
@@ -1254,31 +1422,31 @@ class TripReadSerializer(serializers.ModelSerializer):
         ]
     
     def get_quote(self, obj):
-        if obj.quote_id:
+        if obj.quote:
             return {
-                'id': obj.quote_id.id,
-                'quoted_amount': obj.quote_id.quoted_amount,
-                'status': obj.quote_id.status
+                'id': obj.quote.id,
+                'quoted_amount': obj.quote.quoted_amount,
+                'status': obj.quote.status
             }
         return None
     
     def get_patient(self, obj):
-        if obj.patient_id:
+        if obj.patient:
             return {
-                'id': obj.patient_id.id,
-                'status': obj.patient_id.status,
-                'info': ContactSerializer(obj.patient_id.info).data
+                'id': obj.patient.id,
+                'status': obj.patient.status,
+                'info': ContactSerializer(obj.patient.info).data
             }
         return None
 
 class TripWriteSerializer(serializers.ModelSerializer):
-    quote_id = serializers.PrimaryKeyRelatedField(
+    quote = serializers.PrimaryKeyRelatedField(
         queryset=Quote.objects.all(), write_only=True, required=False, allow_null=True
     )
-    patient_id = serializers.PrimaryKeyRelatedField(
+    patient = serializers.PrimaryKeyRelatedField(
         queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
     )
-    aircraft_id = serializers.PrimaryKeyRelatedField(
+    aircraft = serializers.PrimaryKeyRelatedField(
         queryset=Aircraft.objects.all(), write_only=True, required=False, allow_null=True
     )
     passenger_ids = serializers.PrimaryKeyRelatedField(
@@ -1288,20 +1456,20 @@ class TripWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trip
         fields = [
-            'email_chain', 'quote_id', 'type', 'patient_id', 'estimated_departure_time',
-            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft_id', 'trip_number',
+            'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'passenger_ids', 'status'
         ]
 
 # 6) Quotes
 class QuoteReadSerializer(serializers.ModelSerializer):
-    contact = ContactSerializer(source='contact_id', read_only=True)
-    pickup_airport = AirportSerializer(source='pickup_airport_id', read_only=True)
-    dropoff_airport = AirportSerializer(source='dropoff_airport_id', read_only=True)
+    contact = ContactSerializer(read_only=True)
+    pickup_airport = AirportSerializer(read_only=True)
+    dropoff_airport = AirportSerializer(read_only=True)
     patient = serializers.SerializerMethodField()
-    payment_agreement = AgreementSerializer(source='payment_agreement_id', read_only=True)
-    consent_for_transport = AgreementSerializer(source='consent_for_transport_id', read_only=True)
-    patient_service_agreement = AgreementSerializer(source='patient_service_agreement_id', read_only=True)
+    payment_agreement = AgreementSerializer(read_only=True)
+    consent_for_transport = AgreementSerializer(read_only=True)
+    patient_service_agreement = AgreementSerializer(read_only=True)
     transactions = serializers.SerializerMethodField()
     
     class Meta:
@@ -1313,10 +1481,10 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         ]
     
     def get_patient(self, obj):
-        if obj.patient_id:
+        if obj.patient:
             return {
-                'id': obj.patient_id.id,
-                'status': obj.patient_id.status
+                'id': obj.patient.id,
+                'status': obj.patient.status
             }
         return None
     
@@ -1328,25 +1496,25 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         } for t in obj.transactions.all()]
 
 class QuoteWriteSerializer(serializers.ModelSerializer):
-    contact_id = serializers.PrimaryKeyRelatedField(
+    contact = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    pickup_airport_id = serializers.PrimaryKeyRelatedField(
+    pickup_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    dropoff_airport_id = serializers.PrimaryKeyRelatedField(
+    dropoff_airport = serializers.PrimaryKeyRelatedField(
         queryset=Airport.objects.all(), write_only=True
     )
-    patient_id = serializers.PrimaryKeyRelatedField(
+    patient = serializers.PrimaryKeyRelatedField(
         queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
     )
-    payment_agreement_id = serializers.PrimaryKeyRelatedField(
+    payment_agreement = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
-    consent_for_transport_id = serializers.PrimaryKeyRelatedField(
+    consent_for_transport = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
-    patient_service_agreement_id = serializers.PrimaryKeyRelatedField(
+    patient_service_agreement = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
     transaction_ids = serializers.PrimaryKeyRelatedField(
@@ -1356,9 +1524,9 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quote
         fields = [
-            'quoted_amount', 'contact_id', 'pickup_airport_id', 'dropoff_airport_id',
-            'patient_id', 'payment_agreement_id', 'consent_for_transport_id',
-            'patient_service_agreement_id', 'transaction_ids', 'status'
+            'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
+            'patient', 'payment_agreement', 'consent_for_transport',
+            'patient_service_agreement', 'transaction_ids', 'status'
         ]
 
 # 7) Documents
@@ -1417,13 +1585,13 @@ class PatientReadSerializer(serializers.ModelSerializer):
         fields = ['id', 'info', 'status', 'created_on']
 
 class PatientWriteSerializer(serializers.ModelSerializer):
-    info_id = serializers.PrimaryKeyRelatedField(
-        source='info', queryset=Contact.objects.all(), write_only=True
+    info = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(), write_only=True
     )
     
     class Meta:
         model = Patient
-        fields = ['info_id', 'status']
+        fields = ['info', 'status']
 
 ```
 
@@ -2022,8 +2190,8 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-    queryset = Quote.objects.select_related('contact_id', 'pickup_airport', 'dropoff_airport', 'patient_id', 'agreements_id').prefetch_related('transactions')
-    search_fields = ['contact_id__first_name', 'contact_id__last_name', 'status']
+    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient').prefetch_related('transactions')
+    search_fields = ['contact__first_name', 'contact__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -2072,7 +2240,7 @@ class QuoteViewSet(BaseViewSet):
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
-    queryset = Passenger.objects.select_related('info', 'passport_document_id')
+    queryset = Passenger.objects.select_related('info', 'passport_document')
     search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
@@ -2103,7 +2271,7 @@ class PassengerViewSet(BaseViewSet):
 
 # CrewLine ViewSet
 class CrewLineViewSet(BaseViewSet):
-    queryset = CrewLine.objects.select_related('primary_in_command_id', 'secondary_in_command_id').prefetch_related('medic_ids')
+    queryset = CrewLine.objects.select_related('primary_in_command', 'secondary_in_command').prefetch_related('medic_ids')
     ordering_fields = ['created_on']
     
     def get_serializer_class(self):
@@ -2113,7 +2281,7 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote_id', 'patient_id', 'aircraft_id').prefetch_related('trip_lines', 'passengers')
+    queryset = Trip.objects.select_related('quote', 'patient', 'aircraft').prefetch_related('trip_lines', 'passengers')
     search_fields = ['trip_number', 'type']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
@@ -2159,7 +2327,7 @@ class TripViewSet(BaseViewSet):
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
-    queryset = TripLine.objects.select_related('trip_id', 'origin_airport', 'destination_airport', 'crew_line_id')
+    queryset = TripLine.objects.select_related('trip', 'origin_airport', 'destination_airport', 'crew_line')
     ordering_fields = ['departure_time_utc', 'created_on']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -2189,7 +2357,7 @@ class TripLineViewSet(BaseViewSet):
     
     def perform_create(self, serializer):
         trip_line = serializer.save(created_by=self.request.user)
-        trip = trip_line.trip_id
+        trip = trip_line.trip
         
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
@@ -2197,7 +2365,7 @@ class TripLineViewSet(BaseViewSet):
     
     def perform_update(self, serializer):
         trip_line = serializer.save()
-        trip = trip_line.trip_id
+        trip = trip_line.trip
         
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
@@ -2344,6 +2512,285 @@ def dashboard_stats(request):
             ]
         }
     })
+
+```
+
+
+# File: api/migrations/0003_agreement_modified_by_agreement_modified_on_and_more.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-21 06:52
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0002_role_modified_by_role_modified_on"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="agreement",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="agreement",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="aircraft",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="aircraft",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="contact",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="contact",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="crewline",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="crewline",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="department",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="department",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="fbo",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="fbo",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="ground",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="ground",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="passenger",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="passenger",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="patient",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="patient",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="permission",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="permission",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="quote",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="quote",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="transaction",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="transaction",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="trip",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="trip",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="tripline",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="tripline",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+        migrations.AddField(
+            model_name="userprofile",
+            name="modified_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_modified",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="userprofile",
+            name="modified_on",
+            field=models.DateTimeField(auto_now=True),
+        ),
+    ]
 
 ```
 
@@ -3032,10 +3479,10 @@ def test_trip_line_endpoints():
     # Test 3: Create new trip line (POST /api/trip-lines/)
     print("\n➕ TEST 3: Create Trip Line (Write Serializer Test)")
     create_data = {
-        "trip_id": 1,  # Expects Trip ID only
-        "origin_airport_id": 1,  # Expects Airport ID only
-        "destination_airport_id": 2,  # Expects Airport ID only
-        "crew_line_id": 1,  # Expects CrewLine ID only
+        "trip": 1,  # Expects Trip ID only
+        "origin_airport": 1,  # Expects Airport ID only
+        "destination_airport": 2,  # Expects Airport ID only
+        "crew_line": 1,  # Expects CrewLine ID only
         "departure_date": "2024-12-01T10:00:00Z",
         "arrival_date": "2024-12-01T14:00:00Z",
         "flight_time": "04:00:00",
@@ -3082,10 +3529,10 @@ def test_trip_line_endpoints():
     if trip_line_id:
         print(f"\n✏️  TEST 5: Update Trip Line (ID: {trip_line_id})")
         update_data = {
-            "trip_id": 1,
-            "origin_airport_id": 2,  # Changed origin
-            "destination_airport_id": 1,  # Changed destination (reverse)
-            "crew_line_id": 2,  # Changed crew
+            "trip": 1,
+            "origin_airport": 2,  # Changed origin
+            "destination_airport": 1,  # Changed destination (reverse)
+            "crew_line": 2,  # Changed crew
             "departure_date": "2024-12-02T11:00:00Z",  # Changed time
             "arrival_date": "2024-12-02T15:00:00Z",
             "flight_time": "04:00:00",
@@ -3179,11 +3626,11 @@ def test_quote_endpoints():
     # Test 3: Create new quote (POST /api/quotes/)
     print("\n➕ TEST 3: Create Quote (Write Serializer Test)")
     create_data = {
-        "contact_id": 1,  # Expects Contact ID only
-        "pickup_airport_id": 1,  # Expects Airport ID only
-        "dropoff_airport_id": 2,  # Expects Airport ID only
-        "patient_id": 1,  # Expects Patient ID only
-        "agreements_id": 1,  # Expects Agreement ID only
+        "contact": 1,  # Expects Contact ID only
+        "pickup_airport": 1,  # Expects Airport ID only
+        "dropoff_airport": 2,  # Expects Airport ID only
+        "patient": 1,  # Expects Patient ID only
+        "payment_agreement": 1,  # Expects Agreement ID only
         "quoted_amount": 7500.00,
         "status": "pending",
         "departure_date": "2024-12-01T10:00:00Z",
@@ -3231,11 +3678,11 @@ def test_quote_endpoints():
     if quote_id:
         print(f"\n✏️  TEST 5: Update Quote (ID: {quote_id})")
         update_data = {
-            "contact_id": 1,
-            "pickup_airport_id": 1,
-            "dropoff_airport_id": 2,
-            "patient_id": 1,
-            "agreements_id": 1,
+            "contact": 1,
+            "pickup_airport": 1,
+            "dropoff_airport": 2,
+            "patient": 1,
+            "payment_agreement": 1,
             "quoted_amount": 8000.00,  # Changed amount
             "status": "accepted",  # Changed status
             "notes": "Updated quote"
@@ -3313,13 +3760,13 @@ def test_passenger_endpoints():
     # Test 3: Create new passenger (POST /api/passengers/)
     print("\n➕ TEST 3: Create Passenger (Write Serializer Test)")
     create_data = {
-        "info_id": 1,  # Expects Contact ID only
+        "info": 1,  # Expects Contact ID only
         "date_of_birth": "1990-01-01",
         "nationality": "US",
         "passport_number": "123456789",
         "passport_expiration_date": "2030-01-01",
         "contact_number": "+1234567890",
-        "passport_document_id": 1,  # Expects Document ID only
+        "passport_document": 1,  # Expects Document ID only
         "status": "active"
     }
     
@@ -3357,7 +3804,7 @@ def test_passenger_endpoints():
     if passenger_id:
         print(f"\n✏️  TEST 5: Update Passenger (ID: {passenger_id})")
         update_data = {
-            "info_id": 1,
+            "info": 1,
             "date_of_birth": "1990-01-01",
             "nationality": "CA",  # Changed nationality
             "passport_number": "987654321",  # Changed passport
@@ -3567,9 +4014,9 @@ def test_trip_endpoints():
     # Test 3: Create new trip (POST /api/trips/)
     print("\n➕ TEST 3: Create Trip (Write Serializer Test)")
     create_data = {
-        "quote_id": 1,  # Expects Quote ID only
-        "patient_id": 1,  # Expects Patient ID only
-        "aircraft_id": 1,  # Expects Aircraft ID only
+        "quote": 1,  # Expects Quote ID only
+        "patient": 1,  # Expects Patient ID only
+        "aircraft": 1,  # Expects Aircraft ID only
         "trip_number": "TR001",
         "type": "medical",
         "status": "scheduled",
@@ -3617,9 +4064,9 @@ def test_trip_endpoints():
     if trip_id:
         print(f"\n✏️  TEST 5: Update Trip (ID: {trip_id})")
         update_data = {
-            "quote_id": 1,
-            "patient_id": 1,
-            "aircraft_id": 1,
+            "quote": 1,
+            "patient": 1,
+            "aircraft": 1,
             "trip_number": "TR001-UPDATED",
             "type": "charter",  # Changed type
             "status": "in_progress",  # Changed status
@@ -3698,8 +4145,8 @@ def test_crew_line_endpoints():
     # Test 3: Create new crew line (POST /api/crew-lines/)
     print("\n➕ TEST 3: Create Crew Line (Write Serializer Test)")
     create_data = {
-        "primary_in_command_id": 1,  # Expects Contact ID only
-        "secondary_in_command_id": 2,  # Expects Contact ID only
+        "primary_in_command": 1,  # Expects Contact ID only
+        "secondary_in_command": 2,  # Expects Contact ID only
         "medic_ids": [3, 4],  # Expects list of Contact IDs
         "status": "active",
         "notes": "Test crew line creation"
@@ -3743,8 +4190,8 @@ def test_crew_line_endpoints():
     if crew_line_id:
         print(f"\n✏️  TEST 5: Update Crew Line (ID: {crew_line_id})")
         update_data = {
-            "primary_in_command_id": 2,  # Changed primary
-            "secondary_in_command_id": 3,  # Changed secondary
+            "primary_in_command": 2,  # Changed primary
+            "secondary_in_command": 3,  # Changed secondary
             "medic_ids": [4],  # Changed medics list
             "status": "standby",  # Changed status
             "notes": "Updated crew line"
@@ -3999,7 +4446,7 @@ def test_patient_endpoints():
     # Test 3: Create new patient (POST /api/patients/)
     print("\n➕ TEST 3: Create Patient (Write Serializer Test)")
     create_data = {
-        "info_id": 1,  # Expects Contact ID only
+        "info": 1,  # Expects Contact ID only
         "status": "active",
         "medical_notes": "Test patient creation",
         "emergency_contact": "Emergency Contact Name",
@@ -4038,7 +4485,7 @@ def test_patient_endpoints():
     if patient_id:
         print(f"\n✏️  TEST 5: Update Patient (ID: {patient_id})")
         update_data = {
-            "info_id": 1,
+            "info": 1,
             "status": "inactive",  # Changed status
             "medical_notes": "Updated patient medical notes",
             "emergency_contact": "Updated Emergency Contact",

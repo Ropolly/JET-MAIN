@@ -51,10 +51,6 @@ class Role(BaseModel):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
     permissions = models.ManyToManyField(Permission, related_name="roles")
-    modified_on = models.DateTimeField(auto_now=True)
-    modified_by = models.ForeignKey(User, null=True, blank=True,
-                                    on_delete=models.SET_NULL,
-                                    related_name="%(class)s_modified")
     
     def __str__(self):
         return self.name
@@ -345,7 +341,8 @@ class Trip(BaseModel):
     internal_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips", db_column="internal_itinerary_id")
     customer_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips", db_column="customer_itinerary_id")
     passengers = models.ManyToManyField(Passenger, related_name="trips", blank=True)
-    
+    notes = models.TextField(blank=True, null=True)
+
     def __str__(self):
         return f"Trip {self.trip_number} - {self.type}"
 

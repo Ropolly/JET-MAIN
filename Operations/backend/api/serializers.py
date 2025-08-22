@@ -188,10 +188,10 @@ class TripMiniSerializer(serializers.ModelSerializer):
 
 
 class TripLineReadSerializer(serializers.ModelSerializer):
-    trip = TripMiniSerializer(source="trip_id", read_only=True)
-    origin_airport = AirportSerializer(source="origin_airport_id", read_only=True)
-    destination_airport = AirportSerializer(source="destination_airport_id", read_only=True)
-    crew_line = CrewLineReadSerializer(source="crew_line_id", read_only=True)
+    trip = TripMiniSerializer(read_only=True)
+    origin_airport = AirportSerializer(read_only=True)
+    destination_airport = AirportSerializer(read_only=True)
+    crew_line = CrewLineReadSerializer(read_only=True)
     
     class Meta:
         model = TripLine

@@ -95,15 +95,15 @@
         </template>
 
         <template v-slot:patient="{ row: trip }">
-          <a v-if="trip.patient_id" @click="navigateToPatient(trip.patient_id)" href="#" class="text-dark fw-bold text-hover-primary">
-            {{ getPatientName(trip.patient_id) }}
+          <a v-if="trip.patient" @click="navigateToPatient(trip.patient)" href="#" class="text-dark fw-bold text-hover-primary">
+            {{ getPatientName(trip.patient) }}
           </a>
           <span v-else class="text-muted">No patient</span>
         </template>
 
         <template v-slot:aircraft="{ row: trip }">
-          <a v-if="trip.aircraft_id" @click="navigateToAircraft(trip.aircraft_id)" href="#" class="badge badge-light-info text-hover-primary">
-            {{ getAircraftInfo(trip.aircraft_id) }}
+          <a v-if="trip.aircraft" @click="navigateToAircraft(trip.aircraft.id)" href="#" class="badge badge-light-info text-hover-primary">
+            {{ getAircraftInfo(trip.aircraft) }}
           </a>
           <span v-else class="text-muted">TBD</span>
         </template>
@@ -206,19 +206,49 @@ import Swal from "sweetalert2";
 import { useRouter } from "vue-router";
 import CreateTripSimpleModal from "@/components/modals/CreateTripSimpleModal.vue";
 import { Modal } from "bootstrap";
+import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 
 interface Trip {
   id: string;
   trip_number: string;
   type: string;
   status: string;
-  patient_id: any;
-  aircraft_id: any;
-  quote_id?: any;
+  patient?: {
+    id: string;
+    status: string;
+    info: {
+      first_name: string;
+      last_name: string;
+      email: string;
+    };
+  };
+  aircraft?: {
+    id: string;
+    tail_number: string;
+    make: string;
+    model: string;
+  };
+  quote?: {
+    id: string;
+    quoted_amount: string;
+    status: string;
+  };
   estimated_departure_time: string;
   created_on: string;
-  // Removed departure_airport and arrival_airport as they're TripLine fields
-  route?: string;
+  trip_lines?: Array<{
+    id: string;
+    origin_airport: {
+      icao_code: string;
+      iata_code: string;
+      name: string;
+    };
+    destination_airport: {
+      icao_code: string;
+      iata_code: string;
+      name: string;
+    };
+  }>;
+  passengers_data?: any[];
 }
 
 export default defineComponent({
@@ -232,6 +262,7 @@ export default defineComponent({
     const trips = ref<Trip[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
+    const { setToolbarActions } = useToolbar();
 
     const headerConfig = ref([
       {
@@ -364,26 +395,33 @@ export default defineComponent({
       });
     };
 
-    const getPatientName = (patientId: any): string => {
-      return patientId ? `Patient #${String(patientId).slice(0, 8)}` : 'No patient';
+    const getPatientName = (patient: any): string => {
+      if (!patient) return 'No patient';
+      if (patient.info) {
+        return `${patient.info.first_name} ${patient.info.last_name}`;
+      }
+      return `Patient #${String(patient.id).slice(0, 8)}`;
     };
 
-    const getAircraftInfo = (aircraftId: any): string => {
-      return aircraftId ? `Aircraft #${String(aircraftId).slice(0, 8)}` : 'TBD';
+    const getAircraftInfo = (aircraft: any): string => {
+      if (!aircraft) return 'TBD';
+      if (aircraft.tail_number) {
+        return `${aircraft.tail_number} (${aircraft.make} ${aircraft.model})`;
+      }
+      return `Aircraft #${String(aircraft.id).slice(0, 8)}`;
     };
 
     const getRouteInfo = (trip: Trip): string => {
-      if (trip.route) {
-        return trip.route;
-      }
-      if (trip.departure_airport && trip.arrival_airport) {
-        return `${trip.departure_airport} → ${trip.arrival_airport}`;
-      }
-      if (trip.departure_airport) {
-        return `From ${trip.departure_airport}`;
-      }
-      if (trip.arrival_airport) {
-        return `To ${trip.arrival_airport}`;
+      if (trip.trip_lines && trip.trip_lines.length > 0) {
+        const firstLeg = trip.trip_lines[0];
+        const lastLeg = trip.trip_lines[trip.trip_lines.length - 1];
+        
+        if (trip.trip_lines.length === 1) {
+          return `${firstLeg.origin_airport.iata_code || firstLeg.origin_airport.icao_code} → ${firstLeg.destination_airport.iata_code || firstLeg.destination_airport.icao_code}`;
+        } else {
+          // Multi-leg trip
+          return `${firstLeg.origin_airport.iata_code || firstLeg.origin_airport.icao_code} → ${lastLeg.destination_airport.iata_code || lastLeg.destination_airport.icao_code} (${trip.trip_lines.length} legs)`;
+        }
       }
       return trip.type?.toUpperCase() || 'MEDICAL';
     };
@@ -482,20 +520,18 @@ export default defineComponent({
       router.push(`/admin/trips/${tripId}`);
     };
 
-    const navigateToPatient = (patientId: any) => {
-      router.push(`/admin/contacts/patients/${patientId}`);
+    const navigateToPatient = (patient: any) => {
+      if (patient && patient.info && patient.info.id) {
+        // Navigate to the contact details for this patient's contact info
+        router.push(`/admin/contacts/patients/${patient.info.id}`);
+      } else {
+        // Fallback to patients list page
+        router.push('/admin/patients');
+      }
     };
 
-    const navigateToAircraft = (aircraftId: any) => {
-      // For now, show info until routes are created
-      Swal.fire({
-        title: "Aircraft Details", 
-        text: `View details for aircraft ${aircraftId}`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
-      // TODO: Enable when route is created
-      // router.push(`/admin/aircraft/${aircraftId}`);
+    const navigateToAircraft = (aircraftId: string) => {
+      router.push(`/admin/aircraft/${aircraftId}`);
     };
 
     // New action methods
@@ -536,6 +572,11 @@ export default defineComponent({
       setTimeout(() => {
         MenuComponent.reinitialization();
       }, 200);
+
+      // Setup toolbar actions for trips page
+      setToolbarActions([
+        createToolbarActions.primary('add-trip', 'Add Trip', openCreateTripModal, 'plus')
+      ]);
     });
 
     return {
