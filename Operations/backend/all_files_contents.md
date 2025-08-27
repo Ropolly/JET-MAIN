@@ -5,7 +5,7 @@ The following is the structure of the project:
 ```
 backend/
     prompt2.py
-    test_model_changes.py
+    csv processor.py
     manage.py
 utils/
     __init__.py
@@ -27,15 +27,23 @@ api/
     serializers.py
     __init__.py
     apps.py
+    contact_service.py
     admin.py
     permissions.py
     tests.py
     urls.py
     views.py
     migrations/
-        0003_agreement_modified_by_agreement_modified_on_and_more.py
-        0002_role_modified_by_role_modified_on.py
+        0006_alter_airport_iata_code_alter_airport_icao_code.py
+        0005_airport_airport_type.py
+        0010_tripevent.py
+        0004_rename_country_airport_iso_country_and_more.py
+        0008_fbo_phone_fbo_phone_secondary.py
         __init__.py
+        0003_staff_staffrole_staffrolemembership_and_more.py
+        0009_fbo_email.py
+        0002_trip_notes.py
+        0007_contact_date_of_birth_contact_nationality_and_more.py
         0001_initial.py
     tests/
         base_test.py
@@ -53,8 +61,13 @@ api/
     management/
         __init__.py
         commands/
+            import_airports.py
+            seed_staff.py
             setup_test_data.py
             __init__.py
+            seed_aircraft_and_staff.py
+            seed_fbos.py
+            seed_dev.py
     external/
         airport.py
         aircraft.py
@@ -139,157 +152,58 @@ if __name__ == "__main__":
 ```
 
 
-# File: test_model_changes.py
+# File: csv processor.py
 
 ```python
-#!/usr/bin/env python3
-"""
-Test the recent model changes:
-1. Quote model: removed patient_first_name and patient_last_name
-2. Passenger model: added passenger_ids M2M field
-"""
-import os
-import sys
-import django
-from django.conf import settings
+import pandas as pd
+import re
 
-# Setup Django environment
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
-django.setup()
+# Regex pattern to detect phone-like strings
+phone_pattern = re.compile(
+    r'(\(?\+?\d{1,3}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}[\s.-]?\d{2,6})'
+)
 
-from api.models import Quote, Passenger, Patient, Contact
-from api.serializers import QuoteReadSerializer, QuoteWriteSerializer, PassengerReadSerializer, PassengerWriteSerializer
+def extract_numbers(text):
+    """Find all phone-like numbers in a text field."""
+    if pd.isna(text):
+        return []
+    return phone_pattern.findall(str(text))
 
-def test_quote_changes():
-    """Test that Quote model no longer has patient name fields"""
-    print("🔧 TESTING QUOTE MODEL CHANGES")
-    print("=" * 50)
-    
-    # Check Quote model fields
-    quote_fields = [f.name for f in Quote._meta.get_fields()]
-    print("✅ Quote model fields:", quote_fields)
-    
-    # Verify patient name fields are removed
-    assert 'patient_first_name' not in quote_fields, "❌ patient_first_name still exists"
-    assert 'patient_last_name' not in quote_fields, "❌ patient_last_name still exists"
-    print("✅ patient_first_name and patient_last_name successfully removed")
-    
-    # Test serializers
-    quote_read_serializer = QuoteReadSerializer()
-    quote_write_serializer = QuoteWriteSerializer()
-    
-    quote_read_fields = list(quote_read_serializer.fields.keys())
-    quote_write_fields = list(quote_write_serializer.fields.keys())
-    
-    print("✅ QuoteReadSerializer fields:", quote_read_fields)
-    print("✅ QuoteWriteSerializer fields:", quote_write_fields)
-    
-    # Verify patient name fields are not in serializers
-    assert 'patient_first_name' not in quote_read_fields, "❌ QuoteReadSerializer has patient_first_name"
-    assert 'patient_last_name' not in quote_read_fields, "❌ QuoteReadSerializer has patient_last_name"
-    assert 'patient_first_name' not in quote_write_fields, "❌ QuoteWriteSerializer has patient_first_name"
-    assert 'patient_last_name' not in quote_write_fields, "❌ QuoteWriteSerializer has patient_last_name"
-    
-    print("✅ Quote serializers correctly exclude patient name fields")
+def process_row(row):
+    numbers = []
 
-def test_passenger_changes():
-    """Test that Passenger model has passenger_ids M2M field"""
-    print("\n🔧 TESTING PASSENGER MODEL CHANGES")
-    print("=" * 50)
-    
-    # Check Passenger model fields
-    passenger_fields = [f.name for f in Passenger._meta.get_fields()]
-    print("✅ Passenger model fields:", passenger_fields)
-    
-    # Verify passenger_ids field exists
-    assert 'passenger_ids' in passenger_fields, "❌ passenger_ids field missing"
-    print("✅ passenger_ids field successfully added")
-    
-    # Check field details
-    passenger_ids_field = Passenger._meta.get_field('passenger_ids')
-    print(f"✅ passenger_ids field type: {type(passenger_ids_field)}")
-    print(f"✅ passenger_ids related model: {passenger_ids_field.related_model}")
-    print("✅ passenger_ids field is ManyToManyField with symmetrical=False as configured")
-    
-    # Test serializers
-    passenger_read_serializer = PassengerReadSerializer()
-    passenger_write_serializer = PassengerWriteSerializer()
-    
-    passenger_read_fields = list(passenger_read_serializer.fields.keys())
-    passenger_write_fields = list(passenger_write_serializer.fields.keys())
-    
-    print("✅ PassengerReadSerializer fields:", passenger_read_fields)
-    print("✅ PassengerWriteSerializer fields:", passenger_write_fields)
-    
-    # Verify passenger_ids field in serializers
-    assert 'related_passengers' in passenger_read_fields, "❌ PassengerReadSerializer missing related_passengers"
-    assert 'passenger_ids' in passenger_write_fields, "❌ PassengerWriteSerializer missing passenger_ids"
-    
-    print("✅ Passenger serializers correctly include passenger relationship fields")
+    # Collect numbers from PHONE column
+    numbers.extend(extract_numbers(row['PHONE']))
 
-def test_database_compatibility():
-    """Test database queries work with the changes"""
-    print("\n🗄️  TESTING DATABASE COMPATIBILITY")
-    print("=" * 50)
-    
-    try:
-        # Test Quote queries
-        quote_count = Quote.objects.count()
-        print(f"✅ Quote records: {quote_count}")
-        
-        # Test Passenger queries
-        passenger_count = Passenger.objects.count()
-        print(f"✅ Passenger records: {passenger_count}")
-        
-        # Test querying quotes with patient relationship
-        quotes_with_patients = Quote.objects.filter(patient__isnull=False).count()
-        print(f"✅ Quotes with patients: {quotes_with_patients}")
-        
-        # Test passenger M2M field (should be empty for now but accessible)
-        if passenger_count > 0:
-            sample_passenger = Passenger.objects.first()
-            related_count = sample_passenger.passenger_ids.count()
-            print(f"✅ Sample passenger related passengers: {related_count}")
-        
-        print("✅ Database operations work correctly")
-        
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        return False
-    
-    return True
+    # Collect numbers from Email column (sometimes contains numbers)
+    numbers.extend(extract_numbers(row['Email']))
 
-def run_comprehensive_test():
-    """Run all tests for the model changes"""
-    print("🧪 COMPREHENSIVE TEST FOR MODEL CHANGES")
-    print("=" * 80)
-    
-    try:
-        test_quote_changes()
-        test_passenger_changes()
-        db_ok = test_database_compatibility()
-        
-        print("\n🎉 SUMMARY")
-        print("=" * 50)
-        print("✅ Quote model: patient name fields removed")
-        print("✅ Passenger model: passenger_ids M2M field added")
-        print("✅ Serializers updated correctly")
-        print("✅ Database compatibility verified" if db_ok else "⚠️  Database compatibility issues")
-        print("\n✅ ALL TESTS PASSED! Model changes implemented successfully.")
-        
-    except AssertionError as e:
-        print(f"\n❌ TEST FAILED: {e}")
-        return False
-    except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR: {e}")
-        return False
-    
-    return True
+    # Deduplicate and keep order
+    numbers = list(dict.fromkeys(numbers))
+
+    # Assign cleaned numbers back
+    row['PHONE'] = numbers[0] if numbers else ''
+    row['PHONE2'] = numbers[1] if len(numbers) > 1 else ''
+
+    # If email was a phone number, clear it
+    if extract_numbers(row['Email']):
+        row['Email'] = ''
+
+    return row
+
+def clean_csv(input_file, output_file):
+    df = pd.read_csv(input_file, dtype=str)
+
+    if 'PHONE2' not in df.columns:
+        df['PHONE2'] = ''
+
+    df = df.apply(process_row, axis=1)
+
+    df.to_csv(output_file, index=False)
+    print(f"Cleaned CSV written to {output_file}")
 
 if __name__ == "__main__":
-    success = run_comprehensive_test()
-    sys.exit(0 if success else 1)
+    clean_csv("FBO.csv", "FBO_clean.csv")
 
 ```
 
@@ -495,6 +409,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -562,9 +477,14 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("POSTGRES_DB", "airmed"),
+        "USER": os.environ.get("POSTGRES_USER", "airmed"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "airmedpass"),
+        # If Django is running on your Mac (outside Docker), use localhost:
+        "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 
@@ -845,10 +765,6 @@ class Role(BaseModel):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
     permissions = models.ManyToManyField(Permission, related_name="roles")
-    modified_on = models.DateTimeField(auto_now=True)
-    modified_by = models.ForeignKey(User, null=True, blank=True,
-                                    on_delete=models.SET_NULL,
-                                    related_name="%(class)s_modified")
     
     def __str__(self):
         return self.name
@@ -896,8 +812,11 @@ class Contact(BaseModel):
     state = models.CharField(max_length=100, blank=True, null=True)
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
+    nationality = models.CharField(max_length=100, blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
+    passport_number = models.CharField(max_length=100, blank=True, null=True)
+    passport_expiration_date = models.DateField(blank=True, null=True)
 
-    
     def __str__(self):
         if self.business_name:
             return self.business_name
@@ -917,6 +836,9 @@ class FBO(BaseModel):
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="fbos")
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    phone_secondary = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
     
@@ -939,22 +861,38 @@ class Ground(BaseModel):
     def __str__(self):
         return self.name
 
+
+class AirportType(models.TextChoices):
+    LARGE = 'large_airport', 'Large airport'
+    MEDIUM = 'medium_airport', 'Medium airport'
+    SMALL = 'small_airport', 'Small airport'
+
+
 # Airport model
 class Airport(BaseModel):
-    icao_code = models.CharField(max_length=4, unique=True, db_index=True)
-    iata_code = models.CharField(max_length=3, db_index=True)
+    ident = models.CharField(max_length=10, unique=True, db_index=True)
     name = models.CharField(max_length=255)
-    city = models.CharField(max_length=100)
-    state = models.CharField(max_length=100, blank=True, null=True)
-    country = models.CharField(max_length=100)
-    elevation = models.IntegerField(blank=True, null=True)
-    fbos = models.ManyToManyField(FBO, related_name="airports", blank=True)
-    grounds = models.ManyToManyField(Ground, related_name="airports", blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    elevation = models.IntegerField(blank=True, null=True)
+    iso_country = models.CharField(max_length=100)
+    iso_region = models.CharField(max_length=100, blank=True, null=True)
+    municipality = models.CharField(max_length=100, blank=True, null=True)
+    icao_code = models.CharField(max_length=4, unique=True, db_index=True, blank=True, null=True)
+    iata_code = models.CharField(max_length=3, db_index=True, blank=True, null=True)
+    local_code = models.CharField(max_length=10, blank=True, null=True)
+    gps_code = models.CharField(max_length=20, blank=True, null=True)
+    airport_type = models.CharField(
+        max_length=20,
+        choices=AirportType.choices,
+        default=AirportType.SMALL,
+        db_index=True,
+    )
+    fbos = models.ManyToManyField(FBO, related_name="airports", blank=True)
+    grounds = models.ManyToManyField(Ground, related_name="airports", blank=True)
+
     timezone = models.CharField(max_length=50)
 
-    
     def __str__(self):
         return f"{self.name} ({self.icao_code}/{self.iata_code})"
 
@@ -1139,7 +1077,8 @@ class Trip(BaseModel):
     internal_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="internal_itinerary_trips", db_column="internal_itinerary_id")
     customer_itinerary = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_itinerary_trips", db_column="customer_itinerary_id")
     passengers = models.ManyToManyField(Passenger, related_name="trips", blank=True)
-    
+    notes = models.TextField(blank=True, null=True)
+
     def __str__(self):
         return f"Trip {self.trip_number} - {self.type}"
 
@@ -1164,6 +1103,75 @@ class TripLine(BaseModel):
     class Meta:
         ordering = ['departure_time_utc']
 
+
+class Staff(BaseModel):
+    contact = models.OneToOneField("api.Contact", on_delete=models.CASCADE, related_name="staff")
+    active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.contact.first_name} {self.contact.last_name}".strip() or str(self.contact_id)
+
+
+class StaffRole(BaseModel):
+    code = models.CharField(max_length=32, unique=True)   # e.g., 'PIC', 'SIC', 'RN', 'PARAMEDIC'
+    name = models.CharField(max_length=64)                # e.g., 'Pilot in Command'
+
+    class Meta:
+        indexes = [models.Index(fields=["code"])]
+
+    def __str__(self):
+        return self.code
+
+
+class StaffRoleMembership(BaseModel):
+    staff = models.ForeignKey("api.Staff", on_delete=models.CASCADE, related_name="role_memberships")
+    role = models.ForeignKey("api.StaffRole", on_delete=models.PROTECT, related_name="memberships")
+    start_on = models.DateField(null=True, blank=True)
+    end_on = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["staff", "role", "start_on", "end_on"],
+                name="uniq_staff_role_interval"
+            )
+        ]
+
+
+class TripEvent(BaseModel):
+    """
+    Non-flight timeline items attached to a Trip.
+    """
+    EVENT_TYPES = [
+        ("CREW_CHANGE", "Crew Change"),
+        ("OVERNIGHT", "Overnight (New Day)"),
+    ]
+
+    trip_id = models.ForeignKey("api.Trip", on_delete=models.CASCADE, related_name="events")
+    airport_id = models.ForeignKey("api.Airport", on_delete=models.PROTECT, related_name="trip_events")
+
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+
+    # Start/end timestamps (UTC + local) so you can group by day and show durations
+    start_time_local = models.DateTimeField()
+    start_time_utc = models.DateTimeField()
+    end_time_local = models.DateTimeField(blank=True, null=True)  # required for OVERNIGHT
+    end_time_utc = models.DateTimeField(blank=True, null=True)
+
+    # Only used for CREW_CHANGE
+    crew_line_id = models.ForeignKey(
+        "api.CrewLine", on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_events"
+    )
+
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["trip_id", "start_time_utc"]),
+            models.Index(fields=["event_type"]),
+        ]
+
 ```
 
 
@@ -1174,7 +1182,8 @@ from rest_framework import serializers
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
+    StaffRoleMembership, Contact, TripEvent
 )
 from django.contrib.auth.models import User
 
@@ -1207,11 +1216,51 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 # Contact and location serializers
 class ContactSerializer(serializers.ModelSerializer):
+    contact_type = serializers.SerializerMethodField()
+    
     class Meta:
         model = Contact
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
-                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
-                 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
+                 'nationality', 'date_of_birth', 'passport_number', 'passport_expiration_date',
+                 'contact_type', 'created_on', 'created_by', 'modified_on', 'modified_by']
+    
+    def get_contact_type(self, obj):
+        """
+        Determine contact type based on related objects
+        """
+        # Check if this contact is a patient
+        if hasattr(obj, 'patients') and obj.patients.exists():
+            return 'Patient'
+        
+        # Check if this contact is staff
+        if hasattr(obj, 'staff'):
+            try:
+                staff = obj.staff
+                # Check staff role memberships to determine if pilot or medic
+                role_codes = staff.role_memberships.filter(
+                    end_on__isnull=True  # Active memberships only
+                ).values_list('role__code', flat=True)
+                
+                if 'PIC' in role_codes or 'SIC' in role_codes:
+                    return 'Staff - Pilot'
+                elif 'RN' in role_codes or 'PARAMEDIC' in role_codes:
+                    return 'Staff - Medic'
+                else:
+                    return 'Staff'
+            except:
+                return 'Staff'
+        
+        # Check if this contact is a passenger
+        if hasattr(obj, 'passengers') and obj.passengers.exists():
+            return 'Passenger'
+        
+        # Check if this contact is a customer (has quotes)
+        if hasattr(obj, 'quotes') and obj.quotes.exists():
+            return 'Customer'
+        
+        # Default type
+        return 'General'
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1226,11 +1275,22 @@ class GroundSerializer(serializers.ModelSerializer):
                  'modified_on', 'modified_by']
 
 class AirportSerializer(serializers.ModelSerializer):
+    fbos_count = serializers.SerializerMethodField()
+    grounds_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Airport
-        fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
-                 'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
+        fields = ['id', 'ident', 'name', 'latitude', 'longitude', 'elevation', 
+                 'iso_country', 'iso_region', 'municipality', 'icao_code', 'iata_code', 
+                 'local_code', 'gps_code', 'airport_type', 'timezone', 
+                 'fbos', 'grounds', 'fbos_count', 'grounds_count',
                  'created_on', 'created_by', 'modified_on', 'modified_by']
+    
+    def get_fbos_count(self, obj):
+        return obj.fbos.count()
+    
+    def get_grounds_count(self, obj):
+        return obj.grounds.count()
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
@@ -1322,6 +1382,25 @@ class PassengerWriteSerializer(serializers.ModelSerializer):
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
             'passenger_ids', 'status'
         ]
+    
+    def create(self, validated_data):
+        # Get contact data for filling deprecated fields
+        contact = validated_data['info']
+        passenger_ids = validated_data.pop('passenger_ids', [])
+        
+        # Use contact data as primary source, fallback to provided data
+        validated_data['date_of_birth'] = contact.date_of_birth or validated_data.get('date_of_birth')
+        validated_data['nationality'] = contact.nationality or validated_data.get('nationality', '')
+        validated_data['passport_number'] = contact.passport_number or validated_data.get('passport_number', '')
+        validated_data['passport_expiration_date'] = contact.passport_expiration_date or validated_data.get('passport_expiration_date')
+        
+        passenger = super().create(validated_data)
+        
+        # Set related passengers if provided
+        if passenger_ids:
+            passenger.passenger_ids.set(passenger_ids)
+        
+        return passenger
 
 # 3) Crew Lines
 class CrewLineReadSerializer(serializers.ModelSerializer):
@@ -1344,7 +1423,7 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
         queryset=Contact.objects.all(), write_only=True
     )
     medic_ids = serializers.PrimaryKeyRelatedField(
-        source='medic_ids', queryset=Contact.objects.all(), many=True, write_only=True
+        queryset=Contact.objects.all(), many=True, write_only=True
     )
     
     class Meta:
@@ -1360,10 +1439,10 @@ class TripMiniSerializer(serializers.ModelSerializer):
 
 
 class TripLineReadSerializer(serializers.ModelSerializer):
-    trip = TripMiniSerializer(source="trip_id", read_only=True)
-    origin_airport = AirportSerializer(source="origin_airport_id", read_only=True)
-    destination_airport = AirportSerializer(source="destination_airport_id", read_only=True)
-    crew_line = CrewLineReadSerializer(source="crew_line_id", read_only=True)
+    trip = TripMiniSerializer(read_only=True)
+    origin_airport = AirportSerializer(read_only=True)
+    destination_airport = AirportSerializer(read_only=True)
+    crew_line = CrewLineReadSerializer(read_only=True)
     
     class Meta:
         model = TripLine
@@ -1456,7 +1535,7 @@ class TripWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trip
         fields = [
-            'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'passenger_ids', 'status'
         ]
@@ -1477,15 +1556,25 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
             'patient', 'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
-            'transactions', 'status', 'created_on'
+            'transactions', 'status', 'quote_pdf_status', 'aircraft_type', 'medical_team',
+            'created_on'
         ]
     
     def get_patient(self, obj):
         if obj.patient:
-            return {
+            patient_data = {
                 'id': obj.patient.id,
                 'status': obj.patient.status
             }
+            # Include patient's contact info (name)
+            if obj.patient.info:
+                patient_data['info'] = {
+                    'id': obj.patient.info.id,
+                    'first_name': obj.patient.info.first_name,
+                    'last_name': obj.patient.info.last_name,
+                    'email': obj.patient.info.email
+                }
+            return patient_data
         return None
     
     def get_transactions(self, obj):
@@ -1525,8 +1614,11 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
         model = Quote
         fields = [
             'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
-            'patient', 'payment_agreement', 'consent_for_transport',
-            'patient_service_agreement', 'transaction_ids', 'status'
+            'patient', 'aircraft_type', 'medical_team', 'estimated_flight_time',
+            'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
+            'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
+            'payment_agreement', 'consent_for_transport', 'patient_service_agreement', 
+            'transaction_ids', 'status'
         ]
 
 # 7) Documents
@@ -1582,7 +1674,19 @@ class PatientReadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Patient
-        fields = ['id', 'info', 'status', 'created_on']
+        fields = [
+            'id', 
+            'info', 
+            'date_of_birth', 
+            'nationality', 
+            'passport_number', 
+            'passport_expiration_date', 
+            'special_instructions', 
+            'status', 
+            'bed_at_origin', 
+            'bed_at_destination', 
+            'created_on'
+        ]
 
 class PatientWriteSerializer(serializers.ModelSerializer):
     info = serializers.PrimaryKeyRelatedField(
@@ -1591,7 +1695,161 @@ class PatientWriteSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Patient
-        fields = ['info', 'status']
+        fields = [
+            'info', 
+            'date_of_birth', 
+            'nationality', 
+            'passport_number', 
+            'passport_expiration_date', 
+            'special_instructions', 
+            'status', 
+            'bed_at_origin', 
+            'bed_at_destination'
+        ]
+    
+    def create(self, validated_data):
+        # Get contact data for filling deprecated fields
+        contact = validated_data['info']
+        
+        # Use contact data as primary source, fallback to provided data
+        validated_data['date_of_birth'] = contact.date_of_birth or validated_data.get('date_of_birth')
+        validated_data['nationality'] = contact.nationality or validated_data.get('nationality', '')
+        validated_data['passport_number'] = contact.passport_number or validated_data.get('passport_number', '')
+        validated_data['passport_expiration_date'] = contact.passport_expiration_date or validated_data.get('passport_expiration_date')
+        
+        return super().create(validated_data)
+
+
+class StaffWriteSerializer(serializers.ModelSerializer):
+    # Accept a Contact id on write
+    contact_id = serializers.PrimaryKeyRelatedField(
+        source="contact", queryset=Contact.objects.all()
+    )
+
+    class Meta:
+        model = Staff
+        fields = ("id", "contact_id", "active", "notes")
+
+    def validate_contact_id(self, contact: Contact):
+        # Friendly error if a Staff already exists for the Contact (OneToOne is also enforced by DB)
+        if self.instance is None and Staff.objects.filter(contact=contact).exists():
+            raise serializers.ValidationError("Staff for this contact already exists.")
+        return contact
+
+
+# --- StaffRole ---
+
+class StaffRoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StaffRole
+        fields = ("id", "code", "name", "created_on")
+
+
+# --- StaffRoleMembership ---
+
+class StaffRoleMembershipWriteSerializer(serializers.ModelSerializer):
+    staff_id = serializers.PrimaryKeyRelatedField(
+        source="staff", queryset=Staff.objects.all()
+    )
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role", queryset=StaffRole.objects.all()
+    )
+
+    class Meta:
+        model = StaffRoleMembership
+        fields = ("id", "staff_id", "role_id", "start_on", "end_on")
+
+    def validate(self, attrs):
+        start_on = attrs.get("start_on")
+        end_on = attrs.get("end_on")
+        if start_on and end_on and end_on < start_on:
+            raise serializers.ValidationError({"end_on": "end_on cannot be before start_on"})
+        return attrs
+
+
+class StaffRoleMembershipReadSerializer(serializers.ModelSerializer):
+    staff_id = serializers.PrimaryKeyRelatedField(source="staff", read_only=True)
+    role_id = serializers.PrimaryKeyRelatedField(source="role", read_only=True)
+    role = StaffRoleSerializer(read_only=True)
+
+    class Meta:
+        model = StaffRoleMembership
+        fields = ("id", "staff_id", "role_id", "role", "start_on", "end_on", "created_on")
+
+
+class StaffReadSerializer(serializers.ModelSerializer):
+    # Return the FK as an id to stay consistent with your API style
+    contact_id = serializers.PrimaryKeyRelatedField(source="contact", read_only=True)
+    # Include full contact information for display purposes
+    contact = ContactSerializer(read_only=True)
+    # Include role memberships for display purposes
+    role_memberships = StaffRoleMembershipReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Staff
+        fields = ("id", "contact_id", "contact", "active", "notes", "created_on", "role_memberships")
+
+
+class TripEventWriteSerializer(serializers.ModelSerializer):
+    trip_id = serializers.PrimaryKeyRelatedField(source="trip_id", queryset=Trip.objects.all())
+    airport_id = serializers.PrimaryKeyRelatedField(source="airport_id", queryset=Airport.objects.all())
+    crew_line_id = serializers.PrimaryKeyRelatedField(
+        source="crew_line_id", queryset=CrewLine.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = TripEvent
+        fields = (
+            "id",
+            "trip_id",
+            "airport_id",
+            "event_type",
+            "start_time_local",
+            "start_time_utc",
+            "end_time_local",
+            "end_time_utc",
+            "crew_line_id",
+            "notes",
+        )
+
+    def validate(self, attrs):
+        ev_type = attrs.get("event_type") or (self.instance and self.instance.event_type)
+        if ev_type == "CREW_CHANGE":
+            if not attrs.get("crew_line_id") and not (self.instance and self.instance.crew_line_id):
+                raise serializers.ValidationError({"crew_line_id": "Required for CREW_CHANGE"})
+            # end_time is not required for crew change; treat as instantaneous or short window
+
+        if ev_type == "OVERNIGHT":
+            st = attrs.get("start_time_utc") or (self.instance and self.instance.start_time_utc)
+            et = attrs.get("end_time_utc") or (self.instance and self.instance.end_time_utc)
+            if not (st and et):
+                raise serializers.ValidationError({"end_time_utc": "OVERNIGHT requires start and end times"})
+            if et <= st:
+                raise serializers.ValidationError({"end_time_utc": "Must be after start_time_utc"})
+        return attrs
+
+
+class TripEventReadSerializer(serializers.ModelSerializer):
+    # Return IDs to match your API style
+    trip_id = serializers.PrimaryKeyRelatedField(source="trip_id", read_only=True)
+    airport_id = serializers.PrimaryKeyRelatedField(source="airport_id", read_only=True)
+    crew_line_id = serializers.PrimaryKeyRelatedField(source="crew_line_id", read_only=True)
+
+    class Meta:
+        model = TripEvent
+        fields = (
+            "id",
+            "trip_id",
+            "airport_id",
+            "event_type",
+            "start_time_local",
+            "start_time_utc",
+            "end_time_local",
+            "end_time_utc",
+            "crew_line_id",
+            "notes",
+            "created_on",
+        )
 
 ```
 
@@ -1616,6 +1874,321 @@ class ApiConfig(AppConfig):
     def ready(self):
         import api.signals
 
+```
+
+
+# File: api/contact_service.py
+
+```python
+"""
+Unified Contact Creation Service
+
+This service provides a clean, consistent way to create contact records
+that can be used for patients, staff, customers, and passengers.
+All passport information, birth dates, and contact details are now 
+stored on the Contact model.
+"""
+
+from django.db import transaction
+from django.core.exceptions import ValidationError
+from rest_framework import serializers
+from .models import Contact, Patient, Staff, Passenger
+from typing import Dict, Any, Optional, Tuple
+from datetime import date
+
+
+class ContactCreationService:
+    """
+    Service class for creating contacts and associated records (Patient, Staff, Passenger, etc.)
+    """
+    
+    @staticmethod
+    def create_contact_with_related(
+        contact_data: Dict[str, Any],
+        related_type: str,
+        related_data: Optional[Dict[str, Any]] = None,
+        created_by=None
+    ) -> Tuple[Contact, Any]:
+        """
+        Create a contact record along with its related record (Patient, Staff, Passenger, etc.)
+        
+        Args:
+            contact_data: Dictionary containing contact information
+            related_type: Type of related record ('patient', 'staff', 'passenger', 'customer')
+            related_data: Additional data specific to the related record type
+            created_by: User who is creating the record
+            
+        Returns:
+            Tuple of (Contact instance, Related instance)
+            
+        Raises:
+            ValidationError: If data validation fails
+        """
+        if related_data is None:
+            related_data = {}
+            
+        with transaction.atomic():
+            # Validate and create contact
+            contact = ContactCreationService._create_contact(contact_data, created_by)
+            
+            # Create related record
+            related_instance = None
+            if related_type == 'patient':
+                related_instance = ContactCreationService._create_patient(contact, related_data, created_by)
+            elif related_type == 'staff':
+                related_instance = ContactCreationService._create_staff(contact, related_data, created_by)
+            elif related_type == 'passenger':
+                related_instance = ContactCreationService._create_passenger(contact, related_data, created_by)
+            elif related_type == 'customer':
+                # For customers, we just need the contact record
+                related_instance = contact
+            else:
+                raise ValidationError(f"Unknown related type: {related_type}")
+                
+            return contact, related_instance
+    
+    @staticmethod
+    def _create_contact(contact_data: Dict[str, Any], created_by=None) -> Contact:
+        """
+        Create and validate a Contact record
+        """
+        # Validate required fields
+        ContactCreationService._validate_contact_data(contact_data)
+        
+        # Create contact instance
+        contact = Contact(
+            # Personal Information
+            first_name=contact_data.get('first_name', '').strip(),
+            last_name=contact_data.get('last_name', '').strip(),
+            business_name=contact_data.get('business_name', '').strip(),
+            
+            # Contact Information
+            email=contact_data.get('email', '').strip(),
+            phone=contact_data.get('phone', '').strip(),
+            
+            # Address Information
+            address_line1=contact_data.get('address_line1', '').strip(),
+            address_line2=contact_data.get('address_line2', '').strip(),
+            city=contact_data.get('city', '').strip(),
+            state=contact_data.get('state', '').strip(),
+            zip=contact_data.get('zip', '').strip(),
+            country=contact_data.get('country', '').strip(),
+            
+            # Personal Details (now on Contact table)
+            nationality=contact_data.get('nationality', '').strip(),
+            date_of_birth=contact_data.get('date_of_birth'),
+            passport_number=contact_data.get('passport_number', '').strip(),
+            passport_expiration_date=contact_data.get('passport_expiration_date'),
+            
+            # Audit fields
+            created_by=created_by,
+            status=contact_data.get('status', 'active')
+        )
+        
+        # Validate and save
+        contact.full_clean()
+        contact.save()
+        
+        return contact
+    
+    @staticmethod
+    def _create_patient(contact: Contact, patient_data: Dict[str, Any], created_by=None) -> Patient:
+        """
+        Create a Patient record linked to the Contact
+        """
+        patient = Patient(
+            info=contact,
+            special_instructions=patient_data.get('special_instructions', '').strip(),
+            bed_at_origin=patient_data.get('bed_at_origin', False),
+            bed_at_destination=patient_data.get('bed_at_destination', False),
+            status=patient_data.get('status', 'pending'),
+            created_by=created_by,
+            
+            # Note: These fields are now deprecated and will be removed in future migration
+            # The data should come from contact.date_of_birth, contact.nationality, etc.
+            date_of_birth=contact.date_of_birth or date.today(),
+            nationality=contact.nationality or 'Unknown',
+            passport_number=contact.passport_number or '',
+            passport_expiration_date=contact.passport_expiration_date or date.today(),
+        )
+        
+        patient.full_clean()
+        patient.save()
+        
+        return patient
+    
+    @staticmethod
+    def _create_staff(contact: Contact, staff_data: Dict[str, Any], created_by=None) -> Staff:
+        """
+        Create a Staff record linked to the Contact
+        """
+        # Check if staff already exists for this contact
+        if Staff.objects.filter(contact=contact).exists():
+            raise ValidationError("Staff record already exists for this contact")
+            
+        staff = Staff(
+            contact=contact,
+            active=staff_data.get('active', True),
+            notes=staff_data.get('notes', '').strip(),
+            created_by=created_by
+        )
+        
+        staff.full_clean()
+        staff.save()
+        
+        return staff
+    
+    @staticmethod
+    def _create_passenger(contact: Contact, passenger_data: Dict[str, Any], created_by=None) -> Passenger:
+        """
+        Create a Passenger record linked to the Contact
+        """
+        passenger = Passenger(
+            info=contact,
+            contact_number=passenger_data.get('contact_number', '').strip(),
+            notes=passenger_data.get('notes', '').strip(),
+            status=passenger_data.get('status', 'active'),
+            created_by=created_by,
+            
+            # Note: These fields are now deprecated and will be removed in future migration
+            # The data should come from contact.date_of_birth, contact.nationality, etc.
+            date_of_birth=contact.date_of_birth,
+            nationality=contact.nationality or '',
+            passport_number=contact.passport_number or '',
+            passport_expiration_date=contact.passport_expiration_date,
+        )
+        
+        passenger.full_clean()
+        passenger.save()
+        
+        return passenger
+    
+    @staticmethod
+    def _validate_contact_data(contact_data: Dict[str, Any]):
+        """
+        Validate contact data before creation
+        """
+        # Check that either personal name or business name is provided
+        first_name = contact_data.get('first_name', '').strip()
+        last_name = contact_data.get('last_name', '').strip()
+        business_name = contact_data.get('business_name', '').strip()
+        
+        if not first_name and not last_name and not business_name:
+            raise ValidationError("Either first/last name or business name is required")
+        
+        # Validate email format if provided
+        email = contact_data.get('email', '').strip()
+        if email and '@' not in email:
+            raise ValidationError("Invalid email format")
+        
+        # Validate passport expiration is after birth date if both provided
+        birth_date = contact_data.get('date_of_birth')
+        passport_expiration = contact_data.get('passport_expiration_date')
+        
+        if birth_date and passport_expiration and passport_expiration <= birth_date:
+            raise ValidationError("Passport expiration date must be after date of birth")
+    
+    @staticmethod
+    def update_contact_and_related(
+        contact: Contact,
+        contact_data: Dict[str, Any],
+        related_instance: Any = None,
+        related_data: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Contact, Any]:
+        """
+        Update existing contact and related record
+        """
+        with transaction.atomic():
+            # Update contact fields
+            for field, value in contact_data.items():
+                if hasattr(contact, field):
+                    if isinstance(value, str):
+                        value = value.strip()
+                    setattr(contact, field, value)
+            
+            contact.full_clean()
+            contact.save()
+            
+            # Update related record if provided
+            if related_instance and related_data:
+                for field, value in related_data.items():
+                    if hasattr(related_instance, field):
+                        if isinstance(value, str):
+                            value = value.strip()
+                        setattr(related_instance, field, value)
+                
+                related_instance.full_clean()
+                related_instance.save()
+            
+            return contact, related_instance
+
+
+class ContactCreationSerializer(serializers.Serializer):
+    """
+    Serializer for unified contact creation requests
+    """
+    # Contact data
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    business_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    
+    # Address fields
+    address_line1 = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    address_line2 = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    state = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    zip = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    
+    # Personal details (now on Contact table)
+    nationality = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    passport_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    passport_expiration_date = serializers.DateField(required=False, allow_null=True)
+    
+    # Related record type and data
+    related_type = serializers.ChoiceField(
+        choices=['patient', 'staff', 'passenger', 'customer'],
+        required=True
+    )
+    related_data = serializers.JSONField(required=False, default=dict)
+    
+    def validate(self, data):
+        # Ensure either personal or business name is provided
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        business_name = data.get('business_name', '').strip()
+        
+        if not first_name and not last_name and not business_name:
+            raise serializers.ValidationError(
+                "Either first/last name or business name is required"
+            )
+        
+        return data
+    
+    def create(self, validated_data):
+        # Extract related data
+        related_type = validated_data.pop('related_type')
+        related_data = validated_data.pop('related_data', {})
+        
+        # Get user from context
+        created_by = self.context.get('request').user if self.context.get('request') else None
+        
+        # Create contact and related record
+        contact, related_instance = ContactCreationService.create_contact_with_related(
+            contact_data=validated_data,
+            related_type=related_type,
+            related_data=related_data,
+            created_by=created_by
+        )
+        
+        return {
+            'contact': contact,
+            'related_instance': related_instance,
+            'related_type': related_type
+        }
 ```
 
 
@@ -1891,12 +2464,17 @@ router.register(r'crew-lines', views.CrewLineViewSet)
 router.register(r'trips', views.TripViewSet)
 router.register(r'trip-lines', views.TripLineViewSet)
 router.register(r'modifications', views.ModificationViewSet)
+router.register(r"staff", views.StaffViewSet, basename="staff")
+router.register(r"staff-roles", views.StaffRoleViewSet, basename="staff-role")
+router.register(r"staff-role-memberships", views.StaffRoleMembershipViewSet, basename="staff-role-membership")
+router.register(r"trip-events", TripEventViewSet, basename="trip-event")
 
 urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
     path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
+    path('contacts/create-with-related/', views.create_contact_with_related, name='create-contact-with-related'),
 ]
 
 ```
@@ -1910,6 +2488,7 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
 from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
@@ -1939,8 +2518,9 @@ def get_fuel_prices(request, airport_code):
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership
 )
+from .contact_service import ContactCreationService, ContactCreationSerializer
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
     ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
@@ -1954,7 +2534,9 @@ from .serializers import (
     QuoteReadSerializer, QuoteWriteSerializer,
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
-    PatientReadSerializer, PatientWriteSerializer
+    PatientReadSerializer, PatientWriteSerializer, StaffReadSerializer, StaffWriteSerializer,
+    StaffRoleSerializer,
+    StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -1966,10 +2548,23 @@ from .permissions import (
     CanReadTripLine, CanWriteTripLine, CanModifyTripLine, CanDeleteTripLine
 )
 
+# Standard pagination class for all ViewSets
+class StandardPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+# Custom pagination for airports (if different settings needed)
+class AirportPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 # Base ViewSet with common functionality
 class BaseViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination  # Apply pagination to all ViewSets
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -2040,8 +2635,9 @@ class GroundViewSet(BaseViewSet):
 class AirportViewSet(BaseViewSet):
     queryset = Airport.objects.all()
     serializer_class = AirportSerializer
-    search_fields = ['name', 'icao_code', 'iata_code', 'city', 'country']
-    ordering_fields = ['name', 'icao_code', 'iata_code', 'created_on']
+    pagination_class = AirportPagination
+    search_fields = ['name', 'ident', 'icao_code', 'iata_code', 'municipality', 'iso_country', 'iso_region']
+    ordering_fields = ['name', 'ident', 'icao_code', 'iata_code', 'airport_type', 'created_on']
     
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -2051,9 +2647,11 @@ class AirportViewSet(BaseViewSet):
             
         airports = Airport.objects.filter(
             Q(name__icontains=query) | 
+            Q(ident__icontains=query) |
             Q(icao_code__icontains=query) | 
             Q(iata_code__icontains=query) |
-            Q(city__icontains=query)
+            Q(municipality__icontains=query) |
+            Q(iso_country__icontains=query)
         )[:10]
         
         serializer = self.get_serializer(airports, many=True)
@@ -2190,13 +2788,26 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient').prefetch_related('transactions')
-    search_fields = ['contact__first_name', 'contact__last_name', 'status']
+    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient', 'patient__info').prefetch_related('transactions')
+    search_fields = ['contact__first_name', 'contact__last_name', 'patient__info__first_name', 'patient__info__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadQuote | CanWriteQuote | CanModifyQuote | CanDeleteQuote
     ]
+    
+    def get_queryset(self):
+        """
+        Filter quotes by status and handle UUID search if provided in query params
+        """
+        queryset = super().get_queryset()
+        
+        # Filter by status if provided
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+            
+        return queryset
     
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -2281,8 +2892,8 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote', 'patient', 'aircraft').prefetch_related('trip_lines', 'passengers')
-    search_fields = ['trip_number', 'type']
+    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info')
+    search_fields = ['trip_number', 'type', 'patient__info__first_name', 'patient__info__last_name', 'passengers__info__first_name', 'passengers__info__last_name']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -2497,7 +3108,7 @@ def dashboard_stats(request):
                     'amount': float(q.quoted_amount),
                     'status': q.status,
                     'created_on': q.created_on,
-                    'patient_name': f"{q.patient_first_name or ''} {q.patient_last_name or ''}".strip()
+                    'patient_name': f"{q.patient.info.first_name or ''} {q.patient.info.last_name or ''}".strip() if q.patient and q.patient.info else 'No patient'
                 } for q in recent_quotes
             ],
             'trips': [
@@ -2513,15 +3124,185 @@ def dashboard_stats(request):
         }
     })
 
+
+class StaffViewSet(BaseViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = Staff.objects.select_related("contact").all().order_by("-created_on")
+    search_fields = ['contact__first_name', 'contact__last_name', 'contact__business_name', 'contact__email']
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return StaffReadSerializer
+        return StaffWriteSerializer
+
+
+class StaffRoleViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = StaffRole.objects.all().order_by("code")
+    serializer_class = StaffRoleSerializer
+
+
+class StaffRoleMembershipViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = StaffRoleMembership.objects.select_related("staff", "role").all().order_by("-created_on")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Filter by staff_id if provided
+        staff_id = self.request.query_params.get('staff_id', None)
+        if staff_id is not None:
+            queryset = queryset.filter(staff_id=staff_id)
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return StaffRoleMembershipReadSerializer
+        return StaffRoleMembershipWriteSerializer
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_contact_with_related(request):
+    """
+    Unified endpoint for creating contacts with related records (Patient, Staff, Passenger, Customer)
+    
+    POST /api/contacts/create-with-related/
+    
+    Body:
+    {
+        "first_name": "John",
+        "last_name": "Doe", 
+        "email": "john.doe@example.com",
+        "phone": "+1234567890",
+        "date_of_birth": "1990-01-01",
+        "passport_number": "123456789",
+        "passport_expiration_date": "2030-01-01",
+        "nationality": "US",
+        "related_type": "patient",  // "patient", "staff", "passenger", "customer"
+        "related_data": {
+            "special_instructions": "Requires wheelchair assistance",
+            "bed_at_origin": true,
+            "status": "confirmed"
+        }
+    }
+    """
+    serializer = ContactCreationSerializer(data=request.data, context={'request': request})
+    
+    if serializer.is_valid():
+        try:
+            result = serializer.save()
+            
+            # Return appropriate response based on related type
+            contact = result['contact']
+            related_instance = result['related_instance']
+            related_type = result['related_type']
+            
+            response_data = {
+                'contact': ContactSerializer(contact).data,
+                'related_type': related_type,
+                'success': True,
+                'message': f'{related_type.capitalize()} created successfully'
+            }
+            
+            # Add specific related data
+            if related_type == 'patient':
+                from .serializers import PatientReadSerializer
+                response_data['patient'] = PatientReadSerializer(related_instance).data
+            elif related_type == 'staff':
+                response_data['staff'] = StaffReadSerializer(related_instance).data
+            elif related_type == 'passenger':
+                from .serializers import PassengerReadSerializer
+                response_data['passenger'] = PassengerReadSerializer(related_instance).data
+            elif related_type == 'customer':
+                response_data['customer'] = ContactSerializer(related_instance).data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e),
+                'success': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 ```
 
 
-# File: api/migrations/0003_agreement_modified_by_agreement_modified_on_and_more.py
+# File: api/migrations/0006_alter_airport_iata_code_alter_airport_icao_code.py
 
 ```python
-# Generated by Django 5.1.11 on 2025-08-21 06:52
+# Generated by Django 5.1.11 on 2025-08-24 02:49
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0005_airport_airport_type"),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name="airport",
+            name="iata_code",
+            field=models.CharField(blank=True, db_index=True, max_length=3, null=True),
+        ),
+        migrations.AlterField(
+            model_name="airport",
+            name="icao_code",
+            field=models.CharField(
+                blank=True, db_index=True, max_length=4, null=True, unique=True
+            ),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0005_airport_airport_type.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-24 02:40
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0004_rename_country_airport_iso_country_and_more"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="airport",
+            name="airport_type",
+            field=models.CharField(
+                choices=[
+                    ("large_airport", "Large airport"),
+                    ("medium_airport", "Medium airport"),
+                    ("small_airport", "Small airport"),
+                ],
+                db_index=True,
+                default="small_airport",
+                max_length=20,
+            ),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0010_tripevent.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-26 04:02
 
 import django.db.models.deletion
+import uuid
 from django.conf import settings
 from django.db import migrations, models
 
@@ -2529,305 +3310,189 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("api", "0002_role_modified_by_role_modified_on"),
+        ("api", "0009_fbo_email"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="agreement",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="agreement",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="aircraft",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="aircraft",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="airport",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="airport",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="contact",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="contact",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="crewline",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="crewline",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="department",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="department",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="fbo",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="fbo",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="ground",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="ground",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="passenger",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="passenger",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="patient",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="patient",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="permission",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="permission",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="quote",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="quote",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="transaction",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="transaction",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="trip",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="trip",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="tripline",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="tripline",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
-        ),
-        migrations.AddField(
-            model_name="userprofile",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="userprofile",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
+        migrations.CreateModel(
+            name="TripEvent",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                (
+                    "event_type",
+                    models.CharField(
+                        choices=[
+                            ("CREW_CHANGE", "Crew Change"),
+                            ("OVERNIGHT", "Overnight (New Day)"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                ("start_time_local", models.DateTimeField()),
+                ("start_time_utc", models.DateTimeField()),
+                ("end_time_local", models.DateTimeField(blank=True, null=True)),
+                ("end_time_utc", models.DateTimeField(blank=True, null=True)),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "airport_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="trip_events",
+                        to="api.airport",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "crew_line_id",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="trip_events",
+                        to="api.crewline",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "trip_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="events",
+                        to="api.trip",
+                    ),
+                ),
+            ],
+            options={
+                "indexes": [
+                    models.Index(
+                        fields=["trip_id", "start_time_utc"],
+                        name="api_tripeve_trip_id_aaf262_idx",
+                    ),
+                    models.Index(
+                        fields=["event_type"], name="api_tripeve_event_t_85f611_idx"
+                    ),
+                ],
+            },
         ),
     ]
 
 ```
 
 
-# File: api/migrations/0002_role_modified_by_role_modified_on.py
+# File: api/migrations/0004_rename_country_airport_iso_country_and_more.py
 
 ```python
-# Generated by Django 5.1.11 on 2025-08-21 06:46
+# Generated by Django 5.1.11 on 2025-08-24 02:32
 
-import django.db.models.deletion
-from django.conf import settings
 from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("api", "0001_initial"),
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("api", "0003_staff_staffrole_staffrolemembership_and_more"),
+    ]
+
+    operations = [
+        migrations.RenameField(
+            model_name="airport",
+            old_name="country",
+            new_name="iso_country",
+        ),
+        migrations.RenameField(
+            model_name="airport",
+            old_name="state",
+            new_name="iso_region",
+        ),
+        migrations.RemoveField(
+            model_name="airport",
+            name="city",
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="gps_code",
+            field=models.CharField(blank=True, max_length=20, null=True),
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="ident",
+            field=models.CharField(
+                db_index=True, default="UTC", max_length=10, unique=True
+            ),
+            preserve_default=False,
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="local_code",
+            field=models.CharField(blank=True, max_length=10, null=True),
+        ),
+        migrations.AddField(
+            model_name="airport",
+            name="municipality",
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0008_fbo_phone_fbo_phone_secondary.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-26 03:34
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0007_contact_date_of_birth_contact_nationality_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="role",
-            name="modified_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="%(class)s_modified",
-                to=settings.AUTH_USER_MODEL,
-            ),
+            model_name="fbo",
+            name="phone",
+            field=models.CharField(blank=True, max_length=20, null=True),
         ),
         migrations.AddField(
-            model_name="role",
-            name="modified_on",
-            field=models.DateTimeField(auto_now=True),
+            model_name="fbo",
+            name="phone_secondary",
+            field=models.CharField(blank=True, max_length=20, null=True),
         ),
     ]
 
@@ -2841,10 +3506,288 @@ class Migration(migrations.Migration):
 ```
 
 
+# File: api/migrations/0003_staff_staffrole_staffrolemembership_and_more.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-23 05:26
+
+import django.db.models.deletion
+import uuid
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0002_trip_notes"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="Staff",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("active", models.BooleanField(default=True)),
+                ("notes", models.TextField(blank=True)),
+                (
+                    "contact",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="staff",
+                        to="api.contact",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="StaffRole",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("code", models.CharField(max_length=32, unique=True)),
+                ("name", models.CharField(max_length=64)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+        ),
+        migrations.CreateModel(
+            name="StaffRoleMembership",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("start_on", models.DateField(blank=True, null=True)),
+                ("end_on", models.DateField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "role",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="memberships",
+                        to="api.staffrole",
+                    ),
+                ),
+                (
+                    "staff",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="role_memberships",
+                        to="api.staff",
+                    ),
+                ),
+            ],
+        ),
+        migrations.AddIndex(
+            model_name="staffrole",
+            index=models.Index(fields=["code"], name="api_staffro_code_20dc3e_idx"),
+        ),
+        migrations.AddConstraint(
+            model_name="staffrolemembership",
+            constraint=models.UniqueConstraint(
+                fields=("staff", "role", "start_on", "end_on"),
+                name="uniq_staff_role_interval",
+            ),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0009_fbo_email.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-26 03:35
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0008_fbo_phone_fbo_phone_secondary"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="fbo",
+            name="email",
+            field=models.EmailField(blank=True, max_length=254, null=True),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0002_trip_notes.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-22 04:37
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0001_initial"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="trip",
+            name="notes",
+            field=models.TextField(blank=True, null=True),
+        ),
+    ]
+
+```
+
+
+# File: api/migrations/0007_contact_date_of_birth_contact_nationality_and_more.py
+
+```python
+# Generated by Django 5.1.11 on 2025-08-24 04:30
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0006_alter_airport_iata_code_alter_airport_icao_code"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="contact",
+            name="date_of_birth",
+            field=models.DateField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="contact",
+            name="nationality",
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name="contact",
+            name="passport_expiration_date",
+            field=models.DateField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="contact",
+            name="passport_number",
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+    ]
+
+```
+
+
 # File: api/migrations/0001_initial.py
 
 ```python
-# Generated by Django 5.2 on 2025-05-05 22:22
+# Generated by Django 5.1.11 on 2025-08-22 04:07
 
 import django.db.models.deletion
 import django.utils.timezone
@@ -2858,413 +3801,1418 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('contenttypes', '0002_remove_content_type_name'),
+        ("contenttypes", "0002_remove_content_type_name"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Document',
+            name="Document",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('filename', models.CharField(max_length=255)),
-                ('content', models.BinaryField()),
-                ('flag', models.IntegerField(default=0)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("filename", models.CharField(max_length=255)),
+                ("content", models.BinaryField()),
+                ("flag", models.IntegerField(default=0)),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
             ],
         ),
         migrations.CreateModel(
-            name='Aircraft',
+            name="Aircraft",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('tail_number', models.CharField(max_length=20)),
-                ('company', models.CharField(max_length=255)),
-                ('mgtow', models.DecimalField(decimal_places=2, max_digits=10, verbose_name='Maximum Gross Takeoff Weight')),
-                ('make', models.CharField(max_length=100)),
-                ('model', models.CharField(max_length=100)),
-                ('serial_number', models.CharField(max_length=100)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                (
+                    "tail_number",
+                    models.CharField(db_index=True, max_length=20, unique=True),
+                ),
+                ("company", models.CharField(max_length=255)),
+                (
+                    "mgtow",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=10,
+                        verbose_name="Maximum Gross Takeoff Weight",
+                    ),
+                ),
+                ("make", models.CharField(max_length=100)),
+                ("model", models.CharField(max_length=100)),
+                ("serial_number", models.CharField(max_length=100)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Contact',
+            name="Contact",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('first_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('last_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('business_name', models.CharField(blank=True, max_length=255, null=True)),
-                ('email', models.EmailField(blank=True, max_length=254, null=True)),
-                ('phone', models.CharField(blank=True, max_length=20, null=True)),
-                ('address_line1', models.CharField(blank=True, max_length=255, null=True)),
-                ('address_line2', models.CharField(blank=True, max_length=255, null=True)),
-                ('city', models.CharField(blank=True, max_length=100, null=True)),
-                ('state', models.CharField(blank=True, max_length=100, null=True)),
-                ('zip', models.CharField(blank=True, max_length=20, null=True)),
-                ('country', models.CharField(blank=True, max_length=100, null=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("first_name", models.CharField(blank=True, max_length=100, null=True)),
+                ("last_name", models.CharField(blank=True, max_length=100, null=True)),
+                (
+                    "business_name",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("email", models.EmailField(blank=True, max_length=254, null=True)),
+                ("phone", models.CharField(blank=True, max_length=20, null=True)),
+                (
+                    "address_line1",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("city", models.CharField(blank=True, max_length=100, null=True)),
+                ("state", models.CharField(blank=True, max_length=100, null=True)),
+                ("zip", models.CharField(blank=True, max_length=20, null=True)),
+                ("country", models.CharField(blank=True, max_length=100, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='CrewLine',
+            name="CrewLine",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('medic_ids', models.ManyToManyField(related_name='medic_crew_lines', to='api.contact')),
-                ('primary_in_command_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='primary_crew_lines', to='api.contact')),
-                ('secondary_in_command_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='secondary_crew_lines', to='api.contact')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "medic_ids",
+                    models.ManyToManyField(
+                        related_name="medic_crew_lines", to="api.contact"
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "primary_in_command",
+                    models.ForeignKey(
+                        db_column="primary_in_command_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="primary_crew_lines",
+                        to="api.contact",
+                    ),
+                ),
+                (
+                    "secondary_in_command",
+                    models.ForeignKey(
+                        db_column="secondary_in_command_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="secondary_crew_lines",
+                        to="api.contact",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Agreement',
+            name="Agreement",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('lock', models.BooleanField(default=False)),
-                ('destination_email', models.EmailField(max_length=254)),
-                ('status', models.CharField(choices=[('created', 'Created'), ('pending', 'Pending'), ('modified', 'Modified'), ('signed', 'Signed'), ('denied', 'Denied')], default='created', max_length=20)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('document_signed_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='signed_agreements', to='api.document')),
-                ('document_unsigned_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='unsigned_agreements', to='api.document')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                ("lock", models.BooleanField(default=False)),
+                ("destination_email", models.EmailField(max_length=254)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("created", "Created"),
+                            ("pending", "Pending"),
+                            ("modified", "Modified"),
+                            ("signed", "Signed"),
+                            ("denied", "Denied"),
+                        ],
+                        default="created",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "document_signed",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="document_signed_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="signed_agreements",
+                        to="api.document",
+                    ),
+                ),
+                (
+                    "document_unsigned",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="document_unsigned_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="unsigned_agreements",
+                        to="api.document",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Modification',
+            name="FBO",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('model', models.CharField(max_length=100)),
-                ('object_id', models.UUIDField()),
-                ('field', models.CharField(max_length=100)),
-                ('before', models.TextField(blank=True, null=True)),
-                ('after', models.TextField(blank=True, null=True)),
-                ('time', models.DateTimeField(auto_now_add=True)),
-                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "address_line1",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("city", models.CharField(blank=True, max_length=100, null=True)),
+                ("state", models.CharField(blank=True, max_length=100, null=True)),
+                ("zip", models.CharField(blank=True, max_length=20, null=True)),
+                ("country", models.CharField(blank=True, max_length=100, null=True)),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "contacts",
+                    models.ManyToManyField(related_name="fbos", to="api.contact"),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-time'],
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Passenger',
+            name="Ground",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('date_of_birth', models.DateField(blank=True, null=True)),
-                ('nationality', models.CharField(blank=True, max_length=100, null=True)),
-                ('passport_number', models.CharField(blank=True, max_length=100, null=True)),
-                ('passport_expiration_date', models.DateField(blank=True, null=True)),
-                ('contact_number', models.CharField(blank=True, max_length=20, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('info', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='passengers', to='api.contact')),
-                ('passport_document_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='passport_passengers', to='api.document')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "address_line1",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("city", models.CharField(blank=True, max_length=100, null=True)),
+                ("state", models.CharField(blank=True, max_length=100, null=True)),
+                ("zip", models.CharField(blank=True, max_length=20, null=True)),
+                ("country", models.CharField(blank=True, max_length=100, null=True)),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "contacts",
+                    models.ManyToManyField(related_name="grounds", to="api.contact"),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Patient',
+            name="Airport",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('lock', models.BooleanField(default=False)),
-                ('bed_at_origin', models.BooleanField(default=False)),
-                ('bed_at_destination', models.BooleanField(default=False)),
-                ('date_of_birth', models.DateField()),
-                ('nationality', models.CharField(max_length=100)),
-                ('passport_number', models.CharField(max_length=100)),
-                ('passport_expiration_date', models.DateField()),
-                ('special_instructions', models.TextField(blank=True, null=True)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('active', 'Active'), ('completed', 'Completed'), ('cancelled', 'Cancelled')], default='pending', max_length=20)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('info', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='patients', to='api.contact')),
-                ('letter_of_medical_necessity_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='medical_necessity_patients', to='api.document')),
-                ('passport_document_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='passport_patients', to='api.document')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                (
+                    "icao_code",
+                    models.CharField(db_index=True, max_length=4, unique=True),
+                ),
+                ("iata_code", models.CharField(db_index=True, max_length=3)),
+                ("name", models.CharField(max_length=255)),
+                ("city", models.CharField(max_length=100)),
+                ("state", models.CharField(blank=True, max_length=100, null=True)),
+                ("country", models.CharField(max_length=100)),
+                ("elevation", models.IntegerField(blank=True, null=True)),
+                ("latitude", models.DecimalField(decimal_places=6, max_digits=9)),
+                ("longitude", models.DecimalField(decimal_places=6, max_digits=9)),
+                ("timezone", models.CharField(max_length=50)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "fbos",
+                    models.ManyToManyField(
+                        blank=True, related_name="airports", to="api.fbo"
+                    ),
+                ),
+                (
+                    "grounds",
+                    models.ManyToManyField(
+                        blank=True, related_name="airports", to="api.ground"
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Permission',
+            name="Modification",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('name', models.CharField(max_length=100, unique=True)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("model", models.CharField(max_length=100)),
+                ("object_id", models.UUIDField()),
+                ("field", models.CharField(max_length=100)),
+                ("before", models.TextField(blank=True, null=True)),
+                ("after", models.TextField(blank=True, null=True)),
+                ("time", models.DateTimeField(auto_now_add=True)),
+                (
+                    "content_type",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="contenttypes.contenttype",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "ordering": ["-time"],
             },
         ),
         migrations.CreateModel(
-            name='Ground',
+            name="Passenger",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('name', models.CharField(max_length=255)),
-                ('address_line1', models.CharField(blank=True, max_length=255, null=True)),
-                ('address_line2', models.CharField(blank=True, max_length=255, null=True)),
-                ('city', models.CharField(blank=True, max_length=100, null=True)),
-                ('state', models.CharField(blank=True, max_length=100, null=True)),
-                ('zip', models.CharField(blank=True, max_length=20, null=True)),
-                ('country', models.CharField(blank=True, max_length=100, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('contacts', models.ManyToManyField(related_name='grounds', to='api.contact')),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('permission_ids', models.ManyToManyField(related_name='grounds', to='api.permission')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("date_of_birth", models.DateField(blank=True, null=True)),
+                (
+                    "nationality",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                (
+                    "passport_number",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                ("passport_expiration_date", models.DateField(blank=True, null=True)),
+                (
+                    "contact_number",
+                    models.CharField(blank=True, max_length=20, null=True),
+                ),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "info",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="passengers",
+                        to="api.contact",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "passenger_ids",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="related_passengers",
+                        to="api.passenger",
+                    ),
+                ),
+                (
+                    "passport_document",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="passport_document_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="passport_passengers",
+                        to="api.document",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='FBO',
+            name="Patient",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('name', models.CharField(max_length=255)),
-                ('address_line1', models.CharField(blank=True, max_length=255, null=True)),
-                ('address_line2', models.CharField(blank=True, max_length=255, null=True)),
-                ('city', models.CharField(blank=True, max_length=100, null=True)),
-                ('state', models.CharField(blank=True, max_length=100, null=True)),
-                ('zip', models.CharField(blank=True, max_length=20, null=True)),
-                ('country', models.CharField(blank=True, max_length=100, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('contacts', models.ManyToManyField(related_name='fbos', to='api.contact')),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('permission_ids', models.ManyToManyField(related_name='fbos', to='api.permission')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                ("lock", models.BooleanField(default=False)),
+                ("bed_at_origin", models.BooleanField(default=False)),
+                ("bed_at_destination", models.BooleanField(default=False)),
+                ("date_of_birth", models.DateField()),
+                ("nationality", models.CharField(max_length=100)),
+                ("passport_number", models.CharField(max_length=100)),
+                ("passport_expiration_date", models.DateField()),
+                ("special_instructions", models.TextField(blank=True, null=True)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("confirmed", "Confirmed"),
+                            ("active", "Active"),
+                            ("completed", "Completed"),
+                            ("cancelled", "Cancelled"),
+                        ],
+                        db_index=True,
+                        default="pending",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "info",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="patients",
+                        to="api.contact",
+                    ),
+                ),
+                (
+                    "letter_of_medical_necessity",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="letter_of_medical_necessity_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="medical_necessity_patients",
+                        to="api.document",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "passport_document",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="passport_document_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="passport_patients",
+                        to="api.document",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Department',
+            name="Permission",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('name', models.CharField(max_length=100)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('permission_ids', models.ManyToManyField(related_name='departments', to='api.permission')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("name", models.CharField(max_length=100, unique=True)),
+                ("description", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
-            },
-        ),
-        migrations.AddField(
-            model_name='contact',
-            name='permission_ids',
-            field=models.ManyToManyField(related_name='contacts', to='api.permission'),
-        ),
-        migrations.CreateModel(
-            name='Airport',
-            fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('icao_code', models.CharField(max_length=4)),
-                ('iata_code', models.CharField(max_length=3)),
-                ('name', models.CharField(max_length=255)),
-                ('city', models.CharField(max_length=100)),
-                ('state', models.CharField(blank=True, max_length=100, null=True)),
-                ('country', models.CharField(max_length=100)),
-                ('elevation', models.IntegerField(blank=True, null=True)),
-                ('latitude', models.DecimalField(decimal_places=6, max_digits=9)),
-                ('longitude', models.DecimalField(decimal_places=6, max_digits=9)),
-                ('timezone', models.CharField(max_length=50)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('fbos', models.ManyToManyField(blank=True, related_name='airports', to='api.fbo')),
-                ('grounds', models.ManyToManyField(blank=True, related_name='airports', to='api.ground')),
-                ('permission_ids', models.ManyToManyField(related_name='airports', to='api.permission')),
-            ],
-            options={
-                'abstract': False,
-            },
-        ),
-        migrations.CreateModel(
-            name='Role',
-            fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('name', models.CharField(max_length=100, unique=True)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('permissions', models.ManyToManyField(related_name='roles', to='api.permission')),
-            ],
-            options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Transaction',
+            name="Department",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('key', models.UUIDField(default=uuid.uuid4, editable=False)),
-                ('amount', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('payment_method', models.CharField(choices=[('credit_card', 'Credit Card'), ('ACH', 'ACH Transfer')], max_length=20)),
-                ('payment_status', models.CharField(choices=[('created', 'Created'), ('pending', 'Pending'), ('completed', 'Completed'), ('failed', 'Failed')], default='created', max_length=20)),
-                ('payment_date', models.DateTimeField(default=django.utils.timezone.now)),
-                ('email', models.EmailField(max_length=254)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("name", models.CharField(max_length=100)),
+                ("description", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "permission_ids",
+                    models.ManyToManyField(
+                        related_name="departments", to="api.permission"
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Quote',
+            name="Role",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('lock', models.BooleanField(default=False)),
-                ('quoted_amount', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('cruise_doctor_first_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('cruise_doctor_last_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('cruise_line', models.CharField(blank=True, max_length=100, null=True)),
-                ('cruise_ship', models.CharField(blank=True, max_length=100, null=True)),
-                ('aircraft_type', models.CharField(choices=[('65', 'Learjet 65'), ('35', 'Learjet 35'), ('TBD', 'To Be Determined')], max_length=20)),
-                ('estimated_fight_time', models.DecimalField(decimal_places=2, max_digits=5)),
-                ('includes_grounds', models.BooleanField(default=False)),
-                ('inquiry_date', models.DateTimeField(default=django.utils.timezone.now)),
-                ('medical_team', models.CharField(choices=[('RN/RN', 'RN/RN'), ('RN/Paramedic', 'RN/Paramedic'), ('RN/MD', 'RN/MD'), ('RN/RT', 'RN/RT'), ('standard', 'Standard'), ('full', 'Full')], max_length=20)),
-                ('patient_first_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('patient_last_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('active', 'Active'), ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('paid', 'Paid')], default='pending', max_length=20)),
-                ('number_of_stops', models.PositiveIntegerField(default=0)),
-                ('quote_pdf_status', models.CharField(choices=[('created', 'Created'), ('pending', 'Pending'), ('modified', 'Modified'), ('accepted', 'Accepted'), ('denied', 'Denied')], default='created', max_length=20)),
-                ('quote_pdf_email', models.EmailField(max_length=254)),
-                ('consent_for_transport_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='consent_quotes', to='api.agreement')),
-                ('contact_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quotes', to='api.contact')),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('documents', models.ManyToManyField(related_name='quotes', to='api.document')),
-                ('dropoff_airport_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='dropoff_quotes', to='api.airport')),
-                ('patient_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='quotes', to='api.patient')),
-                ('patient_service_agreement_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='service_quotes', to='api.agreement')),
-                ('payment_agreement_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='payment_quotes', to='api.agreement')),
-                ('pickup_airport_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pickup_quotes', to='api.airport')),
-                ('quote_pdf_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='quote_pdfs', to='api.document')),
-                ('transactions', models.ManyToManyField(blank=True, related_name='quotes', to='api.transaction')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("name", models.CharField(max_length=100, unique=True)),
+                ("description", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "permissions",
+                    models.ManyToManyField(related_name="roles", to="api.permission"),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Trip',
+            name="Transaction",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('email_chain', models.JSONField(blank=True, default=list)),
-                ('type', models.CharField(choices=[('medical', 'Medical'), ('charter', 'Charter'), ('part 91', 'Part 91'), ('other', 'Other'), ('maintenance', 'Maintenance')], max_length=20)),
-                ('estimated_departure_time', models.DateTimeField(blank=True, null=True)),
-                ('post_flight_duty_time', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('pre_flight_duty_time', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('trip_number', models.CharField(max_length=20)),
-                ('aircraft_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='trips', to='api.aircraft')),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('customer_itinerary_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='customer_itinerary_trips', to='api.document')),
-                ('internal_itinerary_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='internal_itinerary_trips', to='api.document')),
-                ('passengers', models.ManyToManyField(blank=True, related_name='trips', to='api.passenger')),
-                ('patient_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='trips', to='api.patient')),
-                ('quote_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='trips', to='api.quote')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                (
+                    "key",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("amount", models.DecimalField(decimal_places=2, max_digits=10)),
+                (
+                    "payment_method",
+                    models.CharField(
+                        choices=[
+                            ("credit_card", "Credit Card"),
+                            ("ACH", "ACH Transfer"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "payment_status",
+                    models.CharField(
+                        choices=[
+                            ("created", "Created"),
+                            ("pending", "Pending"),
+                            ("completed", "Completed"),
+                            ("failed", "Failed"),
+                        ],
+                        default="created",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "payment_date",
+                    models.DateTimeField(default=django.utils.timezone.now),
+                ),
+                ("email", models.EmailField(max_length=254)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='TripLine',
+            name="Quote",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('departure_time_local', models.DateTimeField()),
-                ('departure_time_utc', models.DateTimeField()),
-                ('arrival_time_local', models.DateTimeField()),
-                ('arrival_time_utc', models.DateTimeField()),
-                ('distance', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('flight_time', models.DecimalField(decimal_places=2, max_digits=5)),
-                ('ground_time', models.DecimalField(decimal_places=2, max_digits=5)),
-                ('passenger_leg', models.BooleanField(default=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('crew_line_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='trip_lines', to='api.crewline')),
-                ('destination_airport_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='destination_trip_lines', to='api.airport')),
-                ('origin_airport_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='origin_trip_lines', to='api.airport')),
-                ('trip_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='trip_lines', to='api.trip')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                ("lock", models.BooleanField(default=False)),
+                ("quoted_amount", models.DecimalField(decimal_places=2, max_digits=10)),
+                (
+                    "cruise_doctor_first_name",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                (
+                    "cruise_doctor_last_name",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                (
+                    "cruise_line",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                (
+                    "cruise_ship",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                (
+                    "aircraft_type",
+                    models.CharField(
+                        choices=[
+                            ("65", "Learjet 65"),
+                            ("35", "Learjet 35"),
+                            ("TBD", "To Be Determined"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                ("estimated_flight_time", models.DurationField()),
+                ("includes_grounds", models.BooleanField(default=False)),
+                (
+                    "inquiry_date",
+                    models.DateTimeField(default=django.utils.timezone.now),
+                ),
+                (
+                    "medical_team",
+                    models.CharField(
+                        choices=[
+                            ("RN/RN", "RN/RN"),
+                            ("RN/Paramedic", "RN/Paramedic"),
+                            ("RN/MD", "RN/MD"),
+                            ("RN/RT", "RN/RT"),
+                            ("standard", "Standard"),
+                            ("full", "Full"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("confirmed", "Confirmed"),
+                            ("active", "Active"),
+                            ("completed", "Completed"),
+                            ("cancelled", "Cancelled"),
+                            ("paid", "Paid"),
+                        ],
+                        db_index=True,
+                        default="pending",
+                        max_length=20,
+                    ),
+                ),
+                ("number_of_stops", models.PositiveIntegerField(default=0)),
+                (
+                    "quote_pdf_status",
+                    models.CharField(
+                        choices=[
+                            ("created", "Created"),
+                            ("pending", "Pending"),
+                            ("modified", "Modified"),
+                            ("accepted", "Accepted"),
+                            ("denied", "Denied"),
+                        ],
+                        default="created",
+                        max_length=20,
+                    ),
+                ),
+                ("quote_pdf_email", models.EmailField(max_length=254)),
+                (
+                    "consent_for_transport",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="consent_for_transport_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="consent_quotes",
+                        to="api.agreement",
+                    ),
+                ),
+                (
+                    "contact",
+                    models.ForeignKey(
+                        db_column="contact_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="quotes",
+                        to="api.contact",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "documents",
+                    models.ManyToManyField(related_name="quotes", to="api.document"),
+                ),
+                (
+                    "dropoff_airport",
+                    models.ForeignKey(
+                        db_column="dropoff_airport_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="dropoff_quotes",
+                        to="api.airport",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "patient",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="patient_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="quotes",
+                        to="api.patient",
+                    ),
+                ),
+                (
+                    "patient_service_agreement",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="patient_service_agreement_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="service_quotes",
+                        to="api.agreement",
+                    ),
+                ),
+                (
+                    "payment_agreement",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="payment_agreement_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="payment_quotes",
+                        to="api.agreement",
+                    ),
+                ),
+                (
+                    "pickup_airport",
+                    models.ForeignKey(
+                        db_column="pickup_airport_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pickup_quotes",
+                        to="api.airport",
+                    ),
+                ),
+                (
+                    "quote_pdf",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="quote_pdf_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="quote_pdfs",
+                        to="api.document",
+                    ),
+                ),
+                (
+                    "transactions",
+                    models.ManyToManyField(
+                        blank=True, related_name="quotes", to="api.transaction"
+                    ),
+                ),
             ],
             options={
-                'ordering': ['departure_time_utc'],
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='UserProfile',
+            name="Trip",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_on', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='active', max_length=50)),
-                ('lock', models.BooleanField(default=False)),
-                ('first_name', models.CharField(max_length=100)),
-                ('last_name', models.CharField(max_length=100)),
-                ('email', models.EmailField(blank=True, max_length=254, null=True)),
-                ('phone', models.CharField(blank=True, max_length=20, null=True)),
-                ('address_line1', models.CharField(blank=True, max_length=255, null=True)),
-                ('address_line2', models.CharField(blank=True, max_length=255, null=True)),
-                ('city', models.CharField(blank=True, max_length=100, null=True)),
-                ('state', models.CharField(blank=True, max_length=100, null=True)),
-                ('country', models.CharField(blank=True, max_length=100, null=True)),
-                ('zip', models.CharField(blank=True, max_length=20, null=True)),
-                ('flags', models.JSONField(blank=True, default=list)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('department_ids', models.ManyToManyField(related_name='users', to='api.department')),
-                ('departments', models.ManyToManyField(related_name='department_users', to='api.department')),
-                ('roles', models.ManyToManyField(related_name='users', to='api.role')),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("email_chain", models.JSONField(blank=True, default=list)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("medical", "Medical"),
+                            ("charter", "Charter"),
+                            ("part 91", "Part 91"),
+                            ("other", "Other"),
+                            ("maintenance", "Maintenance"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "estimated_departure_time",
+                    models.DateTimeField(blank=True, null=True),
+                ),
+                ("post_flight_duty_time", models.DurationField(blank=True, null=True)),
+                ("pre_flight_duty_time", models.DurationField(blank=True, null=True)),
+                (
+                    "trip_number",
+                    models.CharField(db_index=True, max_length=20, unique=True),
+                ),
+                (
+                    "aircraft",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="aircraft_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="trips",
+                        to="api.aircraft",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "customer_itinerary",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="customer_itinerary_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="customer_itinerary_trips",
+                        to="api.document",
+                    ),
+                ),
+                (
+                    "internal_itinerary",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="internal_itinerary_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="internal_itinerary_trips",
+                        to="api.document",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "passengers",
+                    models.ManyToManyField(
+                        blank=True, related_name="trips", to="api.passenger"
+                    ),
+                ),
+                (
+                    "patient",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="patient_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="trips",
+                        to="api.patient",
+                    ),
+                ),
+                (
+                    "quote",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="quote_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="trips",
+                        to="api.quote",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="TripLine",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("departure_time_local", models.DateTimeField()),
+                ("departure_time_utc", models.DateTimeField()),
+                ("arrival_time_local", models.DateTimeField()),
+                ("arrival_time_utc", models.DateTimeField()),
+                ("distance", models.DecimalField(decimal_places=2, max_digits=10)),
+                ("flight_time", models.DurationField()),
+                ("ground_time", models.DurationField()),
+                ("passenger_leg", models.BooleanField(default=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "crew_line",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="crew_line_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="trip_lines",
+                        to="api.crewline",
+                    ),
+                ),
+                (
+                    "destination_airport",
+                    models.ForeignKey(
+                        db_column="destination_airport_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="destination_trip_lines",
+                        to="api.airport",
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "origin_airport",
+                    models.ForeignKey(
+                        db_column="origin_airport_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="origin_trip_lines",
+                        to="api.airport",
+                    ),
+                ),
+                (
+                    "trip",
+                    models.ForeignKey(
+                        db_column="trip_id",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="trip_lines",
+                        to="api.trip",
+                    ),
+                ),
+            ],
+            options={
+                "ordering": ["departure_time_utc"],
+            },
+        ),
+        migrations.CreateModel(
+            name="UserProfile",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_on", models.DateTimeField(auto_now_add=True)),
+                ("modified_on", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(db_index=True, default="active", max_length=50),
+                ),
+                ("lock", models.BooleanField(default=False)),
+                ("first_name", models.CharField(max_length=100)),
+                ("last_name", models.CharField(max_length=100)),
+                ("email", models.EmailField(blank=True, max_length=254, null=True)),
+                ("phone", models.CharField(blank=True, max_length=20, null=True)),
+                (
+                    "address_line1",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("city", models.CharField(blank=True, max_length=100, null=True)),
+                ("state", models.CharField(blank=True, max_length=100, null=True)),
+                ("country", models.CharField(blank=True, max_length=100, null=True)),
+                ("zip", models.CharField(blank=True, max_length=20, null=True)),
+                ("flags", models.JSONField(blank=True, default=list)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "department_ids",
+                    models.ManyToManyField(related_name="users", to="api.department"),
+                ),
+                (
+                    "departments",
+                    models.ManyToManyField(
+                        related_name="department_users", to="api.department"
+                    ),
+                ),
+                (
+                    "modified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_modified",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                ("roles", models.ManyToManyField(related_name="users", to="api.role")),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="profile",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
             },
         ),
     ]
@@ -4870,6 +6818,350 @@ if __name__ == "__main__":
 ```
 
 
+# File: api/management/commands/import_airports.py
+
+```python
+import csv
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction, IntegrityError
+
+from api.models import Airport, AirportType  # adjust import path if needed
+
+# Optional timezone lookup
+try:
+    from timezonefinder import TimezoneFinder
+    TF = TimezoneFinder()
+except Exception:
+    TF = None
+
+
+def to_decimal(val, places=6):
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() == "null":
+        return None
+    try:
+        d = Decimal(s)
+        return d.quantize(Decimal("0." + "0" * places))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def to_int(val):
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() == "null":
+        return None
+    try:
+        return int(Decimal(s))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def norm_str(val):
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s or None
+
+
+TYPE_MAP = {
+    "large_airport": getattr(AirportType, "LARGE", "large_airport"),
+    "medium_airport": getattr(AirportType, "MEDIUM", "medium_airport"),
+    "small_airport": getattr(AirportType, "SMALL", "small_airport"),
+    "heliport": getattr(AirportType, "SMALL", "small_airport"),
+    "seaplane_base": getattr(AirportType, "SMALL", "small_airport"),
+    "closed": getattr(AirportType, "SMALL", "small_airport"),
+}
+
+
+def infer_timezone(lat, lon):
+    if lat is None or lon is None:
+        return "UTC"
+    if TF is None:
+        return "UTC"
+    try:
+        tz = TF.timezone_at(lat=float(lat), lng=float(lon))
+        return tz or "UTC"
+    except Exception:
+        return "UTC"
+
+
+def flush_buffer(buffer, batch_size):
+    """Try bulk_create, then fallback to row-by-row on conflicts."""
+    created = 0
+    skipped = 0
+    if not buffer:
+        return 0, 0
+
+    try:
+        with transaction.atomic():
+            Airport.objects.bulk_create(
+                buffer, ignore_conflicts=True, batch_size=batch_size
+            )
+            created += len(buffer)
+        return created, skipped
+    except IntegrityError:
+        pass  # fallback row by row
+
+    for inst in buffer:
+        try:
+            with transaction.atomic():
+                inst.save()
+                created += 1
+        except IntegrityError:
+            skipped += 1
+    return created, skipped
+
+
+class Command(BaseCommand):
+    help = "Import airports from a CSV with columns like OurAirports."
+
+    def add_arguments(self, parser):
+        parser.add_argument("csv_path", type=str, help="Path to airports.csv")
+        parser.add_argument(
+            "--update",
+            action="store_true",
+            help="Update existing airports matched by ident.",
+        )
+        parser.add_argument(
+            "--batch",
+            type=int,
+            default=1000,
+            help="Bulk create batch size.",
+        )
+
+    def handle(self, *args, **opts):
+        csv_path = Path(opts["csv_path"])
+        if not csv_path.exists():
+            raise CommandError(f"CSV not found: {csv_path}")
+
+        update_existing = opts["update"]
+        batch_size = opts["batch"]
+
+        created = updated = skipped = 0
+        buffer = []
+
+        # preload existing idents for quick lookup
+        existing_idents = set(
+            Airport.objects.values_list("ident", flat=True)
+        )
+
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+
+            for row in reader:
+                ident = norm_str(row.get("ident"))
+                if not ident:
+                    skipped += 1
+                    continue
+
+                name = norm_str(row.get("name")) or ident
+                lat = to_decimal(row.get("latitude_deg"))
+                lon = to_decimal(row.get("longitude_deg"))
+                elevation = to_int(row.get("elevation_ft"))
+
+                iso_country = norm_str(row.get("iso_country")) or "US"
+                iso_region = norm_str(row.get("iso_region"))
+                municipality = norm_str(row.get("municipality"))
+
+                icao_code = norm_str(row.get("icao_code"))
+                iata_code = norm_str(row.get("iata_code"))
+                gps_code = norm_str(row.get("gps_code"))
+                local_code = norm_str(row.get("local_code"))
+
+                csv_type = (norm_str(row.get("type")) or "").lower()
+                airport_type = TYPE_MAP.get(
+                    csv_type, getattr(AirportType, "SMALL", "small_airport")
+                )
+
+                tz = infer_timezone(lat, lon)
+
+                defaults = dict(
+                    name=name,
+                    latitude=lat,
+                    longitude=lon,
+                    elevation=elevation,
+                    iso_country=iso_country,
+                    iso_region=iso_region,
+                    municipality=municipality,
+                    icao_code=icao_code,
+                    iata_code=iata_code,
+                    local_code=local_code,
+                    gps_code=gps_code,
+                    airport_type=airport_type,
+                    timezone=tz,
+                )
+
+                if ident in existing_idents:
+                    if update_existing:
+                        try:
+                            Airport.objects.filter(ident=ident).update(**defaults)
+                            updated += 1
+                        except IntegrityError:
+                            skipped += 1
+                    continue
+                else:
+                    buffer.append(Airport(ident=ident, **defaults))
+                    if len(buffer) >= batch_size:
+                        c, s = flush_buffer(buffer, batch_size)
+                        created += c
+                        skipped += s
+                        buffer = []
+
+        # flush leftover
+        if buffer:
+            c, s = flush_buffer(buffer, batch_size)
+            created += c
+            skipped += s
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Import complete: created={created}, updated={updated}, skipped={skipped}"
+            )
+        )
+
+```
+
+
+# File: api/management/commands/seed_staff.py
+
+```python
+# api/management/commands/seed_staff.py
+from django.core.management.base import BaseCommand
+from django.db import transaction
+from django.utils import timezone
+
+from api.models import (
+    Staff,
+    StaffRole,
+    StaffRoleMembership,
+    Contact,
+    CrewLine,
+)
+
+ROLE_CODES = [
+    ("PIC", "Pilot in Command"),
+    ("SIC", "Second in Command"),
+    ("RN", "Registered Nurse"),
+    ("PARAMEDIC", "Paramedic"),
+    ("RT", "Respiratory Therapist"),
+    ("MD", "Physician"),
+]
+
+
+class Command(BaseCommand):
+    help = (
+        "Seeds StaffRole, backfills Staff for Contacts used on CrewLines, "
+        "and (optionally) creates basic StaffRoleMemberships for PIC/SIC."
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--with-memberships",
+            action="store_true",
+            help="Also create StaffRoleMemberships for PIC/SIC based on CrewLine usage.",
+        )
+
+    @transaction.atomic
+    def handle(self, *args, **opts):
+        # Ensure roles exist
+        created_roles = 0
+        for code, name in ROLE_CODES:
+            _, was_created = StaffRole.objects.get_or_create(code=code, defaults={"name": name})
+            if was_created:
+                created_roles += 1
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"StaffRole ensured (created {created_roles}, total {StaffRole.objects.count()})."
+            )
+        )
+
+        # Collect all Contact IDs referenced by CrewLine (PIC, SIC, and medics)
+        contact_ids = set()
+
+        # PIC / SIC via FK fields (use iterator with chunk_size for memory safety)
+        for cl in CrewLine.objects.only(
+            "primary_in_command_id", "secondary_in_command_id"
+        ).iterator(chunk_size=1000):
+            if getattr(cl, "primary_in_command_id_id", None):
+                contact_ids.add(cl.primary_in_command_id_id)
+            if getattr(cl, "secondary_in_command_id_id", None):
+                contact_ids.add(cl.secondary_in_command_id_id)
+
+        # Medics via M2M; when using prefetch_related, don't call iterator() without chunk_size
+        for cl in CrewLine.objects.prefetch_related("medic_ids"):
+            contact_ids.update(cl.medic_ids.values_list("id", flat=True))
+
+        # Backfill Staff rows for those Contacts
+        created_staff = 0
+        for cid in contact_ids:
+            _, was_created = Staff.objects.get_or_create(contact_id=cid, defaults={"active": True})
+            if was_created:
+                created_staff += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Staff ensured for {len(contact_ids)} contact(s) (created {created_staff})."
+            )
+        )
+
+        # Optionally add PIC/SIC memberships effective today
+        if opts.get("with_memberships"):
+            today = timezone.now().date()
+
+            roles = {r.code: r for r in StaffRole.objects.filter(code__in=["PIC", "SIC"])}
+            pic = roles.get("PIC")
+            sic = roles.get("SIC")
+
+            made = 0
+
+            if pic:
+                pic_contact_ids = (
+                    CrewLine.objects.exclude(primary_in_command_id__isnull=True)
+                    .values_list("primary_in_command_id", flat=True)
+                    .distinct()
+                )
+                for cid in pic_contact_ids:
+                    staff = Staff.objects.filter(contact_id=cid).first()
+                    if staff and not StaffRoleMembership.objects.filter(
+                        staff=staff, role=pic, start_on=today, end_on=None
+                    ).exists():
+                        StaffRoleMembership.objects.create(
+                            staff=staff, role=pic, start_on=today, end_on=None
+                        )
+                        made += 1
+
+            if sic:
+                sic_contact_ids = (
+                    CrewLine.objects.exclude(secondary_in_command_id__isnull=True)
+                    .values_list("secondary_in_command_id", flat=True)
+                    .distinct()
+                )
+                for cid in sic_contact_ids:
+                    staff = Staff.objects.filter(contact_id=cid).first()
+                    if staff and not StaffRoleMembership.objects.filter(
+                        staff=staff, role=sic, start_on=today, end_on=None
+                    ).exists():
+                        StaffRoleMembership.objects.create(
+                            staff=staff, role=sic, start_on=today, end_on=None
+                        )
+                        made += 1
+
+            self.stdout.write(self.style.SUCCESS(f"PIC/SIC memberships created today: {made}"))
+        else:
+            self.stdout.write(
+                self.style.WARNING("Skipped memberships (run with --with-memberships to add PIC/SIC).")
+            )
+
+```
+
+
 # File: api/management/commands/setup_test_data.py
 
 ```python
@@ -5167,6 +7459,882 @@ class Command(BaseCommand):
 # File: api/management/commands/__init__.py
 
 ```python
+
+```
+
+
+# File: api/management/commands/seed_aircraft_and_staff.py
+
+```python
+from django.core.management.base import BaseCommand
+from django.db import transaction, IntegrityError
+from django.utils import timezone
+
+from decimal import Decimal
+from datetime import datetime
+import re
+
+from api.models import (
+    Aircraft,
+    Contact,
+    Staff,
+    StaffRole,
+    StaffRoleMembership,
+)
+
+# -----------------------------
+# SOURCE DATA (from your prompt)
+# -----------------------------
+
+AIRCRAFT_ROWS = [
+    # tail, company, make, model, serial_number, mgtow (lb)
+    ("N911KQ", "Secret Squirrel Aerospace LLC", "Kodiak",   "Kodiak 100", "100-0009", "7255"),
+    ("N35LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "35A",       "240",      "18300"),
+    ("N36LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "36A",       "44",       "18300"),
+    ("N30LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "31",        "002",      "18300"),
+    ("N60LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "52",       "23500"),
+    ("N65LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "243",      "23500"),
+    ("N70LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "70",       "23500"),
+    ("N80LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "305",      "23500"),
+    ("N85LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "244",      "23500"),
+    ("N90LJ",  "Worldwide Aircraft Services, Inc.", "Learjet", "60",        "287",      "23500"),
+]
+
+PILOT_ROWS = [
+    # Name, Nat., DOB, Passport #, Exp., Contact #, Email
+    ("Anthony Guglielmetti","US","11/27/1997","534687611","10/27/2025","813-613-1396","AnthonyGuglielmetti@jeticu.com"),
+    ("Christopher McGuire","US","11/26/1985","565155697","02/06/2027","813-468-6889","chris.mcguire@jeticu.com"),
+    ("Jason Rowe","US","11/20/1982","583027251","11/08/2027","218-343-2005","jrowe@jeticu.com"),
+    ("Kurt Veilleux","US","09/17/1983","A35779864","02/08/2034","813-417-6891","kurt@jeticu.com"),
+    ("Michael Honeycutt","US","12/18/1969","A03627887","10/13/2032","727-415-9458","mike@jeticu.com"),
+    ("John Cannon II","US","05/06/1998","A61105507","02/24/2035","786-879-9393","john.cannon@jeticu.com"),
+    ("Patrick Buttermore","US","12/22/1986","A35779865","02/08/2034","813-951-0961","Patrick.Buttermore@jeticu.com"),
+    ("Thomas Lacey","US","08/04/1968","A07991093","12/26/2032","727-510-5189","tom@jeticu.com"),
+    ("Steven Peterson","US","04/10/1997","A26963982","07/30/2033","845-520-0244","StevePeterson@jeticu.com"),
+    ("Tyler Towle","US","04/28/1997","A36095632","10/20/2034","801-824-2782","TylerTowle@jeticu.com"),
+    ("Oleg Baumgart","US","01/12/1981","541154548","12/06/2025","575-571-6363","oleg.baumgart@jeticu.com"),
+    ("Gary Kelley","US","09/30/1955","561205578","10/11/2027","727-560-0555","puffin@jeticu.com"),
+    ("Jack Al-Hussaini","US","11/06/2002","590363317","12/27/2028","704-818-7600","JackAl-Hussaini@jeticu.com"),
+]
+
+MEDIC_ROWS = [
+    ("Amy Nicole Nilsen","US","05/31/1993","A35874322","05/21/2034","845-421-0106","AMY.NILSEN31@GMAIL.COM"),
+    ("Carlos Smith","US","9/10/1972","645442043","04/15/2029","813-454-7837","emnole1995@gmail.com"),
+    ("Christopher Izzi","US","12/31/1990","A06603660","06/13/2032","570-856-2730","deltanu239@gmail.com"),
+    ("Jacob Samuel Cruz","US","8/10/1995","559629951","04/03/2027","813-340-9103","jcruzmusic16@icloud.com"),
+    ("Devin Mormando","US","9/4/1986","A34987989","12/06/2033","352-573-1380","dmormando@elfr.org"),
+    ("Jill Butler","US","5/8/1971","678687790","07/04/2032","813-614-4496","jsbutlerrn@gmail.com"),
+    ("Eric Castellucci","US","08/10/1953","512319513","01/25/2024","813-417-3210","trilucci@gmail.com"),
+    ("Nicholas Mc Sweeney","US","11/6/1990","542911451","04/03/2026","386-588-4005","nickjb_1106@yahoo.com"),
+    ("Gary Hurlbut","US","09/26/1968","A03628812","11/20/2032","727-355-3944","AirHurly@gmail.com"),
+    ("Harold John Haverty","US","08/23/1961","583528607","05/19/2028","727-504-0451","havertyjohn@yahoo.com"),
+    ("James Byrns","US","07/11/1968","A04083672","10/16/2033","727-518-4441","james.byrns68@gmail.com"),
+    ("Jamie Lynn Juliano","US","02/18/1983","554218813","07/19/2026","815-641-4906","jamie.juliano7@gmail.com"),
+    ("Jared Wayt","US","02/07/1986","565787394","02/26/2028","813-312-4708","jaredw@jeticu.com"),
+    ("Jessica May Mone","US","07/22/1978","598263733","06/12/2029","727-599-5138","mjessy0722@gmail.com"),
+    ("John David Mulford","US","08/21/1984","A04704947","02/05/2033","813-833-4663","johnmulford@yahoo.com"),
+    ("John P. Opyoke","US","7/30/1969","A20507949","05/30/2033","352-263-6925","trinityurgentcare@yahoo.com"),
+    ("Jon Inkrott","US","3/17/1972","599921500","07/17/2029","407-516-5579","jon.inkrott@adventhealth.com"),
+    ("Justin Andrews","US","10/24/1984","568082572","10/01/2030","239-233-9799","RFinkle5@me.com"),
+    ("Kimberly Recinella","US","4/5/1992","673093739","01/23/2032","513-226-1066","ktrecinella@gmail.com"),
+    ("Kristin Howell","US","08/17/1984","587818528","09/17/2028","813-361-3009","kristinvictory@gmail.com"),
+    ("Kurt Veilleux","US","09/17/1983","520374483","08/03/2024","813-417-6891","kurt@jeticu.com"),
+    ("Mary McCarthy","US","11/06/1955","A03492999","02/15/2032","727-641-0085","mary@jeticu.com"),
+    ("Michael Abesada","US","01/07/1979","A23420769","10/25/2033","786-447-7153","abesadam@gmail.com"),
+    ("Robert Sullivan","US","12/19/1983","572232934","05/24/2027","352-406-2573","bsullivan403@yahoo.com"),
+    ("Anthony Marino","US","03/23/1982","674420053","02/10/2032","772-418-0312","antr0323@gmail.com"),
+    ("Jefferson Day","US","09/01/1989","A22153633","06/25/2033","352-585-1068","Jeffy_day@yahoo.com"),
+    ("Ronald Figueredo","US","7/31/1976","567221355","06/13/2029","610-952-3430","ronaldfigueredo@gmail.com"),
+    ("Ronald Wyant","US","09/28/1963","A04483166","09/27/2033","727-639-5126","swyant1@icloud.com"),
+    ("Bruce Loeb Jr.","US","01/27/1971","A10316135","11/06/2032","904-338-6447","bnloeb9@gmail.com"),
+    ("Thomas Tropeano","US","2/16/1954","549865068","03/13/2027","352-804-9629","tltropeano@yahoo.com"),
+    ("Tiffany Bourne","US","03/15/1973","A04483169","09/27/2033","813-260-0343","bourneid73@gmail.com"),
+    ("Carla Lynn Sieber","US","07/27/1991","A49128381","11/13/2034","727-424-6886","carlasieber@msn.com"),
+    ("Tyson Elledge","US","08/03/1979","A03502556","03/27/2032","352-442-2819","tysonelledge@aol.com"),
+    ("Mario Rocha","US","06/02/1970","641826321","03/10/2029","813-215-3277","mario.r.rocha70@gmail.com"),
+    ("Jason A. Berger","US","12/10/1990","643816544","09/16/2029","727-512-2959","jberger9359@gmail.com"),
+    ("Courtney Hershey","US","05/12/1979","A15958520","03/04/2033","727-519-4714","hersheycourtney@gmail.com"),
+]
+
+# Desired role set per cohort
+PILOT_ROLE_CODES = ["PIC", "SIC"]
+MEDIC_ROLE_CODES = ["RT", "RN", "PARAMEDIC", "MD"]
+
+# Default human-readable names if roles don't exist
+ROLE_NAMES_BY_CODE = {
+    "PIC": "Pilot in Command",
+    "SIC": "Second in Command",
+    "RN": "Registered Nurse",
+    "PARAMEDIC": "Paramedic",
+    "MD": "Physician",
+    "RT": "Respiratory Therapist",
+}
+
+
+# -----------------------------
+# HELPERS
+# -----------------------------
+
+DATE_PATTERNS = ["%m/%d/%Y", "%m/%d/%y", "%m/%-d/%Y", "%m/%-d/%y"]  # macOS strptime may not support %-d; we'll handle manually.
+
+def parse_date(s):
+    if not s:
+        return None
+    s = s.strip()
+    # Normalize single-digit months/days to zero-padded mm/dd/yyyy
+    # e.g., 9/4/1986 -> 09/04/1986
+    parts = re.split(r"[/-]", s)
+    if len(parts) == 3:
+        mm, dd, yyyy = parts
+        if len(mm) == 1: mm = f"0{mm}"
+        if len(dd) == 1: dd = f"0{dd}"
+        if len(yyyy) == 2:  # assume 20xx for 2-digit years? safer: 19xx for <=30?
+            yyyy = "20" + yyyy if int(yyyy) < 50 else "19" + yyyy
+        s = f"{mm}/{dd}/{yyyy}"
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def split_name(full_name):
+    """
+    Split 'First [Middle/Initial/Joint] Last [Suffix]' into first_name, last_name.
+    We'll keep everything after the first token as last_name for simplicity,
+    but handle common suffixes ("Jr.", "II", "III") gracefully.
+    """
+    if not full_name:
+        return None, None
+    parts = full_name.strip().split()
+    if len(parts) == 1:
+        return parts[0], ""
+    # Keep suffix attached to last
+    suffixes = {"Jr.", "Jr", "Sr.", "Sr", "II", "III", "IV", "V"}
+    first = parts[0]
+    last = " ".join(parts[1:])
+    # compact "Al-Hussaini" etc. untouched
+    # nothing more fancy needed for now
+    return first, last
+
+
+def get_or_create_role(code):
+    role = StaffRole.objects.filter(code=code).first()
+    if role:
+        return role
+    # Create with default name if missing
+    name = ROLE_NAMES_BY_CODE.get(code, code)
+    role = StaffRole.objects.create(code=code, name=name)
+    return role
+
+
+def upsert_contact(name, nationality, dob, passport_no, passport_exp, phone, email):
+    first_name, last_name = split_name(name)
+    # Try to match by email first; fall back to (name + phone)
+    contact = None
+    if email:
+        contact = Contact.objects.filter(email=email.strip()).first()
+    if not contact:
+        # Try exact name + phone
+        contact = Contact.objects.filter(
+            first_name=first_name or "",
+            last_name=last_name or "",
+            phone=(phone or "").strip() or None,
+        ).first()
+
+    dob_dt = parse_date(dob)
+    pass_exp_dt = parse_date(passport_exp)
+
+    if contact:
+        # Update basics if missing
+        dirty = False
+        if not contact.first_name and first_name:
+            contact.first_name = first_name; dirty = True
+        if not contact.last_name and last_name:
+            contact.last_name = last_name; dirty = True
+        if nationality and (contact.nationality != nationality):
+            contact.nationality = nationality; dirty = True
+        if email and (contact.email != email):
+            contact.email = email; dirty = True
+        if phone and (contact.phone != phone):
+            contact.phone = phone; dirty = True
+        if dob_dt and (contact.date_of_birth != dob_dt):
+            contact.date_of_birth = dob_dt; dirty = True
+        if passport_no and (contact.passport_number != passport_no):
+            contact.passport_number = passport_no; dirty = True
+        if pass_exp_dt and (contact.passport_expiration_date != pass_exp_dt):
+            contact.passport_expiration_date = pass_exp_dt; dirty = True
+        if dirty:
+            contact.save()
+    else:
+        contact = Contact.objects.create(
+            first_name=first_name or "",
+            last_name=last_name or "",
+            nationality=nationality or None,
+            date_of_birth=dob_dt,
+            passport_number=passport_no or None,
+            passport_expiration_date=pass_exp_dt,
+            phone=phone or None,
+            email=email or None,
+        )
+    return contact
+
+
+def ensure_staff_for_contact(contact):
+    staff = getattr(contact, "staff", None)
+    if staff:
+        return staff
+    return Staff.objects.create(contact=contact, active=True)
+
+
+def ensure_memberships(staff, role_codes):
+    for code in role_codes:
+        role = get_or_create_role(code)
+        # Do not create duplicates with same open interval (start_on=None, end_on=None)
+        exists = StaffRoleMembership.objects.filter(
+            staff=staff, role=role, start_on=None, end_on=None
+        ).exists()
+        if not exists:
+            StaffRoleMembership.objects.create(
+                staff=staff, role=role, start_on=None, end_on=None
+            )
+
+
+def d(val):
+    """Decimal helper for mgtow."""
+    if val is None or str(val).strip() == "":
+        return None
+    return Decimal(str(val))
+
+
+# -----------------------------
+# COMMAND
+# -----------------------------
+
+class Command(BaseCommand):
+    help = "Seed Aircraft and Staff (Pilots & Medics) into the database."
+
+    def handle(self, *args, **options):
+        created_aircraft = updated_aircraft = 0
+        created_contacts = updated_contacts = 0
+        created_staff = 0
+        created_roles = 0
+        created_memberships = 0  # (we won't count precisely per-row here; optional)
+
+        # Ensure baseline roles exist (safe if already present)
+        for code in set(PILOT_ROLE_CODES + MEDIC_ROLE_CODES):
+            if not StaffRole.objects.filter(code=code).exists():
+                StaffRole.objects.create(code=code, name=ROLE_NAMES_BY_CODE.get(code, code))
+                created_roles += 1
+
+        # --- Aircraft upsert ---
+        for tail, company, make, model, serial, mgtow_lb in AIRCRAFT_ROWS:
+            mgtow = d(mgtow_lb)  # store the lb number in Decimal (your field is Decimal)
+            obj = Aircraft.objects.filter(tail_number=tail).first()
+            if obj:
+                dirty = False
+                if obj.company != company:
+                    obj.company = company; dirty = True
+                if obj.make != make:
+                    obj.make = make; dirty = True
+                if obj.model != model:
+                    obj.model = model; dirty = True
+                if obj.serial_number != serial:
+                    obj.serial_number = serial; dirty = True
+                if obj.mgtow != mgtow:
+                    obj.mgtow = mgtow; dirty = True
+                if dirty:
+                    obj.save()
+                    updated_aircraft += 1
+            else:
+                Aircraft.objects.create(
+                    tail_number=tail,
+                    company=company,
+                    make=make,
+                    model=model,
+                    serial_number=serial,
+                    mgtow=mgtow,
+                )
+                created_aircraft += 1
+
+        # --- Pilots ---
+        for (name, nat, dob, passport_no, exp, phone, email) in PILOT_ROWS:
+            contact_before = Contact.objects.filter(email=email).first()
+            contact = upsert_contact(name, nat, dob, passport_no, exp, phone, email)
+            if contact_before is None and contact is not None:
+                created_contacts += 1
+            elif contact_before is not None:
+                # we may have updated fields
+                updated_contacts += 0  # keep simple; adjust if you want exact diffs
+
+            staff = ensure_staff_for_contact(contact)
+            # Before creating, check how many memberships exist to approximate "created_memberships"
+            pre_count = StaffRoleMembership.objects.filter(staff=staff).count()
+            ensure_memberships(staff, PILOT_ROLE_CODES)
+            post_count = StaffRoleMembership.objects.filter(staff=staff).count()
+            created_memberships += max(0, post_count - pre_count)
+
+        # --- Medics ---
+        for (name, nat, dob, passport_no, exp, phone, email) in MEDIC_ROWS:
+            contact_before = Contact.objects.filter(email=email).first()
+            contact = upsert_contact(name, nat, dob, passport_no, exp, phone, email)
+            if contact_before is None and contact is not None:
+                created_contacts += 1
+            else:
+                updated_contacts += 0
+
+            staff = ensure_staff_for_contact(contact)
+            pre_count = StaffRoleMembership.objects.filter(staff=staff).count()
+            ensure_memberships(staff, MEDIC_ROLE_CODES)
+            post_count = StaffRoleMembership.objects.filter(staff=staff).count()
+            created_memberships += max(0, post_count - pre_count)
+
+        self.stdout.write(self.style.SUCCESS("Seeding complete."))
+        self.stdout.write(
+            f"Aircraft: created={created_aircraft}, updated={updated_aircraft}\n"
+            f"Contacts: created~={created_contacts}\n"
+            f"Staff: ensured (created as needed)\n"
+            f"Roles: created={created_roles} (only if missing)\n"
+            f"Role memberships created~={created_memberships}"
+        )
+
+```
+
+
+# File: api/management/commands/seed_fbos.py
+
+```python
+import csv
+from pathlib import Path
+
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
+
+from api.models import FBO, Airport  # adjust import path if different
+
+
+HEADERS = {
+    "icao": ("ID", "ICAO", "Airport", "Airport ID"),
+    "name": ("FBO", "Name"),
+    "phone": ("PHONE", "Phone"),
+    "phone2": ("PHONE2", "Phone2", "Alt Phone"),
+    "email": ("Email", "E-mail"),
+    "notes": ("FBO NOTES", "Notes"),
+}
+
+
+def pick(row, keys):
+    """Return the first non-empty trimmed value from row for any of the provided keys."""
+    for k in keys:
+        if k in row and row[k] is not None:
+            v = str(row[k]).strip()
+            if v != "":
+                return v
+    return ""
+
+
+class Command(BaseCommand):
+    help = "Seed FBO records from a CSV and link them to Airports by ICAO code."
+
+    def add_arguments(self, parser):
+        parser.add_argument("csv_path", type=str, help="Path to the CSV file.")
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Parse and report without writing any changes.",
+        )
+        parser.add_argument(
+            "--update",
+            action="store_true",
+            help="Update existing FBO phone/email/notes if new data present.",
+        )
+
+    @transaction.atomic
+    def handle(self, *args, **opts):
+        csv_path = Path(opts["csv_path"])
+        dry_run = opts["dry_run"]
+        do_update = opts["update"]
+
+        if not csv_path.exists():
+            raise CommandError(f"CSV not found: {csv_path}")
+
+        created_fbos = 0
+        linked_pairs = 0
+        updated_fbos = 0
+        skipped_rows = 0
+        missing_airports = 0
+
+        # Read CSV with BOM tolerance
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            # Normalize header keys once (DictReader preserves original)
+            # We'll still use the HEADERS map via pick()
+
+            for i, row in enumerate(reader, start=2):  # start=2 accounts for header row = line 1
+                icao = pick(row, HEADERS["icao"]).upper()
+                name = pick(row, HEADERS["name"])
+                phone = pick(row, HEADERS["phone"])
+                phone2 = pick(row, HEADERS["phone2"])
+                email = pick(row, HEADERS["email"])
+                notes = pick(row, HEADERS["notes"])
+
+                if not icao or not name:
+                    skipped_rows += 1
+                    self.stdout.write(self.style.WARNING(
+                        f"[line {i}] Skipped: missing required ICAO and/or FBO name."
+                    ))
+                    continue
+
+                airport = Airport.objects.filter(icao_code__iexact=icao).first()
+                if not airport:
+                    missing_airports += 1
+                    self.stdout.write(self.style.WARNING(
+                        f"[line {i}] No Airport found for ICAO '{icao}'. Row skipped."
+                    ))
+                    continue
+
+                # Try to find an existing FBO by name (+email/phone if available) to avoid global name collisions
+                fbo_qs = FBO.objects.filter(name__iexact=name)
+                if email:
+                    fbo_qs = fbo_qs.filter(email__iexact=email) | fbo_qs
+                if phone:
+                    fbo_qs = fbo_qs.filter(phone__iexact=phone) | fbo_qs
+
+                fbo = fbo_qs.distinct().first()
+
+                if fbo is None:
+                    # Create new FBO
+                    fbo = FBO(
+                        name=name,
+                        phone=phone or None,
+                        phone_secondary=phone2 or None,
+                        email=email or None,
+                        notes=notes or None,
+                    )
+                    if not dry_run:
+                        fbo.save()
+                    created_fbos += 1
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[line {i}] Created FBO '{name}'."
+                    ))
+                else:
+                    # Optionally update existing with any new info provided
+                    if do_update:
+                        changed = False
+                        if phone and fbo.phone != phone:
+                            fbo.phone = phone
+                            changed = True
+                        if phone2 and fbo.phone_secondary != phone2:
+                            fbo.phone_secondary = phone2
+                            changed = True
+                        if email and (fbo.email or "").lower() != email.lower():
+                            fbo.email = email
+                            changed = True
+                        if notes and (fbo.notes or "").strip() != notes:
+                            fbo.notes = notes
+                            changed = True
+                        if changed and not dry_run:
+                            fbo.save()
+                            updated_fbos += 1
+                            self.stdout.write(self.style.SUCCESS(
+                                f"[line {i}] Updated FBO '{name}'."
+                            ))
+
+                # Link to Airport via M2M (Airport ↔ FBO)
+                if not dry_run:
+                    airport.fbos.add(fbo)
+                linked_pairs += 1
+
+        if dry_run:
+            self.stdout.write(self.style.WARNING("DRY RUN: no changes were written."))
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Done. Created FBOs: {created_fbos}, Updated: {updated_fbos}, "
+            f"Linked (Airport↔FBO): {linked_pairs}, Skipped rows: {skipped_rows}, "
+            f"Missing airports: {missing_airports}"
+        ))
+
+```
+
+
+# File: api/management/commands/seed_dev.py
+
+```python
+# api/management/commands/seed_dev.py
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
+from django.db import transaction, connection
+from decimal import Decimal
+from datetime import timedelta, datetime
+from django.utils import timezone
+from uuid import UUID
+
+from api.models import (
+    Permission, Role, Department, UserProfile, Contact, FBO, Ground, Airport,
+    Document, Aircraft, Transaction, Agreement, Patient, Quote, Passenger,
+    CrewLine, Trip, TripLine
+)
+
+def aware(dt_str: str):
+    dt = datetime.fromisoformat(dt_str)
+    return timezone.make_aware(dt) if timezone.is_naive(dt) else dt
+
+class Command(BaseCommand):
+    help = "Seed development/test data"
+
+    def handle(self, *args, **options):
+        with transaction.atomic():
+            self.stdout.write(self.style.NOTICE("Seeding data..."))
+
+            # --- Base users for created_by/modified_by ---
+            admin_user, _ = User.objects.get_or_create(
+                username="admin",
+                defaults={"email": "admin@example.com", "is_staff": True, "is_superuser": True}
+            )
+            if not admin_user.has_usable_password():
+                admin_user.set_password("admin123")
+                admin_user.save()
+
+            alice_user, _ = User.objects.get_or_create(
+                username="alice",
+                defaults={"email": "alice@example.com", "is_staff": True}
+            )
+            if not alice_user.has_usable_password():
+                alice_user.set_password("password123")
+                alice_user.save()
+
+            bob_user, _ = User.objects.get_or_create(
+                username="bob",
+                defaults={"email": "bob@example.com"}
+            )
+            if not bob_user.has_usable_password():
+                bob_user.set_password("password123")
+                bob_user.save()
+
+            # --- Your explicit auth_user id=7 + exact hash/timestamps ---
+            target_user_id = 7
+            password_hash = "pbkdf2_sha256$870000$FXqSBkZnJCTre722mo1IwH$feY/56s+7Ry8EnAEmrNRFZdw0q7jZZ6KmjM6jly+R2s="
+            last_login_str = "2025-08-16 16:34:56.213251"
+            date_joined_str = "2025-08-16 15:54:58.108485"
+
+            u7, created = User.objects.get_or_create(
+                id=target_user_id,
+                defaults=dict(
+                    username="chaimkitchner",
+                    email="ck@cekitch.com",
+                    is_superuser=True,
+                    is_staff=True,
+                    is_active=True,
+                    password=password_hash,
+                    last_login=aware(last_login_str),
+                    date_joined=aware(date_joined_str),
+                ),
+            )
+            if not created:
+                u7.username = "chaimkitchner"
+                u7.email = "ck@cekitch.com"
+                u7.is_superuser = True
+                u7.is_staff = True
+                u7.is_active = True
+                u7.password = password_hash
+                u7.save(update_fields=["username", "email", "is_superuser", "is_staff", "is_active", "password"])
+                User.objects.filter(pk=u7.pk).update(
+                    last_login=aware(last_login_str),
+                    date_joined=aware(date_joined_str),
+                )
+
+            # bump sequence in Postgres so future inserts don't collide with id=7
+            if connection.vendor == "postgresql":
+                with connection.cursor() as cur:
+                    cur.execute(
+                        "SELECT setval(pg_get_serial_sequence('auth_user','id'), "
+                        "(SELECT GREATEST(COALESCE(MAX(id), 1), 1) FROM auth_user))"
+                    )
+
+            # --- Matching api_userprofile record (UUID + timestamps you provided) ---
+            profile_id = UUID("26e9897c-9ffe-427d-beaa-e1c6e8978f19")
+            created_on_str = "2025-08-16 16:46:57.983721"
+            modified_on_str = "2025-08-21 06:52:22.459238"
+
+            up_defaults = dict(
+                user=u7,
+                first_name="Chaim",
+                last_name="Kitchner",
+                email="ck@cekitch.com",
+                status="active",
+                lock=False,
+                created_by=u7,
+                modified_by=u7,
+            )
+            up, up_created = UserProfile.objects.get_or_create(id=profile_id, defaults=up_defaults)
+            if not up_created:
+                up.user = u7
+                up.first_name = "Chaim"
+                up.last_name = "Kitchner"
+                up.email = "ck@cekitch.com"
+                up.status = "active"
+                up.lock = False
+                up.created_by = u7
+                up.modified_by = u7
+                up.save()
+            UserProfile.objects.filter(pk=profile_id).update(
+                created_on=aware(created_on_str),
+                modified_on=aware(modified_on_str),
+            )
+
+            # --- Permissions / Roles / Departments ---
+            p_view, _ = Permission.objects.get_or_create(
+                name="view_quotes",
+                defaults={"description": "Can view quotes", "created_by": admin_user, "modified_by": admin_user},
+            )
+            p_edit, _ = Permission.objects.get_or_create(
+                name="edit_quotes",
+                defaults={"description": "Can edit quotes", "created_by": admin_user, "modified_by": admin_user},
+            )
+            p_trips, _ = Permission.objects.get_or_create(
+                name="manage_trips",
+                defaults={"description": "Can manage trips", "created_by": admin_user, "modified_by": admin_user},
+            )
+
+            role_admin, _ = Role.objects.get_or_create(
+                name="Admin",
+                defaults={"description": "Admin role", "created_by": admin_user, "modified_by": admin_user},
+            )
+            role_admin.permissions.set([p_view, p_edit, p_trips])
+
+            role_ops, _ = Role.objects.get_or_create(
+                name="Dispatcher",
+                defaults={"description": "Operations/Dispatcher", "created_by": admin_user, "modified_by": admin_user},
+            )
+            role_ops.permissions.set([p_view, p_trips])
+
+            dept_ops, _ = Department.objects.get_or_create(
+                name="Operations",
+                defaults={"description": "Ops department", "created_by": admin_user, "modified_by": admin_user},
+            )
+            dept_med, _ = Department.objects.get_or_create(
+                name="Medical",
+                defaults={"description": "Medical department", "created_by": admin_user, "modified_by": admin_user},
+            )
+            dept_ops.permission_ids.set([p_view, p_trips, p_edit])
+            dept_med.permission_ids.set([p_view])
+
+            # hook M2Ms for user profiles
+            up.roles.set([role_admin])
+            up.departments.set([dept_ops])
+            up.department_ids.set([dept_ops])
+
+            # --- Contacts (pilots/medic/customer) ---
+            pilot1, _ = Contact.objects.get_or_create(
+                first_name="Pat", last_name="Pilot",
+                defaults={"email": "pat.pilot@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            pilot2, _ = Contact.objects.get_or_create(
+                first_name="Sam", last_name="Second",
+                defaults={"email": "sam.second@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            medic1, _ = Contact.objects.get_or_create(
+                first_name="Rory", last_name="RN",
+                defaults={"email": "rory.rn@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            customer, _ = Contact.objects.get_or_create(
+                business_name="Oceanic Cruises",
+                defaults={"email": "ops@oceanic.example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+
+            # --- FBO / Ground / Airports ---
+            fbo_jfk, _ = FBO.objects.get_or_create(
+                name="Signature JFK",
+                defaults={"city": "New York", "state": "NY", "created_by": admin_user, "modified_by": admin_user},
+            )
+            fbo_jfk.contacts.set([pilot1])
+
+            ground_lax, _ = Ground.objects.get_or_create(
+                name="LAX Limo",
+                defaults={"city": "Los Angeles", "state": "CA", "created_by": admin_user, "modified_by": admin_user},
+            )
+            ground_lax.contacts.set([customer])
+
+            jfk, _ = Airport.objects.get_or_create(
+                icao_code="KJFK",
+                defaults=dict(
+                    iata_code="JFK", name="John F. Kennedy International", city="New York",
+                    state="NY", country="USA", elevation=13,
+                    latitude=Decimal("40.641311"), longitude=Decimal("-73.778139"),
+                    timezone="America/New_York", created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            lax, _ = Airport.objects.get_or_create(
+                icao_code="KLAX",
+                defaults=dict(
+                    iata_code="LAX", name="Los Angeles International", city="Los Angeles",
+                    state="CA", country="USA", elevation=125,
+                    latitude=Decimal("33.941589"), longitude=Decimal("-118.408530"),
+                    timezone="America/Los_Angeles", created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            jfk.fbos.add(fbo_jfk)
+            lax.grounds.add(ground_lax)
+
+            # --- Aircraft ---
+            aircraft, _ = Aircraft.objects.get_or_create(
+                tail_number="N123AB",
+                defaults=dict(
+                    company="Airmed Partners", mgtow=Decimal("21500.00"),
+                    make="Learjet", model="35A", serial_number="LJ35-0001",
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+
+            # --- Documents & Agreements ---
+            pdf_bytes = b"%PDF-1.4 test\n%%EOF"
+            doc_quote, _ = Document.objects.get_or_create(filename="quote.pdf", defaults={"content": pdf_bytes})
+            doc_agree, _ = Document.objects.get_or_create(filename="agreement.pdf", defaults={"content": pdf_bytes})
+            doc_passport, _ = Document.objects.get_or_create(filename="passport.jpg", defaults={"content": b'\x00\x01TEST'})
+
+            agreement_payment, _ = Agreement.objects.get_or_create(
+                destination_email="billing@oceanic.example.com",
+                defaults={"document_unsigned": doc_agree, "status": "created",
+                          "created_by": admin_user, "modified_by": admin_user},
+            )
+            agreement_consent, _ = Agreement.objects.get_or_create(
+                destination_email="consent@oceanic.example.com",
+                defaults={"document_unsigned": doc_agree, "status": "created",
+                          "created_by": admin_user, "modified_by": admin_user},
+            )
+
+            # --- Patient / Passengers ---
+            patient_contact, _ = Contact.objects.get_or_create(
+                first_name="Jamie", last_name="Doe",
+                defaults={"email": "jamie@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            patient, _ = Patient.objects.get_or_create(
+                info=patient_contact,
+                defaults=dict(
+                    bed_at_origin=True, bed_at_destination=False,
+                    date_of_birth=timezone.now().date().replace(year=1988),
+                    nationality="USA", passport_number="X1234567",
+                    passport_expiration_date=timezone.now().date().replace(year=2032),
+                    passport_document=doc_passport, status="pending",
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+
+            pax_contact1, _ = Contact.objects.get_or_create(
+                first_name="Alex", last_name="Doe",
+                defaults={"email": "alex@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            pax1, _ = Passenger.objects.get_or_create(
+                info=pax_contact1,
+                defaults=dict(
+                    nationality="USA", passport_number="PAX001",
+                    passport_expiration_date=timezone.now().date().replace(year=2030),
+                    contact_number="+1-555-0110", passport_document=doc_passport,
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+
+            pax_contact2, _ = Contact.objects.get_or_create(
+                first_name="Taylor", last_name="Smith",
+                defaults={"email": "taylor@example.com", "created_by": admin_user, "modified_by": admin_user},
+            )
+            pax2, _ = Passenger.objects.get_or_create(
+                info=pax_contact2,
+                defaults=dict(
+                    nationality="USA", passport_number="PAX002",
+                    passport_expiration_date=timezone.now().date().replace(year=2031),
+                    contact_number="+1-555-0111", passport_document=doc_passport,
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            pax1.passenger_ids.add(pax2)
+
+            # --- Crew Line ---
+            crew, _ = CrewLine.objects.get_or_create(
+                primary_in_command=pilot1,
+                secondary_in_command=pilot2,
+                defaults={"created_by": admin_user, "modified_by": admin_user},
+            )
+            crew.medic_ids.set([medic1])
+
+            # --- Quote ---
+            quote, _ = Quote.objects.get_or_create(
+                contact=customer, pickup_airport=jfk, dropoff_airport=lax,
+                defaults=dict(
+                    quoted_amount=Decimal("45999.00"),
+                    aircraft_type="35",
+                    estimated_flight_time=timedelta(hours=5, minutes=30),
+                    includes_grounds=True, inquiry_date=timezone.now(),
+                    medical_team="RN/Paramedic", patient=patient,
+                    status="pending", number_of_stops=1,
+                    quote_pdf=doc_quote, quote_pdf_status="created",
+                    quote_pdf_email="quotes@airmed.example.com",
+                    payment_agreement=agreement_payment,
+                    consent_for_transport=agreement_consent,
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            quote.documents.set([doc_quote])
+
+            # --- Transaction ---
+            txn, _ = Transaction.objects.get_or_create(
+                email="payer@oceanic.example.com",
+                amount=Decimal("10000.00"),
+                payment_method="credit_card",
+                defaults=dict(
+                    payment_status="completed",
+                    payment_date=timezone.now(),
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            quote.transactions.add(txn)
+
+            # --- Trip + legs ---
+            trip, _ = Trip.objects.get_or_create(
+                trip_number="TRIP-0001",
+                defaults=dict(
+                    email_chain=[], quote=quote, type="medical", patient=patient,
+                    estimated_departure_time=timezone.now() + timedelta(days=3, hours=2),
+                    post_flight_duty_time=timedelta(hours=2),
+                    pre_flight_duty_time=timedelta(hours=1),
+                    aircraft=aircraft,
+                    internal_itinerary=doc_quote,
+                    customer_itinerary=doc_quote,
+                    created_by=admin_user, modified_by=admin_user
+                ),
+            )
+            trip.passengers.set([pax1, pax2])
+
+            dep_utc = timezone.now() + timedelta(days=3, hours=2)
+            arr_utc = dep_utc + timedelta(hours=6)
+            TripLine.objects.get_or_create(
+                trip=trip, origin_airport=jfk, destination_airport=lax,
+                departure_time_local=dep_utc, departure_time_utc=dep_utc,
+                arrival_time_local=arr_utc, arrival_time_utc=arr_utc,
+                defaults=dict(
+                    crew_line=crew, distance=Decimal("2475.50"),
+                    flight_time=timedelta(hours=6), ground_time=timedelta(minutes=45),
+                    passenger_leg=True, created_by=admin_user, modified_by=admin_user
+                ),
+            )
+
+            dep2 = arr_utc + timedelta(hours=2)
+            arr2 = dep2 + timedelta(hours=5, minutes=45)
+            TripLine.objects.get_or_create(
+                trip=trip, origin_airport=lax, destination_airport=jfk,
+                departure_time_local=dep2, departure_time_utc=dep2,
+                arrival_time_local=arr2, arrival_time_utc=arr2,
+                defaults=dict(
+                    crew_line=crew, distance=Decimal("2475.50"),
+                    flight_time=timedelta(hours=5, minutes=45), ground_time=timedelta(minutes=30),
+                    passenger_leg=True, created_by=admin_user, modified_by=admin_user
+                ),
+            )
+
+            self.stdout.write(self.style.SUCCESS("✅ Seed complete."))
+            self.stdout.write(self.style.SUCCESS("Users: admin/admin123; alice/bob with password123"))
+            self.stdout.write(self.style.SUCCESS("Custom user id=7: chaimkitchner (pre-hashed)"))
 
 ```
 

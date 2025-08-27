@@ -31,7 +31,7 @@
             <!--end::Position-->
 
             <!--begin::Info-->
-            <div class="d-flex flex-wrap flex-center">
+            <div class="d-flex flex-wrap flex-center" v-if="!isPatient()">
               <!--begin::Stats-->
               <div
                 class="border border-gray-300 border-dashed rounded py-3 px-3 mb-3"
@@ -66,7 +66,42 @@
               </div>
               <!--end::Stats-->
             </div>
-            <!--end::Info-->
+            <!--begin::Patient Info-->
+            <div class="d-flex flex-wrap flex-center" v-else>
+              <!--begin::Stats-->
+              <div
+                class="border border-gray-300 border-dashed rounded py-3 px-3 mb-3"
+              >
+                <div class="fs-4 fw-bold text-gray-700">
+                  <span class="w-75px">{{ getPatientAge() }}</span>
+                </div>
+                <div class="fw-semibold text-muted">Age</div>
+              </div>
+              <!--end::Stats-->
+
+              <!--begin::Stats-->
+              <div
+                class="border border-gray-300 border-dashed rounded py-3 px-3 mx-4 mb-3"
+              >
+                <div class="fs-4 fw-bold text-gray-700">
+                  <span class="w-75px">{{ contact?.status || 'Unknown' }}</span>
+                </div>
+                <div class="fw-semibold text-muted">Status</div>
+              </div>
+              <!--end::Stats-->
+
+              <!--begin::Stats-->
+              <div
+                class="border border-gray-300 border-dashed rounded py-3 px-3 mb-3"
+              >
+                <div class="fs-4 fw-bold text-gray-700">
+                  <span class="w-75px">{{ formatDate(contact?.created_on).split(',')[0] }}</span>
+                </div>
+                <div class="fw-semibold text-muted">Registered</div>
+              </div>
+              <!--end::Stats-->
+            </div>
+            <!--end::Patient Info-->
           </div>
           <!--end::Summary-->
 
@@ -115,8 +150,8 @@
               <!--begin::Details item-->
               <div class="fw-bold mt-5">Email</div>
               <div class="text-gray-600">
-                <a :href="`mailto:${contact?.email}`" class="text-gray-600 text-hover-primary">
-                  {{ contact?.email || 'No email' }}
+                <a :href="`mailto:${contact?.info?.email || contact?.email}`" class="text-gray-600 text-hover-primary">
+                  {{ contact?.info?.email || contact?.email || 'No email' }}
                 </a>
               </div>
               <!--end::Details item-->
@@ -124,10 +159,20 @@
               <!--begin::Details item-->
               <div class="fw-bold mt-5">Phone</div>
               <div class="text-gray-600">
-                <a :href="`tel:${contact?.phone}`" class="text-gray-600 text-hover-primary">
-                  {{ contact?.phone || 'No phone' }}
+                <a :href="`tel:${contact?.info?.phone || contact?.phone}`" class="text-gray-600 text-hover-primary">
+                  {{ contact?.info?.phone || contact?.phone || 'No phone' }}
                 </a>
               </div>
+              <!--end::Details item-->              
+              
+              <!--begin::Details item-->
+              <div class="fw-bold mt-5">Date of Birth</div>
+              <div class="text-gray-600">{{ formatDate(contact?.date_of_birth || contact?.info?.date_of_birth) }}</div>
+              <!--end::Details item-->
+              
+              <!--begin::Details item-->
+              <div class="fw-bold mt-5">Nationality</div>
+              <div class="text-gray-600">{{ contact?.nationality || contact?.info?.nationality || 'Not specified' }}</div>
               <!--end::Details item-->
               
               <!--begin::Details item-->
@@ -135,11 +180,6 @@
               <div class="text-gray-600">
                 {{ getFormattedAddress() }}
               </div>
-              <!--end::Details item-->
-              
-              <!--begin::Details item-->
-              <div class="fw-bold mt-5">Date of Birth</div>
-              <div class="text-gray-600">{{ formatDate(contact?.date_of_birth) }}</div>
               <!--end::Details item-->
               
               <!--begin::Details item-->
@@ -164,7 +204,7 @@
         <!--begin::Card header-->
         <div class="card-header border-0">
           <div class="card-title">
-            <h3 class="fw-bold m-0">Medical Information</h3>
+            <h3 class="fw-bold m-0">Patient Information</h3>
           </div>
         </div>
         <!--end::Card header-->
@@ -172,22 +212,22 @@
         <!--begin::Card body-->
         <div class="card-body pt-2">
           <div class="py-2">
-            <!--begin::Medical Details-->
-            <div class="fw-bold mt-3">Medical Condition</div>
-            <div class="text-gray-600">{{ contact?.medical_condition || 'Not specified' }}</div>
+            <!--begin::Patient Details-->
+            <div class="fw-bold mt-3">Passport Number</div>
+            <div class="text-gray-600">{{ contact?.passport_number || 'Not provided' }}</div>
             
-            <div class="fw-bold mt-5">Allergies</div>
-            <div class="text-gray-600">{{ contact?.allergies || 'None listed' }}</div>
+            <div class="fw-bold mt-5">Passport Expiration</div>
+            <div class="text-gray-600">{{ formatDate(contact?.passport_expiration_date) }}</div>
             
-            <div class="fw-bold mt-5">Medications</div>
-            <div class="text-gray-600">{{ contact?.medications || 'None listed' }}</div>
+            <div class="fw-bold mt-5">Special Instructions</div>
+            <div class="text-gray-600">{{ contact?.special_instructions || 'None' }}</div>
             
-            <div class="fw-bold mt-5">Insurance Provider</div>
-            <div class="text-gray-600">{{ contact?.insurance_provider || 'Not provided' }}</div>
+            <div class="fw-bold mt-5">Bed at Origin</div>
+            <div class="text-gray-600">{{ contact?.bed_at_origin ? 'Yes' : 'No' }}</div>
             
-            <div class="fw-bold mt-5">Policy Number</div>
-            <div class="text-gray-600">{{ contact?.insurance_policy || 'Not provided' }}</div>
-            <!--end::Medical Details-->
+            <div class="fw-bold mt-5">Bed at Destination</div>
+            <div class="text-gray-600">{{ contact?.bed_at_destination ? 'Yes' : 'No' }}</div>
+            <!--end::Patient Details-->
           </div>
         </div>
         <!--end::Card body-->
@@ -214,80 +254,8 @@
         </li>
         <!--end:::Tab item-->
 
-        <!--begin:::Tab item-->
-        <li class="nav-item">
-          <a
-            class="nav-link text-active-primary pb-4"
-            data-bs-toggle="tab"
-            href="#kt_contact_view_trips_tab"
-          >
-            Trips & Travel
-          </a>
-        </li>
-        <!--end:::Tab item-->
 
-        <!--begin:::Tab item-->
-        <li class="nav-item">
-          <a
-            class="nav-link text-active-primary pb-4"
-            data-bs-toggle="tab"
-            href="#kt_contact_view_billing_tab"
-          >
-            Billing & Payments
-          </a>
-        </li>
-        <!--end:::Tab item-->
 
-        <!--begin:::Tab item-->
-        <li class="nav-item">
-          <a
-            class="nav-link text-active-primary pb-4"
-            data-bs-toggle="tab"
-            href="#kt_contact_view_activity_tab"
-          >
-            Activity & Logs
-          </a>
-        </li>
-        <!--end:::Tab item-->
-
-        <!--begin:::Tab item-->
-        <li class="nav-item ms-auto">
-          <!--begin::Action menu-->
-          <a
-            href="#"
-            class="btn btn-primary ps-7"
-            data-kt-menu-trigger="click"
-            data-kt-menu-attach="parent"
-            data-kt-menu-placement="bottom-end"
-          >
-            Actions
-            <KTIcon icon-name="down" icon-class="fs-2 me-0" />
-          </a>
-          <!--begin::Menu-->
-          <div
-            class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4"
-            data-kt-menu="true"
-          >
-            <div class="menu-item px-3">
-              <a href="#" class="menu-link px-3">Edit Contact</a>
-            </div>
-            <div class="menu-item px-3">
-              <a href="#" class="menu-link px-3">Create Trip</a>
-            </div>
-            <div class="menu-item px-3">
-              <a href="#" class="menu-link px-3">Generate Quote</a>
-            </div>
-            <div class="menu-item px-3">
-              <a href="#" class="menu-link px-3">View Billing</a>
-            </div>
-            <div class="separator my-2"></div>
-            <div class="menu-item px-3">
-              <a href="#" class="menu-link px-3 text-danger">Deactivate</a>
-            </div>
-          </div>
-          <!--end::Menu-->
-        </li>
-        <!--end:::Tab item-->
       </ul>
       <!--end:::Tabs-->
 
@@ -303,35 +271,7 @@
         </div>
         <!--end:::Tab pane-->
 
-        <!--begin:::Tab pane-->
-        <div
-          class="tab-pane fade"
-          id="kt_contact_view_trips_tab"
-          role="tabpanel"
-        >
-          <ContactTrips :contact="contact" :loading="loading" />
-        </div>
-        <!--end:::Tab pane-->
 
-        <!--begin:::Tab pane-->
-        <div
-          class="tab-pane fade"
-          id="kt_contact_view_billing_tab"
-          role="tabpanel"
-        >
-          <ContactBilling :contact="contact" :loading="loading" />
-        </div>
-        <!--end:::Tab pane-->
-
-        <!--begin:::Tab pane-->
-        <div
-          class="tab-pane fade"
-          id="kt_contact_view_activity_tab"
-          role="tabpanel"
-        >
-          <ContactActivity :contact="contact" :loading="loading" />
-        </div>
-        <!--end:::Tab pane-->
       </div>
       <!--end:::Tab content-->
     </div>
@@ -345,17 +285,11 @@ import { defineComponent, ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import ContactOverview from "@/components/contacts/cards/overview/ContactOverview.vue";
-import ContactTrips from "@/components/contacts/cards/trips/ContactTrips.vue";
-import ContactBilling from "@/components/contacts/cards/billing/ContactBilling.vue";
-import ContactActivity from "@/components/contacts/cards/activity/ContactActivity.vue";
 
 export default defineComponent({
   name: "contact-details",
   components: {
     ContactOverview,
-    ContactTrips,
-    ContactBilling,
-    ContactActivity,
   },
   setup() {
     const route = useRoute();
@@ -374,7 +308,33 @@ export default defineComponent({
         let endpoint = '';
         switch (contactType) {
           case 'patients':
+            // First try as patient ID
             endpoint = `/patients/${contactId}/`;
+            try {
+              const response = await ApiService.get(endpoint);
+              contact.value = { ...response.data, type: contactType };
+              return; // Success, exit early
+            } catch (patientErr: any) {
+              if (patientErr.response?.status === 404) {
+                // If patient not found, try to find patient by contact ID
+                console.log('Patient not found by ID, trying to find by contact ID...');
+                try {
+                  const patientsResponse = await ApiService.get('/patients/');
+                  const allPatients = patientsResponse.data.results || patientsResponse.data || [];
+                  const matchingPatient = allPatients.find((p: any) => p.info?.id === contactId);
+                  
+                  if (matchingPatient) {
+                    contact.value = { ...matchingPatient, type: contactType };
+                    // Update URL to use correct patient ID
+                    window.history.replaceState({}, '', `/admin/contacts/patients/${matchingPatient.id}`);
+                    return;
+                  }
+                } catch (searchErr) {
+                  console.error('Error searching for patient by contact ID:', searchErr);
+                }
+              }
+              throw patientErr; // Re-throw if we can't handle it
+            }
             break;
           case 'customers':
             // Customers are just contacts, use contacts endpoint
@@ -397,19 +357,27 @@ export default defineComponent({
 
     const getContactInitials = (): string => {
       if (contact.value) {
-        const first = contact.value.first_name?.charAt(0) || '';
-        const last = contact.value.last_name?.charAt(0) || '';
-        return (first + last).toUpperCase() || contact.value.email?.charAt(0).toUpperCase() || 'C';
+        // For patients, get name from info object
+        const firstName = contact.value.info?.first_name || contact.value.first_name;
+        const lastName = contact.value.info?.last_name || contact.value.last_name;
+        const email = contact.value.info?.email || contact.value.email;
+        
+        const first = firstName?.charAt(0) || '';
+        const last = lastName?.charAt(0) || '';
+        return (first + last).toUpperCase() || email?.charAt(0).toUpperCase() || 'C';
       }
       return 'C';
     };
 
     const getContactName = (): string => {
       if (contact.value) {
-        const first = contact.value.first_name || '';
-        const last = contact.value.last_name || '';
-        const name = `${first} ${last}`.trim();
-        return name || contact.value.email || 'Unknown Contact';
+        // For patients, get name from info object
+        const firstName = contact.value.info?.first_name || contact.value.first_name;
+        const lastName = contact.value.info?.last_name || contact.value.last_name;
+        const email = contact.value.info?.email || contact.value.email;
+        
+        const name = `${firstName || ''} ${lastName || ''}`.trim();
+        return name || email || 'Unknown Contact';
       }
       return 'Loading...';
     };
@@ -439,6 +407,21 @@ export default defineComponent({
         day: 'numeric',
       });
     };
+    
+    const getPatientAge = (): string => {
+      if (!contact.value?.date_of_birth) return 'Unknown';
+      
+      const today = new Date();
+      const birthDate = new Date(contact.value.date_of_birth);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      return `${age}y`;
+    };
 
     const getStatusColor = (): string => {
       const status = contact.value?.status?.toLowerCase();
@@ -453,12 +436,15 @@ export default defineComponent({
     const getFormattedAddress = (): string => {
       if (!contact.value) return 'No address provided';
       
+      // For patients, get address from info object  
+      const addressData = contact.value.info || contact.value;
       const parts = [
-        contact.value.address,
-        contact.value.city,
-        contact.value.state,
-        contact.value.zip_code,
-        contact.value.country
+        addressData.address_line1,
+        addressData.address_line2,
+        addressData.city,
+        addressData.state,
+        addressData.zip,
+        addressData.country
       ].filter(Boolean);
       
       return parts.length > 0 ? parts.join(', ') : 'No address provided';
@@ -495,6 +481,7 @@ export default defineComponent({
       getFormattedAddress,
       formatDate,
       isPatient,
+      getPatientAge,
     };
   },
 });

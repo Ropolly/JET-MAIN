@@ -22,10 +22,15 @@ router.register(r'crew-lines', views.CrewLineViewSet)
 router.register(r'trips', views.TripViewSet)
 router.register(r'trip-lines', views.TripLineViewSet)
 router.register(r'modifications', views.ModificationViewSet)
+router.register(r"staff", views.StaffViewSet, basename="staff")
+router.register(r"staff-roles", views.StaffRoleViewSet, basename="staff-role")
+router.register(r"staff-role-memberships", views.StaffRoleMembershipViewSet, basename="staff-role-membership")
+router.register(r"trip-events", views.TripEventViewSet, basename="trip-event")
 
 urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
     path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
+    path('contacts/create-with-related/', views.create_contact_with_related, name='create-contact-with-related'),
 ]

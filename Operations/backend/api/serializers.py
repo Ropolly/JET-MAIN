@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
+    StaffRoleMembership, TripEvent
 )
 from django.contrib.auth.models import User
 
@@ -35,11 +36,51 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 # Contact and location serializers
 class ContactSerializer(serializers.ModelSerializer):
+    contact_type = serializers.SerializerMethodField()
+    
     class Meta:
         model = Contact
         fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
-                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country', 
-                 'created_on', 'created_by', 'modified_on', 'modified_by']
+                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
+                 'nationality', 'date_of_birth', 'passport_number', 'passport_expiration_date',
+                 'contact_type', 'created_on', 'created_by', 'modified_on', 'modified_by']
+    
+    def get_contact_type(self, obj):
+        """
+        Determine contact type based on related objects
+        """
+        # Check if this contact is a patient
+        if hasattr(obj, 'patients') and obj.patients.exists():
+            return 'Patient'
+        
+        # Check if this contact is staff
+        if hasattr(obj, 'staff'):
+            try:
+                staff = obj.staff
+                # Check staff role memberships to determine if pilot or medic
+                role_codes = staff.role_memberships.filter(
+                    end_on__isnull=True  # Active memberships only
+                ).values_list('role__code', flat=True)
+                
+                if 'PIC' in role_codes or 'SIC' in role_codes:
+                    return 'Staff - Pilot'
+                elif 'RN' in role_codes or 'PARAMEDIC' in role_codes:
+                    return 'Staff - Medic'
+                else:
+                    return 'Staff'
+            except:
+                return 'Staff'
+        
+        # Check if this contact is a passenger
+        if hasattr(obj, 'passengers') and obj.passengers.exists():
+            return 'Passenger'
+        
+        # Check if this contact is a customer (has quotes)
+        if hasattr(obj, 'quotes') and obj.quotes.exists():
+            return 'Customer'
+        
+        # Default type
+        return 'General'
 
 class FBOSerializer(serializers.ModelSerializer):
     class Meta:
@@ -54,11 +95,24 @@ class GroundSerializer(serializers.ModelSerializer):
                  'modified_on', 'modified_by']
 
 class AirportSerializer(serializers.ModelSerializer):
+    fbos = FBOSerializer(many=True, read_only=True)
+    grounds = GroundSerializer(many=True, read_only=True)
+    fbos_count = serializers.SerializerMethodField()
+    grounds_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Airport
-        fields = ['id', 'icao_code', 'iata_code', 'name', 'city', 'state', 'country', 
-                 'elevation', 'fbos', 'grounds', 'latitude', 'longitude', 'timezone', 
+        fields = ['id', 'ident', 'name', 'latitude', 'longitude', 'elevation', 
+                 'iso_country', 'iso_region', 'municipality', 'icao_code', 'iata_code', 
+                 'local_code', 'gps_code', 'airport_type', 'timezone', 
+                 'fbos', 'grounds', 'fbos_count', 'grounds_count',
                  'created_on', 'created_by', 'modified_on', 'modified_by']
+    
+    def get_fbos_count(self, obj):
+        return obj.fbos.count()
+    
+    def get_grounds_count(self, obj):
+        return obj.grounds.count()
 
 # Aircraft serializer
 class AircraftSerializer(serializers.ModelSerializer):
@@ -150,6 +204,25 @@ class PassengerWriteSerializer(serializers.ModelSerializer):
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
             'passenger_ids', 'status'
         ]
+    
+    def create(self, validated_data):
+        # Get contact data for filling deprecated fields
+        contact = validated_data['info']
+        passenger_ids = validated_data.pop('passenger_ids', [])
+        
+        # Use contact data as primary source, fallback to provided data
+        validated_data['date_of_birth'] = contact.date_of_birth or validated_data.get('date_of_birth')
+        validated_data['nationality'] = contact.nationality or validated_data.get('nationality', '')
+        validated_data['passport_number'] = contact.passport_number or validated_data.get('passport_number', '')
+        validated_data['passport_expiration_date'] = contact.passport_expiration_date or validated_data.get('passport_expiration_date')
+        
+        passenger = super().create(validated_data)
+        
+        # Set related passengers if provided
+        if passenger_ids:
+            passenger.passenger_ids.set(passenger_ids)
+        
+        return passenger
 
 # 3) Crew Lines
 class CrewLineReadSerializer(serializers.ModelSerializer):
@@ -172,13 +245,13 @@ class CrewLineWriteSerializer(serializers.ModelSerializer):
         queryset=Contact.objects.all(), write_only=True
     )
     medic_ids = serializers.PrimaryKeyRelatedField(
-        source='medic_ids', queryset=Contact.objects.all(), many=True, write_only=True
+        queryset=Contact.objects.all(), many=True, write_only=True
     )
     
     class Meta:
         model = CrewLine
         fields = [
-            'primary_in_command', 'secondary_in_command', 'medic_ids', 'status'
+            'id', 'primary_in_command', 'secondary_in_command', 'medic_ids', 'status'
         ]
 
 class TripMiniSerializer(serializers.ModelSerializer):
@@ -192,14 +265,16 @@ class TripLineReadSerializer(serializers.ModelSerializer):
     origin_airport = AirportSerializer(read_only=True)
     destination_airport = AirportSerializer(read_only=True)
     crew_line = CrewLineReadSerializer(read_only=True)
+    departure_fbo = FBOSerializer(read_only=True)
+    arrival_fbo = FBOSerializer(read_only=True)
     
     class Meta:
         model = TripLine
         fields = [
             'id', 'trip', 'origin_airport', 'destination_airport', 'crew_line',
-            'departure_time_local', 'departure_time_utc', 'arrival_time_local',
-            'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
-            'passenger_leg', 'status', 'created_on'
+            'departure_fbo', 'arrival_fbo', 'departure_time_local', 'departure_time_utc', 
+            'arrival_time_local', 'arrival_time_utc', 'distance', 'flight_time', 
+            'ground_time', 'passenger_leg', 'status', 'created_on'
         ]
     
     def get_trip(self, obj):
@@ -223,15 +298,84 @@ class TripLineWriteSerializer(serializers.ModelSerializer):
     crew_line = serializers.PrimaryKeyRelatedField(
         queryset=CrewLine.objects.all(), write_only=True, required=False, allow_null=True
     )
+    departure_fbo = serializers.PrimaryKeyRelatedField(
+        queryset=FBO.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    arrival_fbo = serializers.PrimaryKeyRelatedField(
+        queryset=FBO.objects.all(), write_only=True, required=False, allow_null=True
+    )
     
     class Meta:
         model = TripLine
         fields = [
-            'trip', 'origin_airport', 'destination_airport', 'crew_line',
-            'departure_time_local', 'departure_time_utc', 'arrival_time_local',
-            'arrival_time_utc', 'distance', 'flight_time', 'ground_time',
-            'passenger_leg', 'status'
+            'id', 'trip', 'origin_airport', 'destination_airport', 'crew_line',
+            'departure_fbo', 'arrival_fbo', 'departure_time_local', 'departure_time_utc', 
+            'arrival_time_local', 'arrival_time_utc', 'distance', 'flight_time', 
+            'ground_time', 'passenger_leg', 'status'
         ]
+
+# 4.5) Trip Events
+class TripEventWriteSerializer(serializers.ModelSerializer):
+    trip_id = serializers.PrimaryKeyRelatedField(source='trip', queryset=Trip.objects.all())
+    airport_id = serializers.PrimaryKeyRelatedField(source='airport', queryset=Airport.objects.all())
+    crew_line_id = serializers.PrimaryKeyRelatedField(
+        source='crew_line', queryset=CrewLine.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = TripEvent
+        fields = (
+            "id",
+            "trip_id",
+            "airport_id",
+            "event_type",
+            "start_time_local",
+            "start_time_utc",
+            "end_time_local",
+            "end_time_utc",
+            "crew_line_id",
+            "notes",
+        )
+
+    def validate(self, attrs):
+        ev_type = attrs.get("event_type") or (self.instance and self.instance.event_type)
+        if ev_type == "CREW_CHANGE":
+            # Check for 'crew_line' in attrs because the field uses source='crew_line'
+            if not attrs.get("crew_line") and not (self.instance and self.instance.crew_line):
+                raise serializers.ValidationError({"crew_line_id": "Required for CREW_CHANGE"})
+            # end_time is not required for crew change; treat as instantaneous or short window
+
+        if ev_type == "OVERNIGHT":
+            st = attrs.get("start_time_utc") or (self.instance and self.instance.start_time_utc)
+            et = attrs.get("end_time_utc") or (self.instance and self.instance.end_time_utc)
+            if not (st and et):
+                raise serializers.ValidationError({"end_time_utc": "OVERNIGHT requires start and end times"})
+            if et <= st:
+                raise serializers.ValidationError({"end_time_utc": "Must be after start_time_utc"})
+        return attrs
+
+
+class TripEventReadSerializer(serializers.ModelSerializer):
+    # Return IDs to match your API style
+    trip_id = serializers.PrimaryKeyRelatedField(source='trip', read_only=True)
+    airport_id = serializers.PrimaryKeyRelatedField(source='airport', read_only=True)
+    crew_line_id = serializers.PrimaryKeyRelatedField(source='crew_line', read_only=True)
+
+    class Meta:
+        model = TripEvent
+        fields = (
+            "id",
+            "trip_id",
+            "airport_id",
+            "event_type",
+            "start_time_local",
+            "start_time_utc",
+            "end_time_local",
+            "end_time_utc",
+            "crew_line_id",
+            "notes",
+            "created_on",
+        )
 
 # 5) Trips
 class TripReadSerializer(serializers.ModelSerializer):
@@ -240,13 +384,14 @@ class TripReadSerializer(serializers.ModelSerializer):
     aircraft = AircraftSerializer(read_only=True)
     trip_lines = TripLineReadSerializer(many=True, read_only=True)
     passengers_data = PassengerReadSerializer(source='passengers', many=True, read_only=True)
+    events = TripEventReadSerializer(many=True, read_only=True)
     
     class Meta:
         model = Trip
         fields = [
             'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
-            'trip_lines', 'passengers_data', 'status', 'created_on'
+            'trip_lines', 'passengers_data', 'events', 'status', 'created_on'
         ]
     
     def get_quote(self, obj):
@@ -284,7 +429,7 @@ class TripWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trip
         fields = [
-            'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'passenger_ids', 'status'
         ]
@@ -305,15 +450,25 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
             'patient', 'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
-            'transactions', 'status', 'created_on'
+            'transactions', 'status', 'quote_pdf_status', 'aircraft_type', 'medical_team',
+            'created_on'
         ]
     
     def get_patient(self, obj):
         if obj.patient:
-            return {
+            patient_data = {
                 'id': obj.patient.id,
                 'status': obj.patient.status
             }
+            # Include patient's contact info (name)
+            if obj.patient.info:
+                patient_data['info'] = {
+                    'id': obj.patient.info.id,
+                    'first_name': obj.patient.info.first_name,
+                    'last_name': obj.patient.info.last_name,
+                    'email': obj.patient.info.email
+                }
+            return patient_data
         return None
     
     def get_transactions(self, obj):
@@ -353,8 +508,11 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
         model = Quote
         fields = [
             'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
-            'patient', 'payment_agreement', 'consent_for_transport',
-            'patient_service_agreement', 'transaction_ids', 'status'
+            'patient', 'aircraft_type', 'medical_team', 'estimated_flight_time',
+            'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
+            'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
+            'payment_agreement', 'consent_for_transport', 'patient_service_agreement', 
+            'transaction_ids', 'status'
         ]
 
 # 7) Documents
@@ -410,7 +568,19 @@ class PatientReadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Patient
-        fields = ['id', 'info', 'status', 'created_on']
+        fields = [
+            'id', 
+            'info', 
+            'date_of_birth', 
+            'nationality', 
+            'passport_number', 
+            'passport_expiration_date', 
+            'special_instructions', 
+            'status', 
+            'bed_at_origin', 
+            'bed_at_destination', 
+            'created_on'
+        ]
 
 class PatientWriteSerializer(serializers.ModelSerializer):
     info = serializers.PrimaryKeyRelatedField(
@@ -419,4 +589,96 @@ class PatientWriteSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Patient
-        fields = ['info', 'status']
+        fields = [
+            'info', 
+            'date_of_birth', 
+            'nationality', 
+            'passport_number', 
+            'passport_expiration_date', 
+            'special_instructions', 
+            'status', 
+            'bed_at_origin', 
+            'bed_at_destination'
+        ]
+    
+    def create(self, validated_data):
+        # Get contact data for filling deprecated fields
+        contact = validated_data['info']
+        
+        # Use contact data as primary source, fallback to provided data
+        validated_data['date_of_birth'] = contact.date_of_birth or validated_data.get('date_of_birth')
+        validated_data['nationality'] = contact.nationality or validated_data.get('nationality', '')
+        validated_data['passport_number'] = contact.passport_number or validated_data.get('passport_number', '')
+        validated_data['passport_expiration_date'] = contact.passport_expiration_date or validated_data.get('passport_expiration_date')
+        
+        return super().create(validated_data)
+
+
+class StaffWriteSerializer(serializers.ModelSerializer):
+    # Accept a Contact id on write
+    contact_id = serializers.PrimaryKeyRelatedField(
+        source="contact", queryset=Contact.objects.all()
+    )
+
+    class Meta:
+        model = Staff
+        fields = ("id", "contact_id", "active", "notes")
+
+    def validate_contact_id(self, contact: Contact):
+        # Friendly error if a Staff already exists for the Contact (OneToOne is also enforced by DB)
+        if self.instance is None and Staff.objects.filter(contact=contact).exists():
+            raise serializers.ValidationError("Staff for this contact already exists.")
+        return contact
+
+
+# --- StaffRole ---
+
+class StaffRoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StaffRole
+        fields = ("id", "code", "name", "created_on")
+
+
+# --- StaffRoleMembership ---
+
+class StaffRoleMembershipWriteSerializer(serializers.ModelSerializer):
+    staff_id = serializers.PrimaryKeyRelatedField(
+        source="staff", queryset=Staff.objects.all()
+    )
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role", queryset=StaffRole.objects.all()
+    )
+
+    class Meta:
+        model = StaffRoleMembership
+        fields = ("id", "staff_id", "role_id", "start_on", "end_on")
+
+    def validate(self, attrs):
+        start_on = attrs.get("start_on")
+        end_on = attrs.get("end_on")
+        if start_on and end_on and end_on < start_on:
+            raise serializers.ValidationError({"end_on": "end_on cannot be before start_on"})
+        return attrs
+
+
+class StaffRoleMembershipReadSerializer(serializers.ModelSerializer):
+    staff_id = serializers.PrimaryKeyRelatedField(source="staff", read_only=True)
+    role_id = serializers.PrimaryKeyRelatedField(source="role", read_only=True)
+    role = StaffRoleSerializer(read_only=True)
+
+    class Meta:
+        model = StaffRoleMembership
+        fields = ("id", "staff_id", "role_id", "role", "start_on", "end_on", "created_on")
+
+
+class StaffReadSerializer(serializers.ModelSerializer):
+    # Return the FK as an id to stay consistent with your API style
+    contact_id = serializers.PrimaryKeyRelatedField(source="contact", read_only=True)
+    # Include full contact information for display purposes
+    contact = ContactSerializer(read_only=True)
+    # Include role memberships for display purposes
+    role_memberships = StaffRoleMembershipReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Staff
+        fields = ("id", "contact_id", "contact", "active", "notes", "created_on", "role_memberships")

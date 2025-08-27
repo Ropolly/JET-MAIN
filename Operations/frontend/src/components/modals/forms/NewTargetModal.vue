@@ -136,7 +136,7 @@
                 <el-input
                   v-model="targetData.targetDetails"
                   type="textarea"
-                  rows="3"
+                  :rows="3"
                   name="targetDetails"
                   placeholder="Type Target Details"
                 />

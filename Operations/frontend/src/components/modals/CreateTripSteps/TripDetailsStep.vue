@@ -1,0 +1,112 @@
+<template>
+  <div class="w-100">
+    <!--begin::Heading-->
+    <div class="pb-10 pb-lg-15">
+      <!--begin::Title-->
+      <h2 class="fw-bold text-dark">Trip Details</h2>
+      <!--end::Title-->
+
+      <!--begin::Notice-->
+      <div class="text-muted fw-semibold fs-6">
+        Set up the basic trip information including type, aircraft, and trip number.
+      </div>
+      <!--end::Notice-->
+    </div>
+    <!--end::Heading-->
+
+    <!--begin::Input group-->
+    <div class="row g-9 mb-8">
+      <div class="col-md-6 fv-row">
+        <label class="required fs-6 fw-semibold mb-2">Trip Type</label>
+        <select 
+          v-model="formData.type" 
+          @change="validateStep"
+          class="form-select form-select-solid"
+        >
+          <option value="">Select trip type...</option>
+          <option value="medical">Medical</option>
+          <option value="charter">Charter</option>
+          <option value="part 91">Part 91</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="col-md-6 fv-row">
+        <label class="fs-6 fw-semibold mb-2">Aircraft</label>
+        <select 
+          v-model="formData.aircraft_id" 
+          @change="validateStep"
+          class="form-select form-select-solid"
+        >
+          <option value="">Select aircraft...</option>
+          <option v-for="plane in aircraft" :key="plane.id" :value="plane.id">
+            {{ plane.tail_number }} - {{ plane.make }} {{ plane.model }}
+          </option>
+        </select>
+      </div>
+    </div>
+    <!--end::Input group-->
+
+    <!--begin::Trip Number (Auto-generated)-->
+    <div class="fv-row mb-8">
+      <label class="required fs-6 fw-semibold mb-2">Trip Number</label>
+      <input
+        v-model="formData.trip_number"
+        type="text"
+        class="form-control form-control-solid"
+        placeholder="Auto-generated..."
+        readonly
+      />
+      <div class="form-text">
+        Trip number is automatically generated as the next sequential number
+      </div>
+    </div>
+    <!--end::Trip Number-->
+
+    <!--begin::Notes-->
+    <div class="fv-row mb-8">
+      <label class="fs-6 fw-semibold mb-2">Notes</label>
+      <textarea
+        v-model="formData.notes"
+        class="form-control form-control-solid"
+        rows="3"
+        placeholder="Additional trip notes or special requirements..."
+      ></textarea>
+    </div>
+    <!--end::Notes-->
+  </div>
+</template>
+
+<script setup lang="ts">
+import { watch, onMounted } from 'vue';
+
+const props = defineProps({
+  modelValue: {
+    type: Object,
+    required: true
+  },
+  aircraft: {
+    type: Array,
+    default: () => []
+  }
+});
+
+const emit = defineEmits(['update:modelValue', 'stepValidated']);
+
+const formData = props.modelValue;
+
+const validateStep = () => {
+  const isValid = !!(formData.type && formData.trip_number);
+  emit('stepValidated', isValid);
+  return isValid;
+};
+
+// Watch for changes and validate
+watch(() => [formData.type, formData.trip_number], () => {
+  validateStep();
+}, { deep: true });
+
+onMounted(() => {
+  validateStep();
+});
+</script>

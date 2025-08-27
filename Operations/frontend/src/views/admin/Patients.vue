@@ -30,27 +30,7 @@
           v-if="selectedIds.length === 0"
           class="d-flex justify-content-end"
         >
-          <!--begin::Export-->
-          <button
-            type="button"
-            class="btn btn-light-primary me-3"
-            @click="exportPatients"
-          >
-            <KTIcon icon-name="exit-up" icon-class="fs-2" />
-            Export
-          </button>
-          <!--end::Export-->
-
-          <!--begin::Add patient-->
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="handleCreate"
-          >
-            <KTIcon icon-name="plus" icon-class="fs-2" />
-            Add Patient
-          </button>
-          <!--end::Add patient-->
+          <!-- Toolbar actions now handled by main toolbar -->
         </div>
         <!--end::Toolbar-->
 
@@ -98,10 +78,10 @@
               </div>
             </div>
             <div class="d-flex flex-column">
-              <a href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
+              <a @click.prevent="handleViewPatientDetails(patient)" href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ getPatientName(patient) }}
               </a>
-              <span class="text-muted fs-7">{{ patient.date_of_birth || 'DOB not set' }}</span>
+              <span class="text-muted fs-7">{{ formatDateOfBirth(patient.date_of_birth) }}</span>
             </div>
           </div>
         </template>
@@ -109,16 +89,21 @@
         <template v-slot:medical="{ row: patient }">
           <div class="d-flex flex-column">
             <span class="text-dark fw-semibold fs-6">
-              {{ patient.medical_conditions || 'None specified' }}
+              {{ patient.special_instructions || 'No special instructions' }}
             </span>
-            <span class="text-muted fs-7">{{ patient.weight ? `${patient.weight} lbs` : 'Weight not set' }}</span>
+            <span class="text-muted fs-7">{{ patient.nationality || 'Nationality not set' }}</span>
           </div>
         </template>
 
         <template v-slot:mobility="{ row: patient }">
-          <span :class="`badge badge-light-${patient.mobility_assistance ? 'warning' : 'success'} fs-7 fw-bold`">
-            {{ patient.mobility_assistance ? 'Required' : 'Not Required' }}
-          </span>
+          <div class="d-flex flex-column">
+            <span :class="`badge badge-light-${(patient.bed_at_origin || patient.bed_at_destination) ? 'warning' : 'success'} fs-7 fw-bold mb-1`">
+              {{ (patient.bed_at_origin || patient.bed_at_destination) ? 'Bed Required' : 'No Bed Needed' }}
+            </span>
+            <span class="text-muted fs-8">
+              {{ getBedRequirements(patient) }}
+            </span>
+          </div>
         </template>
 
         <template v-slot:created="{ row: patient }">
@@ -137,28 +122,58 @@
           </a>
           <!--begin::Menu-->
           <div
-            class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-125px py-4"
+            class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4"
             data-kt-menu="true"
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleView(patient)" class="menu-link px-3"
-                >View</a
-              >
+              <a @click.prevent="handleView(patient)" href="#" class="menu-link px-3">
+                <KTIcon icon-name="eye" icon-class="fs-6 me-2" />
+                View Details
+              </a>
             </div>
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleEdit(patient)" class="menu-link px-3"
-                >Edit</a
-              >
+              <a @click.prevent="handleEdit(patient)" href="#" class="menu-link px-3">
+                <KTIcon icon-name="pencil" icon-class="fs-6 me-2" />
+                Edit Patient
+              </a>
             </div>
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleDelete(patient)" class="menu-link px-3"
-                >Delete</a
-              >
+              <a @click.prevent="handleViewContact(patient)" href="#" class="menu-link px-3">
+                <KTIcon icon-name="profile-user" icon-class="fs-6 me-2" />
+                View Contact
+              </a>
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click.prevent="handleViewTrips(patient)" href="#" class="menu-link px-3">
+                <KTIcon icon-name="airplane" icon-class="fs-6 me-2" />
+                View Trips
+              </a>
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click.prevent="handleUpdateStatus(patient)" href="#" class="menu-link px-3">
+                <KTIcon icon-name="flag" icon-class="fs-6 me-2" />
+                Update Status
+              </a>
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Separator-->
+            <div class="separator my-2"></div>
+            <!--end::Separator-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click.prevent="handleDelete(patient)" href="#" class="menu-link px-3 text-danger">
+                <KTIcon icon-name="trash" icon-class="fs-6 me-2" />
+                Delete Patient
+              </a>
             </div>
             <!--end::Menu item-->
           </div>
@@ -169,38 +184,79 @@
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+  
+  <!-- CreatePatientModal removed - now using direct contact modal workflow -->
+  
+  <!-- Create Contact Modal for Direct Patient Creation -->
+  <CreateContactModal 
+    ref="contactModalRef"
+    :skipRoleSelection="true"
+    @contactCreated="onContactCreatedForPatient" 
+  />
+  
+  <!-- Create Patient From Contact Modal -->
+  <CreatePatientFromContactModal 
+    ref="patientFromContactModalRef"
+    @patientCreated="onPatientFromContactCreated" 
+    @modalClosed="onPatientFromContactModalClosed" 
+  />
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from "vue";
+import { defineComponent, ref, onMounted, nextTick } from "vue";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
 import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
+import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
+// CreatePatientModal removed - using direct contact modal workflow
+import CreateContactModal from "@/components/modals/CreateContactModal.vue";
+import CreatePatientFromContactModal from "@/components/modals/CreatePatientFromContactModal.vue";
+import { Modal } from "bootstrap";
 
 interface Patient {
   id: string;
-  first_name: string;
-  last_name: string;
+  info: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    business_name?: string;
+    email?: string;
+    phone?: string;
+    address_line1?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+  };
   date_of_birth: string;
-  weight: number;
-  medical_conditions: string;
-  mobility_assistance: boolean;
+  nationality: string;
+  passport_number: string;
+  passport_expiration_date: string;
+  special_instructions?: string;
+  status: string;
+  bed_at_origin: boolean;
+  bed_at_destination: boolean;
   created_on: string;
-  updated_on: string;
 }
 
 export default defineComponent({
   name: "patients-management",
   components: {
     KTDatatable,
+    // CreatePatientModal removed - using direct workflow
+    CreateContactModal,
+    CreatePatientFromContactModal,
   },
   setup() {
     const patients = ref<Patient[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
+    const { setToolbarActions } = useToolbar();
+    const contactModalRef = ref();
+    const patientFromContactModalRef = ref();
+    const createPatientModalRef = ref();
 
     const headerConfig = ref([
       {
@@ -209,12 +265,12 @@ export default defineComponent({
         sortEnabled: true,
       },
       {
-        columnName: "Medical Info",
+        columnName: "Special Instructions",
         columnLabel: "medical",
         sortEnabled: false,
       },
       {
-        columnName: "Mobility",
+        columnName: "Bed Requirements",
         columnLabel: "mobility",
         sortEnabled: true,
       },
@@ -245,15 +301,38 @@ export default defineComponent({
         console.error("Error fetching patients:", err);
       } finally {
         loading.value = false;
+        // Reinitialize menu components after data loads
+        nextTick(() => {
+          setTimeout(() => {
+            MenuComponent.reinitialization();
+          }, 100);
+        });
       }
     };
 
     const handleCreate = () => {
-      Swal.fire({
-        title: "Create Patient",
-        text: "Patient creation form would open here",
-        icon: "info",
-        confirmButtonText: "OK"
+      // Directly open the contact creation modal for patient creation
+      nextTick(() => {
+        const contactModalElement = document.getElementById('kt_modal_create_contact');
+        if (contactModalElement) {
+          try {
+            // Set skip role selection to true for patient workflow
+            if (contactModalRef.value?.setSkipRoleSelection) {
+              contactModalRef.value.setSkipRoleSelection(true);
+            }
+            
+            const contactModal = new Modal(contactModalElement);
+            contactModal.show();
+          } catch (error) {
+            console.error('Error opening contact creation modal:', error);
+            Swal.fire({
+              title: "Error",
+              text: "Unable to open contact creation form. Please refresh and try again.",
+              icon: "error",
+              confirmButtonText: "OK"
+            });
+          }
+        }
       });
     };
 
@@ -272,10 +351,14 @@ export default defineComponent({
         html: `
           <div class="text-start">
             <p><strong>Name:</strong> ${getPatientName(patient)}</p>
-            <p><strong>Date of Birth:</strong> ${patient.date_of_birth || 'Not set'}</p>
-            <p><strong>Weight:</strong> ${patient.weight ? `${patient.weight} lbs` : 'Not set'}</p>
-            <p><strong>Medical Conditions:</strong> ${patient.medical_conditions || 'None specified'}</p>
-            <p><strong>Mobility Assistance:</strong> ${patient.mobility_assistance ? 'Required' : 'Not required'}</p>
+            <p><strong>Date of Birth:</strong> ${formatDateOfBirth(patient.date_of_birth)}</p>
+            <p><strong>Nationality:</strong> ${patient.nationality || 'Not set'}</p>
+            <p><strong>Passport:</strong> ${patient.passport_number || 'Not provided'}</p>
+            <p><strong>Special Instructions:</strong> ${patient.special_instructions || 'None specified'}</p>
+            <p><strong>Bed Requirements:</strong> ${getBedRequirements(patient)}</p>
+            <p><strong>Status:</strong> ${patient.status}</p>
+            ${patient.info?.email ? `<p><strong>Email:</strong> ${patient.info.email}</p>` : ''}
+            ${patient.info?.phone ? `<p><strong>Phone:</strong> ${patient.info.phone}</p>` : ''}
           </div>
         `,
         icon: "info",
@@ -290,17 +373,128 @@ export default defineComponent({
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Yes, delete it!",
-        cancelButtonText: "Cancel"
-      }).then((result) => {
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#d33"
+      }).then(async (result) => {
         if (result.isConfirmed) {
-          Swal.fire("Deleted!", "Patient has been deleted.", "success");
+          try {
+            await ApiService.delete(`/patients/${patient.id}/`);
+            
+            Swal.fire({
+              title: "Deleted!",
+              text: "Patient has been deleted successfully.",
+              icon: "success"
+            }).then(() => {
+              // Refresh the patients list
+              fetchPatients();
+            });
+          } catch (error) {
+            Swal.fire({
+              title: "Error",
+              text: "Failed to delete the patient. Please try again.",
+              icon: "error"
+            });
+          }
+        }
+      });
+    };
+
+    const handleViewContact = (patient: Patient) => {
+      if (patient.id) {
+        // Navigate to patient details page using patient ID
+        window.open(`/admin/contacts/patients/${patient.id}`, '_blank');
+      } else {
+        Swal.fire({
+          title: "No Contact Information",
+          text: "This patient doesn't have associated contact information.",
+          icon: "warning",
+          confirmButtonText: "OK"
+        });
+      }
+    };
+
+    const handleViewPatientDetails = (patient: Patient) => {
+      if (patient.id) {
+        // Navigate to patient details page using patient ID
+        router.push(`/admin/contacts/patients/${patient.id}`);
+      }
+    };
+
+    const handleViewTrips = (patient: Patient) => {
+      Swal.fire({
+        title: "Patient Trips",
+        text: `Viewing trips for ${getPatientName(patient)}. This feature would show all trips associated with this patient.`,
+        icon: "info",
+        confirmButtonText: "OK"
+      });
+    };
+
+    const handleUpdateStatus = (patient: Patient) => {
+      const statusOptions = [
+        { value: 'pending', text: 'Pending' },
+        { value: 'confirmed', text: 'Confirmed' },
+        { value: 'active', text: 'Active' },
+        { value: 'completed', text: 'Completed' },
+        { value: 'cancelled', text: 'Cancelled' }
+      ];
+
+      const selectHtml = statusOptions.map(option => 
+        `<option value="${option.value}" ${option.value === patient.status ? 'selected' : ''}>${option.text}</option>`
+      ).join('');
+
+      Swal.fire({
+        title: "Update Patient Status",
+        html: `
+          <div class="text-start">
+            <p><strong>Patient:</strong> ${getPatientName(patient)}</p>
+            <p><strong>Current Status:</strong> ${patient.status}</p>
+            <div class="mb-3">
+              <label for="status-select" class="form-label">New Status:</label>
+              <select id="status-select" class="form-select">
+                ${selectHtml}
+              </select>
+            </div>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: "Update Status",
+        cancelButtonText: "Cancel",
+        preConfirm: () => {
+          const select = document.getElementById('status-select') as HTMLSelectElement;
+          return select.value;
+        }
+      }).then(async (result) => {
+        if (result.isConfirmed && result.value !== patient.status) {
+          try {
+            await ApiService.patch(`/patients/${patient.id}/`, { status: result.value });
+            
+            Swal.fire({
+              title: "Status Updated!",
+              text: `Patient status has been updated to ${result.value}.`,
+              icon: "success"
+            }).then(() => {
+              // Refresh the patients list
+              fetchPatients();
+            });
+          } catch (error) {
+            Swal.fire({
+              title: "Error",
+              text: "Failed to update patient status. Please try again.",
+              icon: "error"
+            });
+          }
         }
       });
     };
 
     const getPatientName = (patient: Patient): string => {
-      if (patient.first_name || patient.last_name) {
-        return `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+      if (!patient.info) return 'Unnamed Patient';
+      
+      const { first_name, last_name, business_name } = patient.info;
+      
+      if (business_name) return business_name;
+      if (first_name || last_name) {
+        return `${first_name || ''} ${last_name || ''}`.trim();
       }
       return 'Unnamed Patient';
     };
@@ -311,6 +505,82 @@ export default defineComponent({
         year: 'numeric',
         month: 'short',
         day: 'numeric',
+      });
+    };
+
+    const formatDateOfBirth = (dateString: string): string => {
+      if (!dateString) return 'DOB not set';
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    };
+
+    const getBedRequirements = (patient: Patient): string => {
+      const requirements = [];
+      if (patient.bed_at_origin) requirements.push('Origin');
+      if (patient.bed_at_destination) requirements.push('Destination');
+      
+      if (requirements.length === 0) return 'None';
+      return `Bed at: ${requirements.join(' & ')}`;
+    };
+
+    const onPatientCreated = (newPatient: Patient) => {
+      console.log('New patient created:', newPatient);
+      // Refresh the patients list
+      fetchPatients();
+    };
+
+    const onContactCreatedForPatient = async (newContact: any) => {
+      console.log('New contact created for patient:', newContact);
+      
+      // Automatically open the patient form modal with the new contact
+      nextTick(() => {
+        if (patientFromContactModalRef.value?.setContact) {
+          patientFromContactModalRef.value.setContact(newContact);
+          
+          // Open the patient modal
+          const patientModalElement = document.getElementById('kt_modal_create_patient_from_contact');
+          if (patientModalElement) {
+            try {
+              const patientModal = new Modal(patientModalElement);
+              patientModal.show();
+            } catch (error) {
+              console.error('Error opening patient from contact modal:', error);
+            }
+          }
+        }
+      });
+    };
+
+    const onPatientFromContactCreated = (newPatient: any) => {
+      console.log('New patient created from contact on patients page:', newPatient);
+      // Refresh the patients list
+      fetchPatients();
+    };
+
+    const onPatientFromContactModalClosed = () => {
+      console.log('Patient from contact modal closed');
+    };
+
+    const openContactForPatientCreation = () => {
+      console.log('Opening contact creation modal for patient');
+      nextTick(() => {
+        const contactModalElement = document.getElementById('kt_modal_create_contact');
+        if (contactModalElement) {
+          try {
+            // Set skip role selection to true
+            if (contactModalRef.value?.setSkipRoleSelection) {
+              contactModalRef.value.setSkipRoleSelection(true);
+            }
+            
+            const contactModal = new Modal(contactModalElement);
+            contactModal.show();
+          } catch (error) {
+            console.error('Error opening contact creation modal:', error);
+          }
+        }
       });
     };
 
@@ -355,9 +625,17 @@ export default defineComponent({
     };
 
     const searchingFunc = (obj: any, value: string): boolean => {
+      const searchValue = value.toLowerCase();
+      
+      // Search through flat properties
       for (let key in obj) {
-        if (!Number.isInteger(obj[key]) && !(typeof obj[key] === "object")) {
-          if (obj[key]?.toString().toLowerCase().indexOf(value.toLowerCase()) != -1) {
+        if (obj[key] && typeof obj[key] === "string") {
+          if (obj[key].toLowerCase().indexOf(searchValue) !== -1) {
+            return true;
+          }
+        } else if (typeof obj[key] === "object" && obj[key] !== null) {
+          // Recursively search nested objects (like patient.info)
+          if (searchingFunc(obj[key], value)) {
             return true;
           }
         }
@@ -371,17 +649,21 @@ export default defineComponent({
       }, 0);
     };
 
-    const exportPatients = () => {
-      Swal.fire({
-        title: "Export Patients",
-        text: "Export functionality would be implemented here",
-        icon: "info",
-        confirmButtonText: "OK"
-      });
-    };
 
     onMounted(() => {
       fetchPatients();
+      
+      // Setup toolbar actions
+      setToolbarActions([
+        createToolbarActions.primary('add-patient', 'Add Patient', handleCreate, 'plus')
+      ]);
+
+      // Initialize menu components after everything is mounted
+      nextTick(() => {
+        setTimeout(() => {
+          MenuComponent.reinitialization();
+        }, 200);
+      });
     });
 
     return {
@@ -397,13 +679,26 @@ export default defineComponent({
       deleteFewPatients,
       deletePatient,
       onItemsPerPageChange,
-      exportPatients,
       handleCreate,
       handleEdit,
       handleView,
       handleDelete,
+      handleViewContact,
+      handleViewPatientDetails,
+      handleViewTrips,
+      handleUpdateStatus,
       getPatientName,
       formatDate,
+      formatDateOfBirth,
+      getBedRequirements,
+      onPatientCreated,
+      onContactCreatedForPatient,
+      onPatientFromContactCreated,
+      onPatientFromContactModalClosed,
+      openContactForPatientCreation,
+      contactModalRef,
+      patientFromContactModalRef,
+      createPatientModalRef,
     };
   },
 });

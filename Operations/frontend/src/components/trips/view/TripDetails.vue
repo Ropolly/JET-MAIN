@@ -33,121 +33,92 @@
         <!--end::Title-->
 
         <!--begin::Details-->
-        <div class="d-flex flex-wrap py-5">
-          <!--begin::Row-->
-          <div class="flex-equal me-5">
+        <div class="row g-6">
+          <!--begin::Col-->
+          <div class="col-lg-6">
             <!--begin::Details-->
-            <table class="table fs-6 fw-semibold gs-0 gy-2 gx-2 m-0">
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500 min-w-175px w-175px">Patient Name:</td>
-                <td class="text-gray-800 min-w-200px">
-                  <span class="text-gray-800">
-                    {{ getPatientName() }}
-                  </span>
-                </td>
-              </tr>
-              <!--end::Row-->
+            <div class="table-responsive">
+              <table class="table align-middle fs-6 fw-semibold">
+                <tbody>
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4" style="width: 40%;">Patient Name:</td>
+                    <td class="text-gray-800 fw-bold">{{ getPatientName() }}</td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Date of Birth:</td>
-                <td class="text-gray-800">{{ trip?.patient?.date_of_birth || 'Not specified' }}</td>
-              </tr>
-              <!--end::Row-->
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Date of Birth:</td>
+                    <td class="text-gray-800 fw-bold">{{ formatDate(trip?.patient?.date_of_birth) || 'Not specified' }}</td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Medical Condition:</td>
-                <td class="text-gray-800">
-                  {{ trip?.patient?.medical_condition || trip?.notes || 'Not specified' }}
-                </td>
-              </tr>
-              <!--end::Row-->
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Special Instructions:</td>
+                    <td class="text-gray-800 fw-bold">{{ trip?.patient?.special_instructions || trip?.notes || 'None' }}</td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Contact:</td>
-                <td class="text-gray-800">{{ trip?.patient?.phone || 'Not specified' }}</td>
-              </tr>
-              <!--end::Row-->
-            </table>
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Contact:</td>
+                    <td class="text-gray-800 fw-bold">{{ trip?.patient?.info?.phone || 'Not provided' }}</td>
+                  </tr>
+                  <!--end::Row-->
+                </tbody>
+              </table>
+            </div>
             <!--end::Details-->
           </div>
-          <!--end::Row-->
+          <!--end::Col-->
 
-          <!--begin::Row-->
-          <div class="flex-equal">
+          <!--begin::Col-->
+          <div class="col-lg-6">
             <!--begin::Details-->
-            <table class="table fs-6 fw-semibold gs-0 gy-2 gx-2 m-0">
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500 min-w-175px w-175px">Trip Type:</td>
-                <td class="text-gray-800 min-w-200px">
-                  <span class="text-gray-800">{{ trip?.type || 'Not specified' }}</span>
-                </td>
-              </tr>
-              <!--end::Row-->
+            <div class="table-responsive">
+              <table class="table align-middle fs-6 fw-semibold">
+                <tbody>
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4" style="width: 40%;">Trip Type:</td>
+                    <td class="text-gray-800 fw-bold">{{ formatTripType(trip?.type) }}</td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Service Level:</td>
-                <td class="text-gray-800">{{ trip?.service_level || 'Standard' }}</td>
-              </tr>
-              <!--end::Row-->
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Service Level:</td>
+                    <td class="text-gray-800 fw-bold">{{ trip?.service_level || 'Standard' }}</td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Priority:</td>
-                <td class="text-gray-800">
-                  <span :class="`badge badge-light-${getPriorityColor()} fs-7`">
-                    {{ trip?.priority || 'Normal' }}
-                  </span>
-                </td>
-              </tr>
-              <!--end::Row-->
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Priority:</td>
+                    <td class="text-gray-800">
+                      <span :class="`badge badge-light-${getPriorityColor()} fs-7`">
+                        {{ trip?.priority || 'Normal' }}
+                      </span>
+                    </td>
+                  </tr>
+                  <!--end::Row-->
 
-              <!--begin::Row-->
-              <tr>
-                <td class="text-gray-500">Created By:</td>
-                <td class="text-gray-800">{{ trip?.created_by || 'System' }}</td>
-              </tr>
-              <!--end::Row-->
-            </table>
+                  <!--begin::Row-->
+                  <tr>
+                    <td class="text-gray-600 pe-4">Created By:</td>
+                    <td class="text-gray-800 fw-bold">{{ trip?.created_by || 'System' }}</td>
+                  </tr>
+                  <!--end::Row-->
+                </tbody>
+              </table>
+            </div>
             <!--end::Details-->
           </div>
-          <!--end::Row-->
+          <!--end::Col-->
         </div>
         <!--end::Details-->
-      </div>
-      <!--end::Section-->
-
-      <!--begin::Section-->
-      <div class="mb-10">
-        <!--begin::Title-->
-        <h5 class="mb-4">Medical Requirements:</h5>
-        <!--end::Title-->
-
-        <!--begin::Equipment List-->
-        <div class="d-flex flex-wrap gap-3">
-          <span class="badge badge-light-info fs-7 fw-bold">
-            <KTIcon icon-name="medical-08" icon-class="fs-6 me-1" />
-            Oxygen Supply
-          </span>
-          <span class="badge badge-light-success fs-7 fw-bold">
-            <KTIcon icon-name="heart" icon-class="fs-6 me-1" />
-            Cardiac Monitor
-          </span>
-          <span class="badge badge-light-warning fs-7 fw-bold">
-            <KTIcon icon-name="pill" icon-class="fs-6 me-1" />
-            IV Pump
-          </span>
-          <span class="badge badge-light-primary fs-7 fw-bold">
-            <KTIcon icon-name="user-square" icon-class="fs-6 me-1" />
-            Stretcher Configuration
-          </span>
-        </div>
-        <!--end::Equipment List-->
       </div>
       <!--end::Section-->
 
@@ -181,9 +152,9 @@ interface Props {
 const props = defineProps<Props>();
 
 const getPatientName = (): string => {
-  if (props.trip?.patient) {
-    const first = props.trip.patient.first_name || '';
-    const last = props.trip.patient.last_name || '';
+  if (props.trip?.patient?.info) {
+    const first = props.trip.patient.info.first_name || '';
+    const last = props.trip.patient.info.last_name || '';
     return `${first} ${last}`.trim() || 'Unknown Patient';
   }
   return 'No Patient Assigned';
@@ -197,5 +168,39 @@ const getPriorityColor = (): string => {
     case 'routine': case 'normal': return 'success';
     default: return 'secondary';
   }
+};
+
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'Not specified';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+// Format trip type to title case
+const formatTripType = (type?: string): string => {
+  if (!type) return 'Medical Transport';
+  
+  // Handle special cases
+  const typeMap: { [key: string]: string } = {
+    'medical': 'Medical Transport',
+    'charter': 'Charter',
+    'part 91': 'Part 91',
+    'part_91': 'Part 91',
+    'maintenance': 'Maintenance',
+    'other': 'Other'
+  };
+  
+  const lowerType = type.toLowerCase();
+  if (typeMap[lowerType]) {
+    return typeMap[lowerType];
+  }
+  
+  // Default: convert to title case
+  return type.split(/[_\s]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 };
 </script>

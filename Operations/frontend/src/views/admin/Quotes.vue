@@ -1,78 +1,135 @@
 <template>
   <!--begin::Card-->
   <div class="card">
-    <!--begin::Card header-->
-    <div class="card-header border-0 pt-6">
-      <!--begin::Card title-->
-      <div class="card-title">
-        <!--begin::Search-->
-        <div class="d-flex align-items-center position-relative my-1">
-          <KTIcon
-            icon-name="magnifier"
-            icon-class="fs-1 position-absolute ms-6"
-          />
-          <input
-            v-model="search"
-            @input="searchItems()"
-            type="text"
-            class="form-control form-control-solid w-250px ps-14"
-            placeholder="Search Quotes"
-          />
-        </div>
-        <!--end::Search-->
-      </div>
-      <!--begin::Card title-->
+        <!--begin::Card header-->
+        <div class="card-header border-0 pt-6">
+          <!--begin::Card title with search-->
+          <div class="card-title">
+            <!--begin::Search-->
+            <div class="d-flex align-items-center position-relative my-1">
+              <KTIcon
+                icon-name="magnifier"
+                icon-class="fs-1 position-absolute ms-6"
+              />
+              <input
+                v-model="search"
+                @input="searchItems()"
+                type="text"
+                class="form-control form-control-solid w-250px ps-14"
+                placeholder="Search by contact name, patient name, or status..."
+              />
+            </div>
+            <!--end::Search-->
 
-      <!--begin::Card toolbar-->
-      <div class="card-toolbar">
-        <!--begin::Toolbar-->
-        <div
-          v-if="selectedIds.length === 0"
-          class="d-flex justify-content-end"
-        >
-          <!--begin::Export-->
-          <button
-            type="button"
-            class="btn btn-light-primary me-3"
-            @click="exportQuotes"
-          >
-            <KTIcon icon-name="exit-up" icon-class="fs-2" />
-            Export
-          </button>
-          <!--end::Export-->
-
-          <!--begin::Add quote-->
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="handleCreate"
-          >
-            <KTIcon icon-name="plus" icon-class="fs-2" />
-            Add Quote
-          </button>
-          <!--end::Add quote-->
-        </div>
-        <!--end::Toolbar-->
-
-        <!--begin::Group actions-->
-        <div v-else class="d-flex justify-content-end align-items-center">
-          <div class="fw-bold me-5">
-            <span class="me-2">{{ selectedIds.length }}</span
-            >Selected
+            <!--begin::Selected actions (when items selected)-->
+            <div v-if="selectedIds.length > 0" class="d-flex align-items-center ms-5">
+              <div class="fw-bold me-5">
+                <span class="me-2">{{ selectedIds.length }}</span>Selected
+              </div>
+              <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                @click="deleteFewQuotes()"
+              >
+                Delete Selected
+              </button>
+            </div>
+            <!--end::Selected actions-->
           </div>
-          <button
-            type="button"
-            class="btn btn-danger"
-            @click="deleteFewQuotes()"
-          >
-            Delete Selected
-          </button>
+          <!--end::Card title with search-->
+
+          <!--begin::Card toolbar with tabs-->
+          <div class="card-toolbar">
+            <ul class="nav nav-tabs nav-line-tabs nav-stretch fs-6 border-0">
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'all' }"
+                  @click.prevent="handleTabChange('all')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_all_quotes"
+                >
+                  All Quotes
+                  <span class="ms-1 badge" :class="activeTab === 'all' ? 'badge-secondary' : 'badge-light-secondary'">{{ getAllQuotesCount() }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'pending' }"
+                  @click.prevent="handleTabChange('pending')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_pending_quotes"
+                >
+                  Pending
+                  <span class="ms-1 badge" :class="activeTab === 'pending' ? 'badge-warning' : 'badge-light-secondary'">{{ getStatusCount('pending') }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'confirmed' }"
+                  @click.prevent="handleTabChange('confirmed')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_confirmed_quotes"
+                >
+                  Confirmed
+                  <span class="ms-1 badge" :class="activeTab === 'confirmed' ? 'badge-info' : 'badge-light-secondary'">{{ getStatusCount('confirmed') }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'active' }"
+                  @click.prevent="handleTabChange('active')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_active_quotes"
+                >
+                  Active
+                  <span class="ms-1 badge" :class="activeTab === 'active' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('active') }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'completed' }"
+                  @click.prevent="handleTabChange('completed')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_completed_quotes"
+                >
+                  Completed
+                  <span class="ms-1 badge" :class="activeTab === 'completed' ? 'badge-primary' : 'badge-light-secondary'">{{ getStatusCount('completed') }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'cancelled' }"
+                  @click.prevent="handleTabChange('cancelled')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_cancelled_quotes"
+                >
+                  Cancelled
+                  <span class="ms-1 badge" :class="activeTab === 'cancelled' ? 'badge-danger' : 'badge-light-secondary'">{{ getStatusCount('cancelled') }}</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a 
+                  class="nav-link"
+                  :class="{ active: activeTab === 'paid' }"
+                  @click.prevent="handleTabChange('paid')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_paid_quotes"
+                >
+                  Paid
+                  <span class="ms-1 badge" :class="activeTab === 'paid' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('paid') }}</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <!--end::Card toolbar with tabs-->
         </div>
-        <!--end::Group actions-->
-      </div>
-      <!--end::Card toolbar-->
-    </div>
-    <!--end::Card header-->
+        <!--end::Card header-->
 
     <!--begin::Card body-->
     <div class="card-body pt-0">
@@ -80,10 +137,14 @@
         @on-sort="sort"
         @on-items-select="onItemSelect"
         @on-items-per-page-change="onItemsPerPageChange"
-        :data="quotes"
+        @page-change="onPageChange"
+        :data="filteredQuotes"
         :header="headerConfig"
         :checkbox-enabled="true"
         :loading="loading"
+        :total="totalItems"
+        :current-page="currentPage"
+        :items-per-page="pageSize"
       >
         <template v-slot:quote="{ row: quote }">
           <div class="d-flex align-items-center">
@@ -98,34 +159,30 @@
             </div>
             <div class="d-flex flex-column">
               <a href="#" @click="navigateToQuote(quote.id)" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
-                #{{ quote.quote_number || quote.id.slice(0, 8) }}
+                #{{ quote.id.slice(0, 8) }}
               </a>
               <span class="text-muted fs-7">{{ formatDate(quote.created_on) }}</span>
             </div>
           </div>
         </template>
 
-        <template v-slot:patient="{ row: quote }">
+        <template v-slot:contact="{ row: quote }">
           <div class="d-flex flex-column">
-            <a v-if="quote.patient_id || quote.customer_id" 
-               @click="navigateToContact(quote)" 
+            <a @click="navigateToContact(quote)" 
                href="#" 
                class="text-dark fw-bold text-hover-primary fs-6">
-              {{ getPatientName(quote) }}
+              {{ getContactName(quote) }}
             </a>
-            <span v-else class="text-dark fw-bold fs-6">
-              {{ getPatientName(quote) }}
-            </span>
-            <span class="text-muted fs-7">{{ quote.medical_team }}</span>
+            <span class="text-muted fs-7">{{ getPatientName(quote) }}</span>
           </div>
         </template>
 
         <template v-slot:route="{ row: quote }">
           <div class="d-flex flex-column">
             <span class="text-dark fw-semibold fs-6">
-              {{ getAirportCode(quote.pickup_airport_id) }} → {{ getAirportCode(quote.dropoff_airport_id) }}
+              {{ getAirportCode(quote.pickup_airport) }} → {{ getAirportCode(quote.dropoff_airport) }}
             </span>
-            <span class="text-muted fs-7">{{ quote.aircraft_type }}</span>
+            <span class="text-muted fs-7">{{ getAircraftType(quote.aircraft_type) }}</span>
           </div>
         </template>
 
@@ -159,26 +216,48 @@
           </a>
           <!--begin::Menu-->
           <div
-            class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-125px py-4"
+            class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4"
             data-kt-menu="true"
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
               <a @click="handleView(quote)" class="menu-link px-3"
-                >View</a
+                >View Quote</a
               >
             </div>
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
               <a @click="handleEdit(quote)" class="menu-link px-3"
-                >Edit</a
+                >Edit Quote</a
               >
             </div>
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleDelete(quote)" class="menu-link px-3"
+              <a @click="handleCreateTrip(quote)" class="menu-link px-3"
+                >Create Trip</a
+              >
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click="handleDownloadPdf(quote)" class="menu-link px-3"
+                >Download PDF</a
+              >
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click="handleEmailQuote(quote)" class="menu-link px-3"
+                >Email Quote</a
+              >
+            </div>
+            <!--end::Menu item-->
+            <div class="separator mt-3 opacity-75"></div>
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
+              <a @click="handleDelete(quote)" class="menu-link px-3 text-danger"
                 >Delete</a
               >
             </div>
@@ -191,10 +270,13 @@
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+  
+  <!-- Create Quote Modal -->
+  <CreateQuoteModal @quote-created="handleQuoteCreated" />
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from "vue";
+import { defineComponent, ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
@@ -202,20 +284,45 @@ import type { Sort } from "@/components/kt-datatable/table-partials/models";
 import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
+import { useToolbarStore } from "@/stores/toolbar";
+import { Modal } from "bootstrap";
+import CreateQuoteModal from "@/components/modals/CreateQuoteModal.vue";
 
 interface Quote {
   id: string;
-  quoted_amount: number;
-  patient_id?: string;
-  contact_id?: string;  // Changed from customer_id to match backend
-  patient_first_name: string;
-  patient_last_name: string;
-  medical_team: string;
-  pickup_airport_id: any;
-  dropoff_airport_id: any;
-  aircraft_type: string;
+  quoted_amount: string;
+  contact: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    business_name: string;
+    email: string;
+    contact_type: string;
+  };
+  patient: {
+    id: string;
+    status: string;
+  } | null;
+  pickup_airport: {
+    id: string;
+    iata_code: string;
+    icao_code: string;
+    name: string;
+    city: string;
+    state: string;
+  };
+  dropoff_airport: {
+    id: string;
+    iata_code: string;
+    icao_code: string;
+    name: string;
+    city: string;
+    state: string;
+  };
+  aircraft_type?: string;
+  medical_team?: string;
   status: string;
-  quote_pdf_status: string;
+  quote_pdf_status?: string;
   created_on: string;
 }
 
@@ -223,12 +330,19 @@ export default defineComponent({
   name: "quotes-management",
   components: {
     KTDatatable,
+    CreateQuoteModal,
   },
   setup() {
     const router = useRouter();
+    const toolbarStore = useToolbarStore();
     const quotes = ref<Quote[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
+    const activeTab = ref<string>("all");
+    const totalItems = ref(0);
+    const currentPage = ref(1);
+    const pageSize = ref(25);
+    const searchTimeout = ref<NodeJS.Timeout | null>(null);
 
     const headerConfig = ref([
       {
@@ -237,8 +351,8 @@ export default defineComponent({
         sortEnabled: true,
       },
       {
-        columnName: "Patient",
-        columnLabel: "patient",
+        columnName: "Contact/Patient",
+        columnLabel: "contact",
         sortEnabled: false,
       },
       {
@@ -267,33 +381,89 @@ export default defineComponent({
       },
     ]);
 
-    const initData = ref<Array<Quote>>([]);
     const selectedIds = ref<Array<number>>([]);
     const search = ref<string>("");
 
+    // Store counts for each status
+    const statusCounts = ref<Record<string, number>>({
+      all: 0,
+      pending: 0,
+      confirmed: 0,
+      active: 0,
+      completed: 0,
+      cancelled: 0,
+      paid: 0
+    });
+
     // Methods
-    const fetchQuotes = async () => {
+    const fetchQuotes = async (page: number = 1, pageLimit: number = 25, searchQuery: string = '', statusFilter: string = 'all') => {
       try {
         loading.value = true;
         error.value = null;
-        const { data } = await ApiService.get("/quotes/");
-        quotes.value = data.results || data;
-        initData.value.splice(0, quotes.value.length, ...quotes.value);
+        
+        const params = new URLSearchParams();
+        params.append('page', page.toString());
+        params.append('page_size', pageLimit.toString());
+        if (searchQuery.trim()) {
+          params.append('search', searchQuery.trim());
+        }
+        if (statusFilter !== 'all') {
+          params.append('status', statusFilter);
+        }
+        
+        const { data } = await ApiService.get(`/quotes/?${params}`);
+        quotes.value = data.results || [];
+        totalItems.value = data.count || 0;
+        currentPage.value = page;
+        
+        // Update status counts if we're on the 'all' tab
+        if (statusFilter === 'all' && !searchQuery) {
+          await fetchStatusCounts();
+        }
       } catch (err: any) {
         error.value = err.response?.data?.detail || "Failed to fetch quotes";
         console.error("Error fetching quotes:", err);
+        quotes.value = [];
+        totalItems.value = 0;
       } finally {
         loading.value = false;
+        setTimeout(() => {
+          MenuComponent.reinitialization();
+        }, 100);
+      }
+    };
+
+    const fetchStatusCounts = async () => {
+      try {
+        // Fetch total count
+        const allResponse = await ApiService.get('/quotes/?page_size=1');
+        statusCounts.value.all = allResponse.data.count || 0;
+        
+        // Fetch counts for each status
+        const statuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled', 'paid'];
+        for (const status of statuses) {
+          const response = await ApiService.get(`/quotes/?status=${status}&page_size=1`);
+          statusCounts.value[status] = response.data.count || 0;
+        }
+      } catch (err) {
+        console.error('Error fetching status counts:', err);
       }
     };
 
     const handleCreate = () => {
-      Swal.fire({
-        title: "Create Quote",
-        text: "Quote creation form would open here",
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      const modalElement = document.getElementById('kt_modal_create_quote');
+      if (modalElement) {
+        try {
+          const modal = new Modal(modalElement);
+          modal.show();
+        } catch (error) {
+          console.error('Error opening modal:', error);
+        }
+      }
+    };
+    
+    const handleQuoteCreated = async (newQuote: any) => {
+      await fetchQuotes(1, pageSize.value, search.value, activeTab.value); // Refresh the list
     };
 
     const handleEdit = (quote: Quote) => {
@@ -305,50 +475,95 @@ export default defineComponent({
       });
     };
 
-    const handleView = (quote: Quote) => {
+    const handleCreateTrip = (quote: Quote) => {
       Swal.fire({
-        title: "Quote Details",
-        html: `
-          <div class="text-start">
-            <p><strong>Quote ID:</strong> #${quote.id.slice(0, 8)}</p>
-            <p><strong>Patient:</strong> ${getPatientName(quote)}</p>
-            <p><strong>Amount:</strong> ${formatCurrency(quote.quoted_amount)}</p>
-            <p><strong>Status:</strong> ${quote.status}</p>
-            <p><strong>Medical Team:</strong> ${quote.medical_team}</p>
-          </div>
-        `,
+        title: "Create Trip",
+        text: `Create trip from quote #${quote.id.slice(0, 8)}?`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Yes, create trip!",
+        cancelButtonText: "Cancel"
+      }).then((result) => {
+        if (result.isConfirmed) {
+          Swal.fire("Trip Created!", "Trip has been created successfully.", "success");
+        }
+      });
+    };
+
+    const handleDownloadPdf = (quote: Quote) => {
+      Swal.fire({
+        title: "Download PDF",
+        text: `Download PDF for quote #${quote.id.slice(0, 8)}`,
         icon: "info",
         confirmButtonText: "OK"
       });
     };
 
-    const handleDelete = (quote: Quote) => {
+    const handleEmailQuote = (quote: Quote) => {
       Swal.fire({
+        title: "Email Quote",
+        text: `Send quote #${quote.id.slice(0, 8)} via email?`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Send",
+        cancelButtonText: "Cancel"
+      }).then((result) => {
+        if (result.isConfirmed) {
+          Swal.fire("Email Sent!", "Quote has been emailed successfully.", "success");
+        }
+      });
+    };
+
+    const handleView = (quote: Quote) => {
+      router.push(`/admin/quotes/${quote.id}`);
+    };
+
+    const handleDelete = async (quote: Quote) => {
+      const result = await Swal.fire({
         title: "Delete Quote",
         text: `Are you sure you want to delete quote #${quote.id.slice(0, 8)}?`,
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Yes, delete it!",
         cancelButtonText: "Cancel"
-      }).then((result) => {
-        if (result.isConfirmed) {
-          Swal.fire("Deleted!", "Quote has been deleted.", "success");
-        }
       });
+      
+      if (result.isConfirmed) {
+        try {
+          await ApiService.delete(`/quotes/${quote.id}/`);
+          await fetchQuotes(); // Refresh the list
+          Swal.fire("Deleted!", "Quote has been deleted.", "success");
+        } catch (error: any) {
+          console.error('Error deleting quote:', error);
+          Swal.fire("Error!", "Failed to delete quote. Please try again.", "error");
+        }
+      }
+    };
+
+    const getContactName = (quote: Quote): string => {
+      if (quote.contact.business_name) {
+        return quote.contact.business_name;
+      }
+      if (quote.contact.first_name || quote.contact.last_name) {
+        return `${quote.contact.first_name || ''} ${quote.contact.last_name || ''}`.trim();
+      }
+      return 'Unknown Contact';
     };
 
     const getPatientName = (quote: Quote): string => {
-      if (quote.patient_first_name || quote.patient_last_name) {
-        return `${quote.patient_first_name || ''} ${quote.patient_last_name || ''}`.trim();
+      if (quote.patient) {
+        return `Patient (Status: ${quote.patient.status})`;
       }
-      return 'Not specified';
+      return 'No patient assigned';
     };
 
     const navigateToContact = (quote: Quote) => {
-      if (quote.patient_id) {
-        router.push(`/admin/contacts/patients/${quote.patient_id}`);
-      } else if (quote.customer_id) {
-        router.push(`/admin/contacts/customers/${quote.customer_id}`);
+      if (quote.contact) {
+        if (quote.contact.contact_type === 'Patient') {
+          router.push(`/admin/contacts/patients/${quote.patient?.id}`);
+        } else {
+          router.push(`/admin/contacts/contacts/${quote.contact.id}`);
+        }
       }
     };
 
@@ -356,15 +571,26 @@ export default defineComponent({
       router.push(`/admin/quotes/${quoteId}`);
     };
 
-    const getAirportCode = (airportId: any): string => {
-      return airportId ? `${String(airportId).slice(0, 4).toUpperCase()}` : 'TBD';
+    const getAirportCode = (airport: any): string => {
+      if (!airport) return 'TBD';
+      return airport.iata_code || airport.icao_code || 'UNK';
     };
 
-    const formatCurrency = (amount: number): string => {
+    const getAircraftType = (aircraftType: string): string => {
+      const types: Record<string, string> = {
+        '65': 'Learjet 65',
+        '35': 'Learjet 35',
+        'TBD': 'To Be Determined'
+      };
+      return types[aircraftType] || aircraftType;
+    };
+
+    const formatCurrency = (amount: string | number): string => {
+      const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-      }).format(amount);
+      }).format(numAmount);
     };
 
     const formatDate = (dateString: string): string => {
@@ -398,11 +624,35 @@ export default defineComponent({
       return colors[status] || 'secondary';
     };
 
-    const deleteFewQuotes = () => {
-      selectedIds.value.forEach((item) => {
-        deleteQuote(item);
+    const deleteFewQuotes = async () => {
+      if (selectedIds.value.length === 0) return;
+      
+      const result = await Swal.fire({
+        title: "Delete Quotes",
+        text: `Are you sure you want to delete ${selectedIds.value.length} quote(s)?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete them!",
+        cancelButtonText: "Cancel"
       });
-      selectedIds.value.length = 0;
+      
+      if (result.isConfirmed) {
+        try {
+          // Delete each selected quote
+          await Promise.all(
+            selectedIds.value.map(id => ApiService.delete(`/quotes/${id}/`))
+          );
+          
+          // Refresh the list
+          await fetchQuotes(currentPage.value, pageSize.value, search.value, activeTab.value);
+          selectedIds.value = [];
+          
+          Swal.fire("Deleted!", "Selected quotes have been deleted.", "success");
+        } catch (error: any) {
+          console.error('Error deleting quotes:', error);
+          Swal.fire("Error!", "Failed to delete some quotes. Please try again.", "error");
+        }
+      }
     };
 
     const deleteQuote = (id: number) => {
@@ -425,75 +675,119 @@ export default defineComponent({
     };
 
     const searchItems = () => {
-      quotes.value.splice(0, quotes.value.length, ...initData.value);
-      if (search.value !== "") {
-        let results: Array<Quote> = [];
-        for (let j = 0; j < initData.value.length; j++) {
-          if (searchingFunc(initData.value[j], search.value)) {
-            results.push(initData.value[j]);
-          }
-        }
-        quotes.value.splice(0, quotes.value.length, ...results);
+      // Clear existing timeout
+      if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
       }
+      
+      // Debounce search by 500ms
+      searchTimeout.value = setTimeout(async () => {
+        currentPage.value = 1; // Reset to first page when searching
+        await fetchQuotes(1, pageSize.value, search.value, activeTab.value);
+        MenuComponent.reinitialization();
+      }, 500);
+    };
+    
+    const handleTabChange = async (tab: string) => {
+      activeTab.value = tab;
+      currentPage.value = 1; // Reset to first page when changing tabs
+      await fetchQuotes(1, pageSize.value, search.value, tab);
+    };
+    
+    const onPageChange = async (page: number) => {
+      await fetchQuotes(page, pageSize.value, search.value, activeTab.value);
       MenuComponent.reinitialization();
     };
 
-    const searchingFunc = (obj: any, value: string): boolean => {
-      for (let key in obj) {
-        if (!Number.isInteger(obj[key]) && !(typeof obj[key] === "object")) {
-          if (obj[key]?.toString().toLowerCase().indexOf(value.toLowerCase()) != -1) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    const onItemsPerPageChange = () => {
+    const onItemsPerPageChange = async (newPageSize: number) => {
+      pageSize.value = newPageSize;
+      currentPage.value = 1; // Reset to first page
+      await fetchQuotes(1, newPageSize, search.value, activeTab.value);
       setTimeout(() => {
         MenuComponent.reinitialization();
       }, 0);
     };
 
-    const exportQuotes = () => {
-      Swal.fire({
-        title: "Export Quotes",
-        text: "Export functionality would be implemented here",
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+    // Computed properties
+    const filteredQuotes = computed(() => {
+      return quotes.value;
+    });
+
+    // Tab count methods
+    const getAllQuotesCount = () => statusCounts.value.all;
+    
+    const getStatusCount = (status: string) => {
+      return statusCounts.value[status] || 0;
     };
 
-    onMounted(() => {
-      fetchQuotes();
+    onMounted(async () => {
+      await fetchQuotes(1, pageSize.value, '', 'all');
+      // Ensure menus are properly initialized
+      setTimeout(() => {
+        MenuComponent.reinitialization();
+      }, 100);
+      
+      // Set toolbar actions
+      toolbarStore.setActions([
+        {
+          id: 'add-quote',
+          label: 'Add Quote',
+          icon: 'plus',
+          variant: 'primary',
+          handler: handleCreate
+        }
+      ]);
+    });
+    
+    onUnmounted(() => {
+      // Clear search timeout
+      if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
+      }
+      // Clear toolbar actions when component is destroyed
+      toolbarStore.clearActions();
     });
 
     return {
       search,
       searchItems,
       quotes,
+      filteredQuotes,
+      activeTab,
       headerConfig,
       loading,
       error,
+      totalItems,
+      currentPage,
+      pageSize,
       sort,
       onItemSelect,
       selectedIds,
       deleteFewQuotes,
       deleteQuote,
       onItemsPerPageChange,
-      exportQuotes,
+      onPageChange,
+      handleTabChange,
       handleCreate,
+      handleQuoteCreated,
+      handleCreateTrip,
+      handleDownloadPdf,
+      handleEmailQuote,
       handleEdit,
       handleView,
       handleDelete,
+      getContactName,
       getPatientName,
       navigateToContact,
       navigateToQuote,
       getAirportCode,
+      getAircraftType,
       formatCurrency,
       formatDate,
       getStatusColor,
       getPdfStatusColor,
+      getAllQuotesCount,
+      getStatusCount,
     };
   },
 });
