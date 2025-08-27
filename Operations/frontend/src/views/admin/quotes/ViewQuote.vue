@@ -1,4 +1,29 @@
 <template>
+  <!-- Associated Trip Alert -->
+  <div v-if="associatedTrip" class="alert alert-primary d-flex align-items-center justify-content-between mb-5">
+    <div class="d-flex align-items-center">
+      <KTIcon icon-name="airplane" icon-class="fs-2x text-primary me-4" />
+      <div>
+        <div class="fw-bold fs-6">This quote has been converted to a trip</div>
+        <div class="text-gray-700 fs-7">
+          Trip #{{ associatedTrip.trip_number || associatedTrip.id?.slice(0, 8) }}
+          <span class="mx-2">•</span>
+          {{ getPatientName() }}
+          <span class="mx-2">•</span>
+          {{ getRouteInfo() }}
+          <span class="mx-2">•</span>
+          <span class="badge badge-primary fs-8">
+            {{ associatedTrip.status }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <button @click="viewTrip" class="btn btn-sm btn-primary">
+      View Trip
+      <KTIcon icon-name="arrow-right" icon-class="fs-5 ms-1" />
+    </button>
+  </div>
+
   <div class="card">     
     <!--begin::Body-->
     <div class="card-body p-lg-20">
@@ -28,18 +53,7 @@
                                     
               <!--begin::Action-->            
               <div class="d-flex gap-3">
-                <button 
-                  v-if="!quote?.trip_id" 
-                  @click="convertToTrip" 
-                  class="btn btn-sm btn-success"
-                >
-                  <KTIcon icon-name="airplane" icon-class="fs-3" />
-                  Convert to Trip
-                </button>
-                <a href="#" @click="downloadQuote" class="btn btn-sm btn-primary">
-                  <KTIcon icon-name="document" icon-class="fs-3" />
-                  Download PDF
-                </a>
+                <!-- Buttons moved to toolbar -->
               </div>                 
               <!--end::Action--> 
             </div>                
@@ -73,7 +87,7 @@
 
                   <!--begin::Info-->
                   <div class="fw-bold fs-6 text-gray-800 d-flex align-items-center flex-wrap">
-                    <span class="pe-2">{{ formatDate(quote?.valid_until) }}</span> 
+                    <span class="pe-2">{{ getValidUntilDate() }}</span> 
                     
                     <span v-if="isExpiringSoon()" class="fs-7 text-warning d-flex align-items-center">
                       <span class="bullet bullet-dot bg-warning me-2"></span> 
@@ -110,8 +124,8 @@
                   
                   <!--begin::Contact Info-->
                   <div class="fw-semibold fs-7 text-gray-600 mt-2">
-                    <div v-if="quote?.customer?.email">Email: {{ quote.customer.email }}</div>
-                    <div v-if="quote?.customer?.phone">Phone: {{ quote.customer.phone }}</div>
+                    <div v-if="quote?.contact?.email">Email: {{ quote.contact.email }}</div>
+                    <div v-if="quote?.contact?.phone">Phone: {{ quote.contact.phone }}</div>
                   </div>
                   <!--end::Contact Info-->
                 </div>                
@@ -129,10 +143,10 @@
 
                   <!--begin::Address-->
                   <div class="fw-semibold fs-7 text-gray-600">                      
-                    1234 Aviation Blvd<br>
-                    Los Angeles, CA 90045<br>
-                    Phone: (555) 123-4567<br>
-                    Email: quotes@jeticumedical.com                        
+                    1511 N Westshore Blvd #650<br>
+                    Tampa, FL 33607<br>
+                    Phone: (352) 796-2540<br>
+                    Email: info@jeticu.com                        
                   </div>                
                   <!--end::Address-->   
                 </div>                
@@ -157,56 +171,20 @@
                     <tbody>
                       <tr class="fw-bold text-gray-700 fs-5 text-end">
                         <td class="d-flex align-items-center pt-6">                                            
-                          <KTIcon icon-name="airplane" icon-class="fs-2 text-primary me-3" />                                           
+                          <div class="symbol symbol-40px symbol-circle me-3">
+                            <img :src="getAircraftImage()" :alt="getAircraftTypeText()" class="symbol-label object-fit-cover" style="width: 40px; height: 40px; border-radius: 50%;" />
+                          </div>                                        
                           Medical Air Transport
                           <div class="d-flex flex-column ms-3">
                             <span class="fs-7 text-muted">{{ getRouteInfo() }}</span>
                             <span class="fs-7 text-muted">{{ quote?.aircraft_type || 'Aircraft TBD' }}</span>
                           </div>
                         </td>
-                        <td class="pt-6">{{ quote?.distance || 0 }} mi</td>
-                        <td class="pt-6">${{ getBaseRate() }}</td>
-                        <td class="pt-6 text-gray-900 fw-bolder">${{ formatAmount(getBaseAmount()) }}</td>
+                        <td class="pt-6">{{ getDistanceDisplay() }}</td>
+                        <td class="pt-6">${{ formatAmount(quote?.quoted_amount || 0) }}</td>
+                        <td class="pt-6 text-gray-900 fw-bolder">${{ formatAmount(quote?.quoted_amount || 0) }}</td>
                       </tr>
 
-                      <tr v-if="getMedicalTeamCost() > 0" class="fw-bold text-gray-700 fs-5 text-end">
-                        <td class="d-flex align-items-center">                                           
-                          <KTIcon icon-name="cross" icon-class="fs-2 text-danger me-3" />                                        
-                          Medical Team & Equipment
-                          <div class="ms-3">
-                            <span class="fs-7 text-muted">{{ quote?.medical_team || 'Standard medical crew' }}</span>
-                          </div>
-                        </td>
-                        <td>-</td>
-                        <td>${{ getMedicalTeamRate() }}</td>
-                        <td class="fs-5 text-gray-900 fw-bolder">${{ formatAmount(getMedicalTeamCost()) }}</td>
-                      </tr>
-                      
-                      <tr v-if="getGroundTransportCost() > 0" class="fw-bold text-gray-700 fs-5 text-end">
-                        <td class="d-flex align-items-center">                                           
-                          <KTIcon icon-name="truck" icon-class="fs-2 text-success me-3" />                                          
-                          Ground Transportation
-                          <div class="ms-3">
-                            <span class="fs-7 text-muted">Airport transfers and ground support</span>
-                          </div>
-                        </td>
-                        <td>-</td>
-                        <td>$150.00</td>
-                        <td class="fs-5 text-gray-900 fw-bolder">${{ formatAmount(getGroundTransportCost()) }}</td>
-                      </tr>
-
-                      <tr v-if="getAdditionalServices() > 0" class="fw-bold text-gray-700 fs-5 text-end">
-                        <td class="d-flex align-items-center">                                           
-                          <KTIcon icon-name="add-item" icon-class="fs-2 text-info me-3" />                                          
-                          Additional Services
-                          <div class="ms-3">
-                            <span class="fs-7 text-muted">Special accommodations and extras</span>
-                          </div>
-                        </td>
-                        <td>-</td>
-                        <td>Variable</td>
-                        <td class="fs-5 text-gray-900 fw-bolder">${{ formatAmount(getAdditionalServices()) }}</td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>  
@@ -230,10 +208,10 @@
                     <!--begin::Item-->
                     <div class="d-flex flex-stack mb-3">
                       <!--begin::Label-->
-                      <div class="fw-semibold pe-10 text-gray-600 fs-7">Tax ({{ getTaxRate() }}%):</div>
+                      <div class="fw-semibold pe-10 text-gray-600 fs-7">Tax (0%):</div>
                       <!--end::Label-->
                       <!--begin::Amount-->
-                      <div class="text-end fw-bold fs-6 text-gray-800">${{ formatAmount(getTaxAmount()) }}</div> 
+                      <div class="text-end fw-bold fs-6 text-gray-800">$0.00</div> 
                       <!--end::Amount-->
                     </div>
                     <!--end::Item-->
@@ -244,7 +222,7 @@
                       <div class="fw-semibold pe-10 text-gray-600 fs-7">Subtotal + Tax:</div>
                       <!--end::Label-->
                       <!--begin::Amount-->
-                      <div class="text-end fw-bold fs-6 text-gray-800">${{ formatAmount(getSubtotal() + getTaxAmount()) }}</div> 
+                      <div class="text-end fw-bold fs-6 text-gray-800">${{ formatAmount(getSubtotal()) }}</div> 
                       <!--end::Amount-->
                     </div>
                     <!--end::Item-->
@@ -281,12 +259,7 @@
               <span :class="`badge badge-light-${getStatusColor(quote?.status)} me-2`">
                 {{ quote?.status || 'Draft' }}
               </span> 
-              <span v-if="quote?.trip_id" class="badge badge-light-success">
-                Converted to Trip
-              </span>
-              <span v-else class="badge badge-light-warning">
-                Pending Conversion
-              </span>          
+          
             </div>                
             <!--end::Labels-->   
             
@@ -304,7 +277,7 @@
             <!--begin::Item-->
             <div class="mb-6">       
               <div class="fw-semibold text-gray-600 fs-7">Trip Type:</div> 
-              <div class="fw-bold text-gray-800 fs-6">{{ quote?.trip_type || 'Medical Transport' }}</div>          
+              <div class="fw-bold text-gray-800 fs-6">Medical Transport</div>          
             </div>                
             <!--end::Item-->  
 
@@ -336,7 +309,7 @@
                 {{ getPatientName() }}
                 <a v-if="quote?.patient_id" 
                    href="#" 
-                   @click="viewPatient" 
+                   @click.prevent="viewPatient" 
                    class="link-primary ps-1">
                   View Profile
                 </a>
@@ -344,19 +317,7 @@
             </div>                
             <!--end::Item-->  
 
-            <!--begin::Item-->
-            <div class="mb-6">       
-              <div class="fw-semibold text-gray-600 fs-7">Medical Condition:</div> 
-              <div class="fw-bold text-gray-800 fs-6">{{ quote?.medical_condition || 'Not specified' }}</div>          
-            </div>                
-            <!--end::Item-->  
-
-            <!--begin::Item-->
-            <div class="mb-6">       
-              <div class="fw-semibold text-gray-600 fs-7">Special Requirements:</div> 
-              <div class="fw-bold text-gray-800 fs-6">{{ quote?.special_requirements || 'None' }}</div>          
-            </div>                
-            <!--end::Item--> 
+ 
 
             <!--begin::Title-->
             <h6 class="mb-8 fw-bolder text-gray-600 text-hover-primary">FLIGHT DETAILS</h6>
@@ -372,7 +333,16 @@
             <!--begin::Item-->
             <div class="mb-6">       
               <div class="fw-semibold text-gray-600 fs-7">Aircraft Type:</div> 
-              <div class="fw-bold text-gray-800 fs-6">{{ quote?.aircraft_type || 'TBD' }}</div>          
+              <div class="fw-bold text-gray-800 fs-6">
+                <template v-if="quote?.aircraft_type && quote.aircraft_type !== 'TBD'">
+                  <span v-if="quote.aircraft_type === '65'">Learjet 65</span>
+                  <span v-else-if="quote.aircraft_type === '35'">Learjet 35</span>
+                  <span v-else>{{ quote.aircraft_type }}</span>
+                </template>
+                <template v-else>
+                  TBD
+                </template>
+              </div>          
             </div>                
             <!--end::Item-->  
 
@@ -383,7 +353,7 @@
                 {{ getEstimatedFlightTime() }}
                 <span class="fs-7 text-success d-flex align-items-center">
                   <span class="bullet bullet-dot bg-success mx-2"></span> 
-                  {{ quote?.distance || 0 }} miles
+                  {{ getDistanceDisplay() }}
                 </span>
               </div>                  
             </div>                
@@ -397,6 +367,9 @@
     </div>
     <!--end::Body-->
   </div>
+  
+  <!-- Include the Create Trip Modal -->
+  <CreateTripSimpleModal @tripCreated="onTripCreated" />
 </template>
 
 <script setup lang="ts">
@@ -404,21 +377,34 @@ import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import Swal from "sweetalert2";
+import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
+import { Modal } from "bootstrap";
+import CreateTripSimpleModal from "@/components/modals/CreateTripSimpleModal.vue";
 
 const route = useRoute();
 const router = useRouter();
 const quote = ref<any>(null);
+const associatedTrip = ref<any>(null);
 const loading = ref(true);
+const tripLoading = ref(false);
 const error = ref<string | null>(null);
+const { setToolbarActions } = useToolbar();
 
 const fetchQuote = async () => {
   try {
     loading.value = true;
     error.value = null;
+    associatedTrip.value = null; // Reset associated trip before fetching
     const quoteId = route.params.id as string;
     
     const response = await ApiService.get(`/quotes/${quoteId}/`);
     quote.value = response.data;
+    
+    // Check if there's a trip associated with this quote
+    await checkForAssociatedTrip(quoteId);
+    
+    // Setup toolbar actions after quote is loaded and trip check is done
+    setupToolbarActions();
     
   } catch (err: any) {
     error.value = err.response?.data?.detail || "Failed to fetch quote details";
@@ -426,6 +412,70 @@ const fetchQuote = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const checkForAssociatedTrip = async (quoteId: string) => {
+  try {
+    // First try to get the trips directly from the quote's trips relationship
+    try {
+      // Try to get trips for this specific quote using the related field
+      const response = await ApiService.get(`/quotes/${quoteId}/trips/`);
+      const trips = response.data.results || response.data || [];
+      
+      if (Array.isArray(trips) && trips.length > 0) {
+        associatedTrip.value = trips[0]; // Take the first trip
+        console.log('Found associated trip via quote relationship:', associatedTrip.value.id);
+        return;
+      }
+    } catch (relatedErr) {
+      // Quote trips endpoint not available, falling back to general trips query
+    }
+    
+    // Fallback: Query all trips and filter by quote
+    const response = await ApiService.get(`/trips/?quote=${quoteId}`);
+    const trips = response.data.results || response.data || [];
+    
+    if (Array.isArray(trips) && trips.length > 0) {
+      // Verify that the trip actually references this quote
+      // Based on TripReadSerializer, quote is returned as {id, quoted_amount, status}
+      const validTrips = trips.filter(trip => {
+        return trip.quote && trip.quote.id === quoteId;
+      });
+      
+      if (validTrips.length > 0) {
+        // Found a trip associated with this quote
+        associatedTrip.value = validTrips[0]; // Take the first (should only be one)
+        console.log('Found associated trip:', associatedTrip.value.id);
+      } else {
+        // No valid trips found - this quote hasn't been converted to a trip
+        associatedTrip.value = null;
+      }
+    } else {
+      // No trips found at all
+      associatedTrip.value = null;
+    }
+  } catch (err) {
+    console.error('Error checking for associated trip:', err);
+    // Don't fail the whole page if trip check fails
+    associatedTrip.value = null;
+  }
+};
+
+
+const setupToolbarActions = () => {
+  const actions = [
+    // Download PDF - secondary button (left position)
+    createToolbarActions.secondary('download-pdf', 'Download PDF', downloadQuote, 'document'),
+  ];
+  
+  // Add Convert to Trip button only if quote hasn't been converted yet
+  if (!associatedTrip.value) {
+    actions.push(
+      createToolbarActions.primary('convert-to-trip', 'Convert to Trip', openConvertToTripModal, 'airplane')
+    );
+  }
+  
+  setToolbarActions(actions);
 };
 
 const formatDate = (dateString?: string): string => {
@@ -445,165 +495,191 @@ const formatAmount = (amount: number): string => {
 };
 
 const getCustomerName = (): string => {
-  if (quote.value?.customer) {
-    const first = quote.value.customer.first_name || '';
-    const last = quote.value.customer.last_name || '';
-    return `${first} ${last}`.trim() || quote.value.customer.email || 'Customer';
-  }
-  if (quote.value?.patient_first_name || quote.value?.patient_last_name) {
-    return `${quote.value.patient_first_name || ''} ${quote.value.patient_last_name || ''}`.trim();
+  if (quote.value?.contact) {
+    const first = quote.value.contact.first_name || '';
+    const last = quote.value.contact.last_name || '';
+    return `${first} ${last}`.trim() || quote.value.contact.email || 'Customer';
   }
   return 'Customer Name Not Available';
 };
 
 const getPatientName = (): string => {
+  // First check if there's a related patient object with patient info
+  if (quote.value?.patient?.info) {
+    const first = quote.value.patient.info.first_name || '';
+    const last = quote.value.patient.info.last_name || '';
+    const fullName = `${first} ${last}`.trim();
+    return fullName || quote.value.patient.info.email || 'Patient';
+  }
+  
+  // If patient exists but no info, show basic info
   if (quote.value?.patient) {
-    const first = quote.value.patient.first_name || '';
-    const last = quote.value.patient.last_name || '';
-    return `${first} ${last}`.trim() || 'Patient';
+    return `Patient (ID: ${quote.value.patient.id.slice(0, 8)})`;
   }
-  if (quote.value?.patient_first_name || quote.value?.patient_last_name) {
-    return `${quote.value.patient_first_name || ''} ${quote.value.patient_last_name || ''}`.trim();
-  }
-  return 'Patient Name Not Specified';
+  
+  return 'No Patient Assigned';
 };
 
 const getCustomerAddress = (): string => {
-  if (!quote.value?.customer) return 'Address not available';
+  if (!quote.value?.contact) return 'Address not available';
   
-  const customer = quote.value.customer;
+  const contact = quote.value.contact;
   const parts = [
-    customer.address,
-    customer.city,
-    customer.state,
-    customer.zip_code,
-    customer.country
+    contact.address,
+    contact.city,
+    contact.state,
+    contact.zip_code,
+    contact.country
   ].filter(Boolean);
   
   return parts.length > 0 ? parts.join(', ') : 'Address not available';
 };
 
 const getRouteInfo = (): string => {
-  const pickup = quote.value?.pickup_airport_id || quote.value?.departure_airport;
-  const dropoff = quote.value?.dropoff_airport_id || quote.value?.arrival_airport;
+  const pickupAirport = quote.value?.pickup_airport;
+  const dropoffAirport = quote.value?.dropoff_airport;
   
-  if (pickup && dropoff) {
-    return `${pickup} → ${dropoff}`;
+  if (pickupAirport?.ident && dropoffAirport?.ident) {
+    return `${pickupAirport.ident} → ${dropoffAirport.ident}`;
   }
   return 'Route TBD';
 };
 
 const getBaseAmount = (): number => {
-  return quote.value?.base_amount || (quote.value?.quoted_amount * 0.7) || 0;
+  return quote.value?.quoted_amount || 0;
 };
 
-const getBaseRate = (): string => {
-  const distance = quote.value?.distance || 1;
-  const baseAmount = getBaseAmount();
-  const rate = baseAmount / distance;
-  return formatAmount(rate);
-};
-
-const getMedicalTeamCost = (): number => {
-  return quote.value?.medical_team_cost || (quote.value?.quoted_amount * 0.2) || 0;
-};
-
-const getMedicalTeamRate = (): string => {
-  return formatAmount(getMedicalTeamCost());
-};
-
-const getGroundTransportCost = (): number => {
-  return quote.value?.ground_transport_cost || 150;
-};
-
-const getAdditionalServices = (): number => {
-  return quote.value?.additional_services_cost || 0;
-};
 
 const getSubtotal = (): number => {
-  return getBaseAmount() + getMedicalTeamCost() + getGroundTransportCost() + getAdditionalServices();
+  return quote.value?.quoted_amount || 0;
 };
 
 const getTaxRate = (): number => {
-  return quote.value?.tax_rate || 8.25;
+  return 0;
 };
 
 const getTaxAmount = (): number => {
-  return getSubtotal() * (getTaxRate() / 100);
+  return 0;
 };
 
 const getStatusColor = (status: string): string => {
   switch (status?.toLowerCase()) {
-    case 'approved': case 'accepted': return 'success';
+    case 'approved': case 'accepted': case 'confirmed': case 'active': case 'completed': return 'success';
     case 'pending': return 'warning';
-    case 'expired': case 'rejected': return 'danger';
+    case 'expired': case 'rejected': case 'cancelled': return 'danger';
     case 'sent': return 'primary';
     case 'draft': return 'secondary';
+    case 'paid': return 'info';
     default: return 'info';
   }
 };
 
 const isExpired = (): boolean => {
-  if (!quote.value?.valid_until) return false;
-  return new Date(quote.value.valid_until) < new Date();
+  if (!quote.value?.created_on) return false;
+  const issueDate = new Date(quote.value.created_on);
+  const validUntil = new Date(issueDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+  return validUntil < new Date();
 };
 
 const isExpiringSoon = (): boolean => {
-  if (!quote.value?.valid_until) return false;
-  const validUntil = new Date(quote.value.valid_until);
+  if (!quote.value?.created_on) return false;
+  const issueDate = new Date(quote.value.created_on);
+  const validUntil = new Date(issueDate.getTime() + 30 * 24 * 60 * 60 * 1000);
   const threeDaysFromNow = new Date();
   threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
   return validUntil <= threeDaysFromNow && validUntil >= new Date();
 };
 
+const getValidUntilDate = (): string => {
+  if (!quote.value?.created_on) return formatDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+  
+  const issueDate = new Date(quote.value.created_on);
+  const validUntil = new Date(issueDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+  return formatDate(validUntil.toISOString());
+};
+
 const getValidityPeriod = (): string => {
-  if (!quote.value?.created_on || !quote.value?.valid_until) return '30 days';
+  return '30 days';
+};
+
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return Math.round(distance);
+};
+
+const getDistanceDisplay = (): string => {
+  const pickupAirport = quote.value?.pickup_airport;
+  const dropoffAirport = quote.value?.dropoff_airport;
   
-  const created = new Date(quote.value.created_on);
-  const validUntil = new Date(quote.value.valid_until);
-  const diffTime = Math.abs(validUntil.getTime() - created.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  return `${diffDays} days`;
+  if (pickupAirport?.latitude && pickupAirport?.longitude && 
+      dropoffAirport?.latitude && dropoffAirport?.longitude) {
+    const distance = calculateDistance(
+      pickupAirport.latitude, pickupAirport.longitude,
+      dropoffAirport.latitude, dropoffAirport.longitude
+    );
+    return `${distance} mi`;
+  }
+  return 'TBD';
 };
 
 const getEstimatedFlightTime = (): string => {
-  const distance = quote.value?.distance || 0;
-  if (distance === 0) return 'TBD';
+  const pickupAirport = quote.value?.pickup_airport;
+  const dropoffAirport = quote.value?.dropoff_airport;
   
-  // Estimate flight time based on average speed of 400 mph
-  const hours = distance / 400;
-  const flightHours = Math.floor(hours);
-  const flightMinutes = Math.round((hours - flightHours) * 60);
-  
-  if (flightHours > 0) {
-    return `${flightHours}h ${flightMinutes}m`;
-  } else {
-    return `${flightMinutes}m`;
+  if (pickupAirport?.latitude && pickupAirport?.longitude && 
+      dropoffAirport?.latitude && dropoffAirport?.longitude) {
+    const distance = calculateDistance(
+      pickupAirport.latitude, pickupAirport.longitude,
+      dropoffAirport.latitude, dropoffAirport.longitude
+    );
+    
+    // Calculate flight time based on average speed of 400 mph
+    const hours = distance / 400;
+    const flightHours = Math.floor(hours);
+    const flightMinutes = Math.round((hours - flightHours) * 60);
+    
+    if (flightHours > 0) {
+      return `${flightHours}h ${flightMinutes}m`;
+    } else {
+      return `${flightMinutes}m`;
+    }
   }
+  
+  return 'TBD';
 };
 
-const convertToTrip = () => {
-  Swal.fire({
-    title: 'Convert to Trip',
-    text: 'Are you sure you want to convert this quote to a trip booking?',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Yes, convert it!',
-    cancelButtonText: 'Cancel'
-  }).then((result) => {
-    if (result.isConfirmed) {
-      // Here you would make the API call to convert the quote
-      Swal.fire({
-        title: 'Success!',
-        text: 'Quote has been converted to a trip.',
-        icon: 'success'
-      }).then(() => {
-        // Refresh the quote data or redirect to trip
-        fetchQuote();
-      });
-    }
-  });
+const openConvertToTripModal = () => {
+  // Get the modal element and show it with pre-populated data
+  const modalElement = document.getElementById('kt_modal_create_trip_simple');
+  if (modalElement) {
+    console.log('Opening Convert to Trip modal with quote:', quote.value);
+    // Dispatch custom event with quote data for pre-population
+    const eventData = {
+      quoteId: quote.value?.id,
+      tripType: quote.value?.trip_type || 'medical',
+      patientId: quote.value?.patient?.id || quote.value?.patient_id,
+      departureAirport: quote.value?.pickup_airport?.id,
+      arrivalAirport: quote.value?.dropoff_airport?.id,
+      notes: `Converted from Quote #${quote.value?.quote_number || quote.value?.id?.slice(0, 8)}`
+    };
+    console.log('Sending pre-populate data:', eventData);
+    const event = new CustomEvent('prepopulate-trip-form', {
+      detail: eventData
+    });
+    modalElement.dispatchEvent(event);
+    
+    const modal = new Modal(modalElement);
+    modal.show();
+  } else {
+    console.error('Could not find modal element kt_modal_create_trip_simple');
+  }
 };
 
 const downloadQuote = () => {
@@ -618,6 +694,112 @@ const viewPatient = () => {
   if (quote.value?.patient_id) {
     router.push(`/admin/contacts/patients/${quote.value.patient_id}`);
   }
+};
+
+// Handle trip creation success
+const onTripCreated = async (tripData: any) => {
+  console.log('Trip created from quote:', tripData);
+  
+  // Update quote status to confirmed/active
+  if (quote.value && quote.value.id) {
+    try {
+      // Update the quote status to 'confirmed' since it's been converted to a trip
+      const updateData = {
+        status: 'confirmed'
+      };
+      
+      console.log('Updating quote status to confirmed:', quote.value.id);
+      await ApiService.patch(`/quotes/${quote.value.id}/`, updateData);
+      
+      // Update local quote object
+      quote.value.status = 'confirmed';
+      
+      // Set the associated trip data to show the trip card
+      associatedTrip.value = tripData;
+      
+      setupToolbarActions(); // Refresh toolbar to hide Convert button
+      
+      console.log('Quote status updated successfully');
+    } catch (error) {
+      console.error('Error updating quote status:', error);
+      // Still show success for trip creation even if quote update fails
+    }
+  }
+  
+  // Show success message with option to view the trip
+  Swal.fire({
+    title: 'Quote Converted!',
+    text: `Quote has been successfully converted to Trip ${tripData.trip_number}`,
+    icon: 'success',
+    showCancelButton: true,
+    confirmButtonText: 'View Trip',
+    cancelButtonText: 'Stay Here'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      router.push(`/admin/trips/${tripData.id}`);
+    } else {
+      // If staying, refresh the quote to show updated status
+      fetchQuote();
+    }
+  });
+};
+
+// Helper functions for trip display
+const getTripStatusColor = (status: string): string => {
+  switch (status?.toLowerCase()) {
+    case 'pending': return 'warning';
+    case 'active': case 'in_progress': return 'primary';
+    case 'completed': return 'success';
+    case 'cancelled': return 'danger';
+    case 'scheduled': return 'info';
+    default: return 'secondary';
+  }
+};
+
+// Removed getTripPatientName - using existing getPatientName() instead
+
+const viewTrip = () => {
+  if (associatedTrip.value?.id) {
+    router.push(`/admin/trips/${associatedTrip.value.id}`);
+  }
+};
+
+// Aircraft image helper functions
+const getAircraftImage = (): string => {
+  const aircraftType = quote.value?.aircraft_type;
+  if (!aircraftType || aircraftType === 'TBD') return '/media/aircraft/Learjet35A.jpg';
+  
+  // Map aircraft types to their image filenames
+  const imageMap: Record<string, string> = {
+    '35': 'Learjet35A.jpg',
+    '36A': 'learjet36a.jpeg', 
+    '31': 'learjet30.jpg',
+    '60': 'Learjet60.jpg',
+    'Kodiak 100': 'kodiak100.jpg',
+    'Learjet 35A': 'Learjet35A.jpg',
+    'Learjet 36A': 'learjet36a.jpeg',
+    'Learjet 31': 'learjet30.jpg',
+    'Learjet 60': 'Learjet60.jpg',
+  };
+  
+  // Return specific image or fallback to generic
+  const imageName = imageMap[aircraftType] || 'Learjet35A.jpg'; // Default fallback
+  return `/media/aircraft/${imageName}`;
+};
+
+const getAircraftTypeText = (): string => {
+  const aircraftType = quote.value?.aircraft_type;
+  if (!aircraftType || aircraftType === 'TBD') return 'Aircraft TBD';
+  
+  // Convert numeric codes to full names
+  const typeMap: Record<string, string> = {
+    '35': 'Learjet 35A',
+    '36A': 'Learjet 36A',
+    '31': 'Learjet 31', 
+    '60': 'Learjet 60',
+  };
+  
+  return typeMap[aircraftType] || aircraftType;
 };
 
 onMounted(() => {

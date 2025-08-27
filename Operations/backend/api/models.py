@@ -98,8 +98,11 @@ class Contact(BaseModel):
     state = models.CharField(max_length=100, blank=True, null=True)
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
+    nationality = models.CharField(max_length=100, blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
+    passport_number = models.CharField(max_length=100, blank=True, null=True)
+    passport_expiration_date = models.DateField(blank=True, null=True)
 
-    
     def __str__(self):
         if self.business_name:
             return self.business_name
@@ -119,6 +122,9 @@ class FBO(BaseModel):
     zip = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
     contacts = models.ManyToManyField(Contact, related_name="fbos")
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    phone_secondary = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
     
@@ -141,22 +147,38 @@ class Ground(BaseModel):
     def __str__(self):
         return self.name
 
+
+class AirportType(models.TextChoices):
+    LARGE = 'large_airport', 'Large airport'
+    MEDIUM = 'medium_airport', 'Medium airport'
+    SMALL = 'small_airport', 'Small airport'
+
+
 # Airport model
 class Airport(BaseModel):
-    icao_code = models.CharField(max_length=4, unique=True, db_index=True)
-    iata_code = models.CharField(max_length=3, db_index=True)
+    ident = models.CharField(max_length=10, unique=True, db_index=True)
     name = models.CharField(max_length=255)
-    city = models.CharField(max_length=100)
-    state = models.CharField(max_length=100, blank=True, null=True)
-    country = models.CharField(max_length=100)
-    elevation = models.IntegerField(blank=True, null=True)
-    fbos = models.ManyToManyField(FBO, related_name="airports", blank=True)
-    grounds = models.ManyToManyField(Ground, related_name="airports", blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    elevation = models.IntegerField(blank=True, null=True)
+    iso_country = models.CharField(max_length=100)
+    iso_region = models.CharField(max_length=100, blank=True, null=True)
+    municipality = models.CharField(max_length=100, blank=True, null=True)
+    icao_code = models.CharField(max_length=4, unique=True, db_index=True, blank=True, null=True)
+    iata_code = models.CharField(max_length=3, db_index=True, blank=True, null=True)
+    local_code = models.CharField(max_length=10, blank=True, null=True)
+    gps_code = models.CharField(max_length=20, blank=True, null=True)
+    airport_type = models.CharField(
+        max_length=20,
+        choices=AirportType.choices,
+        default=AirportType.SMALL,
+        db_index=True,
+    )
+    fbos = models.ManyToManyField(FBO, related_name="airports", blank=True)
+    grounds = models.ManyToManyField(Ground, related_name="airports", blank=True)
+
     timezone = models.CharField(max_length=50)
 
-    
     def __str__(self):
         return f"{self.name} ({self.icao_code}/{self.iata_code})"
 
@@ -352,6 +374,8 @@ class TripLine(BaseModel):
     origin_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="origin_trip_lines", db_column="origin_airport_id")
     destination_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="destination_trip_lines", db_column="destination_airport_id")
     crew_line = models.ForeignKey(CrewLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_lines", db_column="crew_line_id")
+    departure_fbo = models.ForeignKey(FBO, on_delete=models.SET_NULL, null=True, blank=True, related_name="departure_trip_lines")
+    arrival_fbo = models.ForeignKey(FBO, on_delete=models.SET_NULL, null=True, blank=True, related_name="arrival_trip_lines")
     departure_time_local = models.DateTimeField()
     departure_time_utc = models.DateTimeField()
     arrival_time_local = models.DateTimeField()
@@ -366,3 +390,72 @@ class TripLine(BaseModel):
     
     class Meta:
         ordering = ['departure_time_utc']
+
+
+class Staff(BaseModel):
+    contact = models.OneToOneField("api.Contact", on_delete=models.CASCADE, related_name="staff")
+    active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.contact.first_name} {self.contact.last_name}".strip() or str(self.contact_id)
+
+
+class StaffRole(BaseModel):
+    code = models.CharField(max_length=32, unique=True)   # e.g., 'PIC', 'SIC', 'RN', 'PARAMEDIC'
+    name = models.CharField(max_length=64)                # e.g., 'Pilot in Command'
+
+    class Meta:
+        indexes = [models.Index(fields=["code"])]
+
+    def __str__(self):
+        return self.code
+
+
+class StaffRoleMembership(BaseModel):
+    staff = models.ForeignKey("api.Staff", on_delete=models.CASCADE, related_name="role_memberships")
+    role = models.ForeignKey("api.StaffRole", on_delete=models.PROTECT, related_name="memberships")
+    start_on = models.DateField(null=True, blank=True)
+    end_on = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["staff", "role", "start_on", "end_on"],
+                name="uniq_staff_role_interval"
+            )
+        ]
+
+
+class TripEvent(BaseModel):
+    """
+    Non-flight timeline items attached to a Trip.
+    """
+    EVENT_TYPES = [
+        ("CREW_CHANGE", "Crew Change"),
+        ("OVERNIGHT", "Overnight (New Day)"),
+    ]
+
+    trip = models.ForeignKey("api.Trip", on_delete=models.CASCADE, related_name="events")
+    airport = models.ForeignKey("api.Airport", on_delete=models.PROTECT, related_name="trip_events")
+
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+
+    # Start/end timestamps (UTC + local) so you can group by day and show durations
+    start_time_local = models.DateTimeField()
+    start_time_utc = models.DateTimeField()
+    end_time_local = models.DateTimeField(blank=True, null=True)  # required for OVERNIGHT
+    end_time_utc = models.DateTimeField(blank=True, null=True)
+
+    # Only used for CREW_CHANGE
+    crew_line = models.ForeignKey(
+        "api.CrewLine", on_delete=models.SET_NULL, null=True, blank=True, related_name="trip_events"
+    )
+
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["trip", "start_time_utc"]),
+            models.Index(fields=["event_type"]),
+        ]

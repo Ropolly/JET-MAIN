@@ -1,19 +1,40 @@
 <template>
+  <!--begin::Associated Quote Alert-->
+  <div v-if="trip?.quote?.id" class="alert alert-warning d-flex align-items-center justify-content-between mb-5">
+    <div class="d-flex align-items-center">
+      <KTIcon icon-name="price-tag" icon-class="fs-2x text-warning me-4" />
+      <div>
+        <div class="fw-bold fs-6">This trip was converted from a quote</div>
+        <div class="text-gray-700 fs-7">
+          Quote #{{ trip.quote.id?.slice(0, 8) }}
+          <span class="mx-2">•</span>
+          Amount: ${{ formatQuoteAmount(trip.quote.quoted_amount) }}
+          <span class="mx-2">•</span>
+          <span class="badge badge-warning fs-8">
+            {{ trip.quote.status }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <button @click="viewQuote" class="btn btn-sm btn-warning">
+      View Quote
+      <KTIcon icon-name="arrow-right" icon-class="fs-5 ms-1" />
+    </button>
+  </div>
+  <!--end::Associated Quote Alert-->
+
   <!--begin::Layout-->
   <div class="d-flex flex-column flex-lg-row">
     <!--begin::Content-->
     <div class="flex-lg-row-fluid me-lg-15 order-2 order-lg-1 mb-10 mb-lg-0">
-      <!-- Trip Details Card -->
-      <TripDetails :trip="trip" :loading="loading" />
-
-      <!-- Itinerary Card -->
-      <TripItinerary :trip="trip" :loading="loading" />
+      <!-- Flight Statistics Card -->
+      <FlightStatistics :trip="trip" :loading="loading" />
 
       <!-- Aircraft Details Card -->
       <AircraftDetails :trip="trip" :loading="loading" />
 
-      <!-- Quote & Billing Card -->
-      <QuoteBilling :trip="trip" :loading="loading" />
+      <!-- Combined Itinerary & Timeline Card -->
+      <TripItinerary :trip="trip" :loading="loading" />
     </div>
     <!--end::Content-->
 
@@ -33,10 +54,10 @@
 import { defineComponent, ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import ApiService from "@/core/services/ApiService";
-import TripDetails from "@/components/trips/view/TripDetails.vue";
+import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
+import FlightStatistics from "@/components/trips/view/FlightStatistics.vue";
 import TripItinerary from "@/components/trips/view/TripItinerary.vue";
 import AircraftDetails from "@/components/trips/view/AircraftDetails.vue";
-import QuoteBilling from "@/components/trips/view/QuoteBilling.vue";
 import TripSummary from "@/components/trips/view/TripSummary.vue";
 
 interface Trip {
@@ -49,7 +70,11 @@ interface Trip {
   aircraft_id?: string;
   aircraft?: any;
   quote_id?: string;
-  quote?: any;
+  quote?: {
+    id: string;
+    quoted_amount: string;
+    status?: string;
+  };
   // Removed priority and departure_airport as they don't exist in backend Trip model
   arrival_airport?: string;
   estimated_departure_time?: string;
@@ -69,10 +94,9 @@ interface Trip {
 export default defineComponent({
   name: "view-trip",
   components: {
-    TripDetails,
+    FlightStatistics,
     TripItinerary,
     AircraftDetails,
-    QuoteBilling,
     TripSummary,
   },
   setup() {
@@ -80,6 +104,19 @@ export default defineComponent({
     const trip = ref<Trip | null>(null);
     const loading = ref(true);
     const error = ref<string | null>(null);
+    const { setToolbarActions } = useToolbar();
+
+    const formatQuoteAmount = (amount: string | number): string => {
+      if (!amount) return '0';
+      const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+      return numAmount.toLocaleString();
+    };
+
+    const viewQuote = () => {
+      if (trip.value?.quote?.id) {
+        window.open(`/admin/quotes/${trip.value.quote.id}`, '_blank');
+      }
+    };
 
     const fetchTrip = async () => {
       try {
@@ -90,6 +127,9 @@ export default defineComponent({
         // Fetch trip details - the TripReadSerializer already includes patient and aircraft data
         const response = await ApiService.get(`/trips/${tripId}/`);
         trip.value = response.data;
+        
+        console.log('Trip data received:', response.data);
+        console.log('Patient data:', response.data.patient);
         
         // No need for additional API calls - patient and aircraft data are already included in the response
         // The TripReadSerializer includes:
@@ -103,14 +143,32 @@ export default defineComponent({
       }
     };
 
+    const handleEditTrip = () => {
+      // Navigate to edit trip page or open modal
+      console.log('Edit trip:', trip.value?.id);
+    };
+
+    const handleGenerateManifest = () => {
+      // Generate manifest for trip
+      console.log('Generate manifest for trip:', trip.value?.trip_number);
+    };
+
     onMounted(() => {
       fetchTrip();
+      
+      // Setup toolbar actions
+      setToolbarActions([
+        createToolbarActions.primary('edit-trip', 'Edit Trip', handleEditTrip, 'pencil'),
+        createToolbarActions.secondary('generate-manifest', 'Generate Manifest', handleGenerateManifest, 'printer')
+      ]);
     });
 
     return {
       trip,
       loading,
       error,
+      formatQuoteAmount,
+      viewQuote,
     };
   },
 });

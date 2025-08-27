@@ -3,10 +3,13 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
 from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
 import json
+from itertools import chain
+# TripEvent imports moved to consolidated imports section below
 
 from .external.airport import get_airport, parse_fuel_cost
 
@@ -32,8 +35,9 @@ def get_fuel_prices(request, airport_code):
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent
 )
+from .contact_service import ContactCreationService, ContactCreationSerializer
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
     ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
@@ -43,11 +47,14 @@ from .serializers import (
     PassengerReadSerializer, PassengerWriteSerializer,
     CrewLineReadSerializer, CrewLineWriteSerializer,
     TripLineReadSerializer, TripLineWriteSerializer,
+    TripEventReadSerializer, TripEventWriteSerializer,
     TripReadSerializer, TripWriteSerializer,
     QuoteReadSerializer, QuoteWriteSerializer,
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
-    PatientReadSerializer, PatientWriteSerializer
+    PatientReadSerializer, PatientWriteSerializer, StaffReadSerializer, StaffWriteSerializer,
+    StaffRoleSerializer,
+    StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -59,10 +66,23 @@ from .permissions import (
     CanReadTripLine, CanWriteTripLine, CanModifyTripLine, CanDeleteTripLine
 )
 
+# Standard pagination class for all ViewSets
+class StandardPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+# Custom pagination for airports (if different settings needed)
+class AirportPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 # Base ViewSet with common functionality
 class BaseViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination  # Apply pagination to all ViewSets
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -133,8 +153,9 @@ class GroundViewSet(BaseViewSet):
 class AirportViewSet(BaseViewSet):
     queryset = Airport.objects.all()
     serializer_class = AirportSerializer
-    search_fields = ['name', 'icao_code', 'iata_code', 'city', 'country']
-    ordering_fields = ['name', 'icao_code', 'iata_code', 'created_on']
+    pagination_class = AirportPagination
+    search_fields = ['name', 'ident', 'icao_code', 'iata_code', 'municipality', 'iso_country', 'iso_region']
+    ordering_fields = ['name', 'ident', 'icao_code', 'iata_code', 'airport_type', 'created_on']
     
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -144,9 +165,11 @@ class AirportViewSet(BaseViewSet):
             
         airports = Airport.objects.filter(
             Q(name__icontains=query) | 
+            Q(ident__icontains=query) |
             Q(icao_code__icontains=query) | 
             Q(iata_code__icontains=query) |
-            Q(city__icontains=query)
+            Q(municipality__icontains=query) |
+            Q(iso_country__icontains=query)
         )[:10]
         
         serializer = self.get_serializer(airports, many=True)
@@ -283,13 +306,26 @@ class PatientViewSet(BaseViewSet):
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
-    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient').prefetch_related('transactions')
-    search_fields = ['contact__first_name', 'contact__last_name', 'status']
+    queryset = Quote.objects.select_related('contact', 'pickup_airport', 'dropoff_airport', 'patient', 'patient__info').prefetch_related('transactions')
+    search_fields = ['contact__first_name', 'contact__last_name', 'patient__info__first_name', 'patient__info__last_name', 'status']
     ordering_fields = ['created_on', 'quoted_amount']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadQuote | CanWriteQuote | CanModifyQuote | CanDeleteQuote
     ]
+    
+    def get_queryset(self):
+        """
+        Filter quotes by status and handle UUID search if provided in query params
+        """
+        queryset = super().get_queryset()
+        
+        # Filter by status if provided
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+            
+        return queryset
     
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -374,8 +410,8 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote', 'patient', 'aircraft').prefetch_related('trip_lines', 'passengers')
-    search_fields = ['trip_number', 'type']
+    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line')
+    search_fields = ['trip_number', 'type', 'patient__info__first_name', 'patient__info__last_name', 'passengers__info__first_name', 'passengers__info__last_name']
     ordering_fields = ['created_on', 'estimated_departure_time']
     permission_classes = [
         permissions.IsAuthenticated,
@@ -417,6 +453,22 @@ class TripViewSet(BaseViewSet):
         trip_lines = trip.trip_lines.all().order_by('departure_time_utc')
         serializer = TripLineReadSerializer(trip_lines, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def timeline(self, request, pk=None):
+        trip = self.get_object()
+        legs = TripLineReadSerializer(trip.trip_lines.all(), many=True).data
+        for item in legs:
+            item["timeline_type"] = "LEG"
+            item["sort_at"] = item["departure_time_utc"]
+
+        events = TripEventReadSerializer(trip.events.all(), many=True).data
+        for item in events:
+            item["timeline_type"] = "EVENT"
+            item["sort_at"] = item["start_time_utc"]
+
+        combined = sorted(chain(legs, events), key=lambda x: x["sort_at"] or "")
+        return Response(combined)
 
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
@@ -605,3 +657,116 @@ def dashboard_stats(request):
             ]
         }
     })
+
+
+class StaffViewSet(BaseViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = Staff.objects.select_related("contact").all().order_by("-created_on")
+    search_fields = ['contact__first_name', 'contact__last_name', 'contact__business_name', 'contact__email']
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return StaffReadSerializer
+        return StaffWriteSerializer
+
+
+class StaffRoleViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = StaffRole.objects.all().order_by("code")
+    serializer_class = StaffRoleSerializer
+
+
+class StaffRoleMembershipViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = StaffRoleMembership.objects.select_related("staff", "role").all().order_by("-created_on")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Filter by staff_id if provided
+        staff_id = self.request.query_params.get('staff_id', None)
+        if staff_id is not None:
+            queryset = queryset.filter(staff_id=staff_id)
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return StaffRoleMembershipReadSerializer
+        return StaffRoleMembershipWriteSerializer
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_contact_with_related(request):
+    """
+    Unified endpoint for creating contacts with related records (Patient, Staff, Passenger, Customer)
+    
+    POST /api/contacts/create-with-related/
+    
+    Body:
+    {
+        "first_name": "John",
+        "last_name": "Doe", 
+        "email": "john.doe@example.com",
+        "phone": "+1234567890",
+        "date_of_birth": "1990-01-01",
+        "passport_number": "123456789",
+        "passport_expiration_date": "2030-01-01",
+        "nationality": "US",
+        "related_type": "patient",  // "patient", "staff", "passenger", "customer"
+        "related_data": {
+            "special_instructions": "Requires wheelchair assistance",
+            "bed_at_origin": true,
+            "status": "confirmed"
+        }
+    }
+    """
+    serializer = ContactCreationSerializer(data=request.data, context={'request': request})
+    
+    if serializer.is_valid():
+        try:
+            result = serializer.save()
+            
+            # Return appropriate response based on related type
+            contact = result['contact']
+            related_instance = result['related_instance']
+            related_type = result['related_type']
+            
+            response_data = {
+                'contact': ContactSerializer(contact).data,
+                'related_type': related_type,
+                'success': True,
+                'message': f'{related_type.capitalize()} created successfully'
+            }
+            
+            # Add specific related data
+            if related_type == 'patient':
+                from .serializers import PatientReadSerializer
+                response_data['patient'] = PatientReadSerializer(related_instance).data
+            elif related_type == 'staff':
+                response_data['staff'] = StaffReadSerializer(related_instance).data
+            elif related_type == 'passenger':
+                from .serializers import PassengerReadSerializer
+                response_data['passenger'] = PassengerReadSerializer(related_instance).data
+            elif related_type == 'customer':
+                response_data['customer'] = ContactSerializer(related_instance).data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e),
+                'success': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class TripEventViewSet(BaseViewSet):
+    queryset = TripEvent.objects.select_related("trip", "airport", "crew_line")
+    ordering_fields = ["start_time_utc", "created_on"]
+
+    def get_serializer_class(self):
+        return (TripEventReadSerializer
+                if self.action in ("list", "retrieve")
+                else TripEventWriteSerializer)

@@ -537,6 +537,36 @@ const routes: Array<RouteRecordRaw> = [
         },
       },
       {
+        path: "/admin/staff",
+        name: "admin-staff",
+        component: () => import("@/views/admin/Staff.vue"),
+        meta: {
+          pageTitle: "Staff",
+          breadcrumbs: ["Administration", "Contacts", "Staff"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/staff/:id",
+        name: "admin-staff-detail",
+        component: () => import("@/views/admin/StaffDetail.vue"),
+        meta: {
+          pageTitle: "Staff Details",
+          breadcrumbs: ["Administration", "Contacts", "Staff", "Details"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/staff-roles",
+        name: "admin-staff-roles",
+        component: () => import("@/views/admin/StaffRoles.vue"),
+        meta: {
+          pageTitle: "Staff Roles",
+          breadcrumbs: ["Administration", "System", "Staff Roles"],
+          middleware: "auth",
+        },
+      },
+      {
         path: "/admin/fbos",
         name: "admin-fbos",
         component: () => import("@/views/admin/FBOs.vue"),
@@ -573,6 +603,16 @@ const routes: Array<RouteRecordRaw> = [
         meta: {
           pageTitle: "Aircraft",
           breadcrumbs: ["Administration", "Infrastructure", "Aircraft"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/aircraft/:id",
+        name: "admin-aircraft-details",
+        component: () => import("@/views/admin/aircraft/AircraftDetails.vue"),
+        meta: {
+          pageTitle: "Aircraft Details",
+          breadcrumbs: ["Administration", "Infrastructure", "Aircraft", "Details"],
           middleware: "auth",
         },
       },

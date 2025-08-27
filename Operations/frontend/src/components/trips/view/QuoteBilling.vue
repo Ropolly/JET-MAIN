@@ -1,6 +1,6 @@
 <template>
-  <!--begin::Card-->
-  <div class="card card-flush pt-3 mb-5 mb-xl-10">
+  <!--begin::Card - Only show if trip has a quote-->
+  <div v-if="hasQuote" class="card card-flush pt-3 mb-5 mb-xl-10">
     <!--begin::Card header-->
     <div class="card-header">
       <!--begin::Card title-->
@@ -11,7 +11,11 @@
 
       <!--begin::Card toolbar-->
       <div class="card-toolbar">
-        <button class="btn btn-light-primary me-3">
+        <button @click="viewQuote" class="btn btn-light-primary me-3">
+          <KTIcon icon-name="eye" icon-class="fs-3" />
+          View Quote
+        </button>
+        <button class="btn btn-light-secondary me-3">
           <KTIcon icon-name="pencil" icon-class="fs-3" />
           Edit Quote
         </button>
@@ -37,12 +41,19 @@
           <div class="card-body p-6">
             <div class="d-flex justify-content-between align-items-center">
               <div>
-                <div class="fs-4 fw-bold text-gray-900 mb-2">{{ getQuoteNumber() }}</div>
+                <div class="fs-4 fw-bold text-gray-900 mb-2">
+                  <a @click="viewQuote" href="#" class="text-hover-primary text-decoration-none">
+                    {{ getQuoteNumber() }}
+                  </a>
+                </div>
                 <div class="fs-6 text-gray-700">
                   <span class="fw-semibold">Status:</span>
                   <span :class="`badge badge-light-${getQuoteStatusColor()} ms-2`">
                     {{ getQuoteStatus() }}
                   </span>
+                </div>
+                <div class="fs-7 text-gray-600 mt-2">
+                  <span class="fw-semibold">Customer:</span> {{ getCustomerName() }}
                 </div>
               </div>
               <div class="text-end">
@@ -82,7 +93,9 @@
               <tr>
                 <td class="ps-4">
                   <div class="d-flex align-items-center">
-                    <KTIcon icon-name="airplane" icon-class="fs-3 text-primary me-3" />
+                    <div class="symbol symbol-40px symbol-circle me-3">
+                      <img :src="getAircraftImage()" :alt="getAircraftModel()" class="symbol-label object-fit-cover" style="width: 40px; height: 40px; border-radius: 50%;" />
+                    </div>
                     <div>
                       <div class="fw-bold text-gray-900 fs-6">Aircraft Charter</div>
                       <div class="text-gray-600 fs-7">{{ getAircraftModel() }} hourly rate</div>
@@ -228,7 +241,7 @@
                     <span class="fw-semibold">Authorization:</span> AUTH-2024-5678
                   </div>
                   <div>
-                    <span class="fw-semibold">Coverage Amount:</span> ${{ getInsuranceCoverage() }}
+                    <span class="fw-semibold">Est. Coverage (80%):</span> ${{ getInsuranceCoverage() }}
                   </div>
                 </div>
               </div>
@@ -246,6 +259,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 interface Props {
   trip: any;
   loading: boolean;
@@ -253,21 +267,45 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const hasQuote = computed(() => {
+  return props.trip?.quote && props.trip.quote.id;
+});
+
 const getQuoteNumber = (): string => {
   return props.trip?.quote?.quote_number || `Q-${props.trip?.trip_number || '2025-001'}`;
 };
 
 const getQuoteStatus = (): string => {
-  return props.trip?.quote?.status || 'Approved';
+  return props.trip?.quote?.status || 'confirmed';
+};
+
+const getCustomerName = (): string => {
+  const quote = props.trip?.quote;
+  if (!quote || !quote.customer) return 'N/A';
+  
+  const customer = quote.customer;
+  if (customer.business_name) return customer.business_name;
+  if (customer.first_name || customer.last_name) {
+    return `${customer.first_name || ''} ${customer.last_name || ''}`.trim();
+  }
+  return customer.email || 'N/A';
 };
 
 const getQuoteStatusColor = (): string => {
   const status = getQuoteStatus().toLowerCase();
   switch (status) {
+    case 'confirmed': return 'success';
     case 'approved': return 'success';
     case 'pending': return 'warning';
+    case 'cancelled': return 'danger';
     case 'rejected': return 'danger';
     default: return 'secondary';
+  }
+};
+
+const viewQuote = () => {
+  if (props.trip?.quote?.id) {
+    window.open(`/admin/quotes/${props.trip.quote.id}`, '_blank');
   }
 };
 
@@ -281,7 +319,8 @@ const getFlightHours = (): string => {
 };
 
 const getHourlyRate = (): string => {
-  return props.trip?.quote?.hourly_rate || '4,500';
+  const rate = props.trip?.quote?.aircraft_hourly_rate || props.trip?.aircraft?.hourly_rate || 4500;
+  return typeof rate === 'number' ? rate.toLocaleString() : rate;
 };
 
 const getAircraftCost = (): string => {
@@ -318,6 +357,12 @@ const getTaxAmount = (): string => {
 };
 
 const getTotalAmount = (): string => {
+  // Use actual quote total if available
+  if (props.trip?.quote?.total_cost) {
+    return `$${parseFloat(props.trip.quote.total_cost).toLocaleString()}`;
+  }
+  
+  // Fallback to calculated total
   const subtotal = parseInt(getSubtotal().replace(',', ''));
   const tax = parseInt(getTaxAmount().replace(',', ''));
   return `$${(subtotal + tax).toLocaleString()}`;
@@ -326,5 +371,28 @@ const getTotalAmount = (): string => {
 const getInsuranceCoverage = (): string => {
   const total = parseInt(getSubtotal().replace(',', '')) + parseInt(getTaxAmount().replace(',', ''));
   return (total * 0.8).toLocaleString();
+};
+
+const getAircraftImage = (): string => {
+  const aircraft = props.trip?.aircraft;
+  if (!aircraft) return '/media/aircraft/Learjet35A.jpg';
+  
+  // Build full model name for matching image files
+  const make = aircraft.make || '';
+  const model = aircraft.model || '';
+  const fullModel = `${make} ${model}`.trim();
+  
+  // Map known aircraft to their image filenames
+  const imageMap: Record<string, string> = {
+    'Kodiak Kodiak 100': 'kodiak100.jpg',
+    'Learjet 35A': 'Learjet35A.jpg',
+    'Learjet 36A': 'learjet36a.jpeg',
+    'Learjet 31': 'learjet30.jpg', // Using learjet30 as fallback for 31
+    'Learjet 60': 'Learjet60.jpg',
+  };
+  
+  // Return specific image or fallback to generic
+  const imageName = imageMap[fullModel] || 'Learjet35A.jpg'; // Default fallback
+  return `/media/aircraft/${imageName}`;
 };
 </script>

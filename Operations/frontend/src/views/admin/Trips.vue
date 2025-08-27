@@ -3,7 +3,7 @@
   <div class="card">
     <!--begin::Card header-->
     <div class="card-header border-0 pt-6">
-      <!--begin::Card title-->
+      <!--begin::Card title with search-->
       <div class="card-title">
         <!--begin::Search-->
         <div class="d-flex align-items-center position-relative my-1">
@@ -16,64 +16,112 @@
             @input="searchItems()"
             type="text"
             class="form-control form-control-solid w-250px ps-14"
-            placeholder="Search Trips"
+            placeholder="Search by trip number, patient or passenger name..."
           />
         </div>
         <!--end::Search-->
-      </div>
-      <!--begin::Card title-->
 
-      <!--begin::Card toolbar-->
-      <div class="card-toolbar">
-        <!--begin::Toolbar-->
-        <div
-          v-if="selectedIds.length === 0"
-          class="d-flex justify-content-end"
-        >
-
-          <!--begin::Add trip-->
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="openCreateTripModal"
-          >
-            <KTIcon icon-name="plus" icon-class="fs-2" />
-            Add Trip
-          </button>
-          <!--end::Add trip-->
-        </div>
-        <!--end::Toolbar-->
-
-        <!--begin::Group actions-->
-        <div v-else class="d-flex justify-content-end align-items-center">
+        <!--begin::Selected actions (when items selected)-->
+        <div v-if="selectedIds.length > 0" class="d-flex align-items-center ms-5">
           <div class="fw-bold me-5">
-            <span class="me-2">{{ selectedIds.length }}</span
-            >Selected
+            <span class="me-2">{{ selectedIds.length }}</span>Selected
           </div>
           <button
             type="button"
-            class="btn btn-danger"
+            class="btn btn-danger btn-sm"
             @click="deleteFewTrips()"
           >
             Delete Selected
           </button>
         </div>
-        <!--end::Group actions-->
+        <!--end::Selected actions-->
       </div>
-      <!--end::Card toolbar-->
+      <!--end::Card title with search-->
+
+      <!--begin::Card toolbar with tabs-->
+      <div class="card-toolbar">
+        <ul class="nav nav-tabs nav-line-tabs nav-stretch fs-6 border-0">
+          <li class="nav-item">
+            <a 
+              class="nav-link"
+              :class="{ active: activeTab === 'all' }"
+              @click.prevent="handleTabChange('all')"
+              data-bs-toggle="tab"
+              href="#kt_tab_all_trips"
+            >
+              All Trips
+              <span class="ms-1 badge" :class="activeTab === 'all' ? 'badge-secondary' : 'badge-light-secondary'">{{ getAllTripsCount() }}</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a 
+              class="nav-link"
+              :class="{ active: activeTab === 'active' }"
+              @click.prevent="handleTabChange('active')"
+              data-bs-toggle="tab"
+              href="#kt_tab_scheduled_trips"
+            >
+              Scheduled
+              <span class="ms-1 badge" :class="activeTab === 'active' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('active') }}</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a 
+              class="nav-link"
+              :class="{ active: activeTab === 'pending' }"
+              @click.prevent="handleTabChange('pending')"
+              data-bs-toggle="tab"
+              href="#kt_tab_pending_trips"
+            >
+              Pending
+              <span class="ms-1 badge" :class="activeTab === 'pending' ? 'badge-warning' : 'badge-light-secondary'">{{ getStatusCount('pending') }}</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a 
+              class="nav-link"
+              :class="{ active: activeTab === 'completed' }"
+              @click.prevent="handleTabChange('completed')"
+              data-bs-toggle="tab"
+              href="#kt_tab_completed_trips"
+            >
+              Completed
+              <span class="ms-1 badge" :class="activeTab === 'completed' ? 'badge-primary' : 'badge-light-secondary'">{{ getStatusCount('completed') }}</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a 
+              class="nav-link"
+              :class="{ active: activeTab === 'cancelled' }"
+              @click.prevent="handleTabChange('cancelled')"
+              data-bs-toggle="tab"
+              href="#kt_tab_cancelled_trips"
+            >
+              Canceled
+              <span class="ms-1 badge" :class="activeTab === 'cancelled' ? 'badge-danger' : 'badge-light-secondary'">{{ getStatusCount('cancelled') }}</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+      <!--end::Card toolbar with tabs-->
     </div>
     <!--end::Card header-->
 
     <!--begin::Card body-->
     <div class="card-body pt-0">
+      <!-- Single KTDatatable with filtered data based on active tab -->
       <KTDatatable
         @on-sort="sort"
         @on-items-select="onItemSelect"
         @on-items-per-page-change="onItemsPerPageChange"
-        :data="trips"
+        @page-change="onPageChange"
+        :data="filteredTrips"
         :header="headerConfig"
         :checkbox-enabled="true"
         :loading="loading"
+        :total="totalItems"
+        :current-page="currentPage"
+        :items-per-page="pageSize"
       >
         <template v-slot:trip="{ row: trip }">
           <div class="d-flex align-items-center">
@@ -86,7 +134,7 @@
               </div>
             </div>
             <div class="d-flex flex-column">
-              <a @click="navigateToTrip(trip.id)" href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
+              <a @click.prevent="navigateToTrip(trip.id)" href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ trip.trip_number }}
               </a>
               <span class="text-muted fs-7">{{ getRouteInfo(trip) }}</span>
@@ -95,14 +143,14 @@
         </template>
 
         <template v-slot:patient="{ row: trip }">
-          <a v-if="trip.patient" @click="navigateToPatient(trip.patient)" href="#" class="text-dark fw-bold text-hover-primary">
+          <a v-if="trip.patient" @click.prevent="navigateToPatient(trip.patient)" href="#" class="text-dark fw-bold text-hover-primary">
             {{ getPatientName(trip.patient) }}
           </a>
           <span v-else class="text-muted">No patient</span>
         </template>
 
         <template v-slot:aircraft="{ row: trip }">
-          <a v-if="trip.aircraft" @click="navigateToAircraft(trip.aircraft.id)" href="#" class="badge badge-light-info text-hover-primary">
+          <a v-if="trip.aircraft" @click.prevent="navigateToAircraft(trip.aircraft.id)" href="#" class="badge badge-light-info text-hover-primary">
             {{ getAircraftInfo(trip.aircraft) }}
           </a>
           <span v-else class="text-muted">TBD</span>
@@ -155,22 +203,6 @@
               </a>
             </div>
             <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click="handleDuplicate(trip)" class="menu-link px-3">
-                <KTIcon icon-name="copy" icon-class="fs-6 me-2" />
-                Duplicate
-              </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click="handleManifest(trip)" class="menu-link px-3">
-                <KTIcon icon-name="document" icon-class="fs-6 me-2" />
-                View Manifest
-              </a>
-            </div>
-            <!--end::Menu item-->
             <!--begin::Separator-->
             <div class="separator my-2"></div>
             <!--end::Separator-->
@@ -191,12 +223,13 @@
   </div>
   <!--end::Card-->
   
-  <!-- Create Trip Modal -->
+  <!-- Create Trip Modals -->
   <CreateTripSimpleModal @tripCreated="onTripCreated" />
+  <CreateTripMultiStepModal @tripCreated="onTripCreated" />
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from "vue";
+import { defineComponent, ref, computed, onMounted, onUnmounted } from "vue";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
@@ -205,6 +238,7 @@ import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
 import { useRouter } from "vue-router";
 import CreateTripSimpleModal from "@/components/modals/CreateTripSimpleModal.vue";
+import CreateTripMultiStepModal from "@/components/modals/CreateTripMultiStepModal.vue";
 import { Modal } from "bootstrap";
 import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 
@@ -256,6 +290,7 @@ export default defineComponent({
   components: {
     KTDatatable,
     CreateTripSimpleModal,
+    CreateTripMultiStepModal,
   },
   setup() {
     const router = useRouter();
@@ -263,6 +298,10 @@ export default defineComponent({
     const loading = ref(false);
     const error = ref<string | null>(null);
     const { setToolbarActions } = useToolbar();
+    const totalItems = ref(0);
+    const currentPage = ref(1);
+    const pageSize = ref(25);
+    const searchTimeout = ref<NodeJS.Timeout | null>(null);
 
     const headerConfig = ref([
       {
@@ -301,27 +340,87 @@ export default defineComponent({
       },
     ]);
 
-    const initData = ref<Array<Trip>>([]);
     const selectedIds = ref<Array<number>>([]);
     const search = ref<string>("");
+    const activeTab = ref<string>("all");
+
+    // Store counts for each status
+    const statusCounts = ref<Record<string, number>>({
+      all: 0,
+      pending: 0,
+      confirmed: 0,
+      active: 0,
+      completed: 0,
+      cancelled: 0,
+      paid: 0
+    });
+
+    // Computed properties
+    const filteredTrips = computed(() => {
+      return trips.value;
+    });
+
+    // Tab count methods
+    const getAllTripsCount = () => statusCounts.value.all;
+    
+    const getStatusCount = (status: string) => {
+      return statusCounts.value[status] || 0;
+    };
 
     // Methods
-    const fetchTrips = async () => {
+    const fetchTrips = async (page: number = 1, pageLimit: number = 25, searchQuery: string = '', statusFilter: string = 'all') => {
       try {
         loading.value = true;
         error.value = null;
-        const { data } = await ApiService.get("/trips/");
-        trips.value = data.results || data;
-        initData.value.splice(0, trips.value.length, ...trips.value);
+        
+        const params = new URLSearchParams();
+        params.append('page', page.toString());
+        params.append('page_size', pageLimit.toString());
+        if (searchQuery.trim()) {
+          params.append('search', searchQuery.trim());
+        }
+        if (statusFilter !== 'all') {
+          params.append('status', statusFilter);
+        }
+        
+        const { data } = await ApiService.get(`/trips/?${params}`);
+        trips.value = data.results || [];
+        totalItems.value = data.count || 0;
+        currentPage.value = page;
+        
+        // Update status counts if we're on the 'all' tab
+        if (statusFilter === 'all' && !searchQuery) {
+          // Fetch counts for each status
+          await fetchStatusCounts();
+        }
       } catch (err: any) {
         error.value = err.response?.data?.detail || "Failed to fetch trips";
         console.error("Error fetching trips:", err);
+        trips.value = [];
+        totalItems.value = 0;
       } finally {
         loading.value = false;
         // Reinitialize menu components after data loads
         setTimeout(() => {
           MenuComponent.reinitialization();
         }, 100);
+      }
+    };
+
+    const fetchStatusCounts = async () => {
+      try {
+        // Fetch total count
+        const allResponse = await ApiService.get('/trips/?page_size=1');
+        statusCounts.value.all = allResponse.data.count || 0;
+        
+        // Fetch counts for each status
+        const statuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled', 'paid'];
+        for (const status of statuses) {
+          const response = await ApiService.get(`/trips/?status=${status}&page_size=1`);
+          statusCounts.value[status] = response.data.count || 0;
+        }
+      } catch (err) {
+        console.error('Error fetching status counts:', err);
       }
     };
 
@@ -337,6 +436,25 @@ export default defineComponent({
           Swal.fire({
             title: "Error",
             text: "Unable to open modal. Please refresh and try again.",
+            icon: "error",
+            confirmButtonText: "OK"
+          });
+        }
+      }
+    };
+
+    const openMultiStepTripModal = () => {
+      const modalElement = document.getElementById('kt_modal_create_trip_multistep');
+      
+      if (modalElement) {
+        try {
+          const modal = new Modal(modalElement);
+          modal.show();
+        } catch (error) {
+          console.error('Error opening multi-step modal:', error);
+          Swal.fire({
+            title: "Error", 
+            text: "Unable to open multi-step trip creation modal. Please refresh and try again.",
             icon: "error",
             confirmButtonText: "OK"
           });
@@ -373,8 +491,7 @@ export default defineComponent({
       }).then(async (result) => {
         if (result.isConfirmed) {
           try {
-            // Here you would make the API call to delete the trip
-            // await ApiService.delete(`/trips/${trip.id}/`);
+            await ApiService.delete(`/trips/${trip.id}/`);
             
             Swal.fire({
               title: "Deleted!",
@@ -382,7 +499,7 @@ export default defineComponent({
               icon: "success"
             }).then(() => {
               // Refresh the trips list
-              fetchTrips();
+              fetchTrips(currentPage.value, pageSize.value, search.value, activeTab.value);
             });
           } catch (error) {
             Swal.fire({
@@ -412,18 +529,40 @@ export default defineComponent({
     };
 
     const getRouteInfo = (trip: Trip): string => {
-      if (trip.trip_lines && trip.trip_lines.length > 0) {
-        const firstLeg = trip.trip_lines[0];
-        const lastLeg = trip.trip_lines[trip.trip_lines.length - 1];
-        
-        if (trip.trip_lines.length === 1) {
-          return `${firstLeg.origin_airport.iata_code || firstLeg.origin_airport.icao_code} → ${firstLeg.destination_airport.iata_code || firstLeg.destination_airport.icao_code}`;
-        } else {
-          // Multi-leg trip
-          return `${firstLeg.origin_airport.iata_code || firstLeg.origin_airport.icao_code} → ${lastLeg.destination_airport.iata_code || lastLeg.destination_airport.icao_code} (${trip.trip_lines.length} legs)`;
-        }
+      // First check if trip_lines exist
+      if (!trip.trip_lines || trip.trip_lines.length === 0) {
+        // No trip lines, show type as fallback
+        return `${trip.type || 'No Route'}`.toUpperCase();
       }
-      return trip.type?.toUpperCase() || 'MEDICAL';
+      
+      // Get first and last leg for route
+      const firstLeg = trip.trip_lines[0];
+      const lastLeg = trip.trip_lines[trip.trip_lines.length - 1];
+      
+      // Try to get airport codes - check multiple possible field names
+      let originCode = 'UNK';
+      let destCode = 'UNK';
+      
+      if (firstLeg.origin_airport) {
+        originCode = firstLeg.origin_airport.iata_code || 
+                    firstLeg.origin_airport.icao_code || 
+                    firstLeg.origin_airport.code ||
+                    firstLeg.origin_airport.airport_code || 'UNK';
+      }
+      
+      if (lastLeg.destination_airport) {
+        destCode = lastLeg.destination_airport.iata_code || 
+                  lastLeg.destination_airport.icao_code || 
+                  lastLeg.destination_airport.code ||
+                  lastLeg.destination_airport.airport_code || 'UNK';
+      }
+      
+      // Format the route display
+      if (trip.trip_lines.length === 1) {
+        return `${originCode} → ${destCode}`;
+      } else {
+        return `${originCode} → ${destCode} (${trip.trip_lines.length} legs)`;
+      }
     };
 
     const getTripTypeColor = (type: string): string => {
@@ -458,11 +597,49 @@ export default defineComponent({
       });
     };
 
-    const deleteFewTrips = () => {
-      selectedIds.value.forEach((item) => {
-        deleteTrip(item);
+    const deleteFewTrips = async () => {
+      if (selectedIds.value.length === 0) return;
+      
+      const result = await Swal.fire({
+        title: "Delete Trips",
+        text: `Are you sure you want to delete ${selectedIds.value.length} trip(s)? This action cannot be undone.`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete them!",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#d33"
       });
-      selectedIds.value.length = 0;
+      
+      if (result.isConfirmed) {
+        try {
+          loading.value = true;
+          
+          // Delete each selected trip via API
+          for (const tripId of selectedIds.value) {
+            await ApiService.delete(`/trips/${tripId}/`);
+          }
+          
+          selectedIds.value.length = 0;
+          
+          Swal.fire({
+            title: "Deleted!",
+            text: "Selected trips have been deleted successfully.",
+            icon: "success"
+          }).then(() => {
+            // Refresh the trips list
+            fetchTrips(currentPage.value, pageSize.value, search.value, activeTab.value);
+          });
+        } catch (error) {
+          console.error("Error deleting trips:", error);
+          Swal.fire({
+            title: "Error",
+            text: "Failed to delete some trips. Please try again.",
+            icon: "error"
+          });
+        } finally {
+          loading.value = false;
+        }
+      }
     };
 
     const deleteTrip = (id: number) => {
@@ -485,31 +662,28 @@ export default defineComponent({
     };
 
     const searchItems = () => {
-      trips.value.splice(0, trips.value.length, ...initData.value);
-      if (search.value !== "") {
-        let results: Array<Trip> = [];
-        for (let j = 0; j < initData.value.length; j++) {
-          if (searchingFunc(initData.value[j], search.value)) {
-            results.push(initData.value[j]);
-          }
-        }
-        trips.value.splice(0, trips.value.length, ...results);
+      // Clear existing timeout
+      if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
       }
+      
+      // Debounce search by 500ms
+      searchTimeout.value = setTimeout(async () => {
+        currentPage.value = 1; // Reset to first page when searching
+        await fetchTrips(1, pageSize.value, search.value, activeTab.value);
+        MenuComponent.reinitialization();
+      }, 500);
+    };
+    
+    const onPageChange = async (page: number) => {
+      await fetchTrips(page, pageSize.value, search.value, activeTab.value);
       MenuComponent.reinitialization();
     };
 
-    const searchingFunc = (obj: any, value: string): boolean => {
-      for (let key in obj) {
-        if (!Number.isInteger(obj[key]) && !(typeof obj[key] === "object")) {
-          if (obj[key]?.toString().toLowerCase().indexOf(value.toLowerCase()) != -1) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    const onItemsPerPageChange = () => {
+    const onItemsPerPageChange = async (newPageSize: number) => {
+      pageSize.value = newPageSize;
+      currentPage.value = 1; // Reset to first page
+      await fetchTrips(1, newPageSize, search.value, activeTab.value);
       setTimeout(() => {
         MenuComponent.reinitialization();
       }, 0);
@@ -521,9 +695,9 @@ export default defineComponent({
     };
 
     const navigateToPatient = (patient: any) => {
-      if (patient && patient.info && patient.info.id) {
-        // Navigate to the contact details for this patient's contact info
-        router.push(`/admin/contacts/patients/${patient.info.id}`);
+      if (patient && patient.id) {
+        // Navigate to the patient details using patient ID
+        router.push(`/admin/contacts/patients/${patient.id}`);
       } else {
         // Fallback to patients list page
         router.push('/admin/patients');
@@ -531,43 +705,28 @@ export default defineComponent({
     };
 
     const navigateToAircraft = (aircraftId: string) => {
-      router.push(`/admin/aircraft/${aircraftId}`);
+      const url = router.resolve(`/admin/aircraft/${aircraftId}`).href;
+      window.open(url, '_blank');
     };
 
     // New action methods
-    const handleDuplicate = (trip: Trip) => {
-      Swal.fire({
-        title: "Duplicate Trip",
-        text: `Create a copy of trip ${trip.trip_number}?`,
-        icon: "question",
-        showCancelButton: true,
-        confirmButtonText: "Yes, duplicate it!",
-        cancelButtonText: "Cancel"
-      }).then((result) => {
-        if (result.isConfirmed) {
-          Swal.fire("Duplicated!", "Trip has been duplicated.", "success");
-        }
-      });
-    };
 
-    const handleManifest = (trip: Trip) => {
-      Swal.fire({
-        title: "Trip Manifest",
-        text: `View manifest for trip ${trip.trip_number}`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+    // Handle tab change
+    const handleTabChange = async (tab: string) => {
+      activeTab.value = tab;
+      currentPage.value = 1; // Reset to first page when changing tabs
+      await fetchTrips(1, pageSize.value, search.value, tab);
     };
 
     // Handle trip created event from modal
-    const onTripCreated = (newTrip: Trip) => {
+    const onTripCreated = async (newTrip: Trip) => {
       console.log('New trip created:', newTrip);
       // Refresh the trips list
-      fetchTrips();
+      await fetchTrips(1, pageSize.value, search.value, activeTab.value);
     };
 
-    onMounted(() => {
-      fetchTrips();
+    onMounted(async () => {
+      await fetchTrips(1, pageSize.value, '', 'all');
       // Initialize menu components
       setTimeout(() => {
         MenuComponent.reinitialization();
@@ -575,24 +734,39 @@ export default defineComponent({
 
       // Setup toolbar actions for trips page
       setToolbarActions([
-        createToolbarActions.primary('add-trip', 'Add Trip', openCreateTripModal, 'plus')
+        createToolbarActions.primary('add-trip', 'Create Trip', openMultiStepTripModal, 'plus'),
+        createToolbarActions.secondary('add-simple-trip', 'Quick Trip', openCreateTripModal, 'rocket')
       ]);
+    });
+    
+    onUnmounted(() => {
+      // Clear search timeout
+      if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
+      }
     });
 
     return {
       search,
       searchItems,
       trips,
+      filteredTrips,
+      activeTab,
       headerConfig,
       loading,
       error,
+      totalItems,
+      currentPage,
+      pageSize,
       sort,
       onItemSelect,
       selectedIds,
       deleteFewTrips,
       deleteTrip,
       onItemsPerPageChange,
+      onPageChange,
       openCreateTripModal,
+      openMultiStepTripModal,
       handleCreate,
       handleEdit,
       handleView,
@@ -603,11 +777,12 @@ export default defineComponent({
       getTripTypeColor,
       getStatusColor,
       formatDate,
+      getAllTripsCount,
+      getStatusCount,
+      handleTabChange,
       navigateToTrip,
       navigateToPatient,
       navigateToAircraft,
-      handleDuplicate,
-      handleManifest,
       onTripCreated,
     };
   },
