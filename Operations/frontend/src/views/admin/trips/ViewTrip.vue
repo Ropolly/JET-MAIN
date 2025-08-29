@@ -130,6 +130,15 @@ export default defineComponent({
         
         console.log('Trip data received:', response.data);
         console.log('Patient data:', response.data.patient);
+        console.log('Trip lines data:', response.data.trip_lines);
+        if (response.data.trip_lines && response.data.trip_lines.length > 0) {
+          console.log('First trip line airports:', {
+            origin: response.data.trip_lines[0].origin_airport,
+            destination: response.data.trip_lines[0].destination_airport,
+            departure_timezone_info: response.data.trip_lines[0].departure_timezone_info,
+            arrival_timezone_info: response.data.trip_lines[0].arrival_timezone_info
+          });
+        }
         
         // No need for additional API calls - patient and aircraft data are already included in the response
         // The TripReadSerializer includes:

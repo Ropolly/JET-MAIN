@@ -13,7 +13,7 @@
             @input="searchItems()"
             type="text"
             class="form-control form-control-solid w-250px ps-14"
-            placeholder="Search Passengers"
+            placeholder="Search by passenger name"
           />
         </div>
         <!--end::Search-->
@@ -61,26 +61,42 @@
               <a href="#" @click="handleView(passenger)" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ getPassengerName(passenger) }}
               </a>
-              <span class="text-muted fs-7">{{ passenger.nationality || 'Unknown nationality' }}</span>
+              <span class="text-muted fs-7">{{ passenger.info?.email || 'No email' }}</span>
             </div>
           </div>
         </template>
 
-        <template v-slot:passport="{ row: passenger }">
-          <div class="d-flex flex-column">
-            <span class="text-dark fw-semibold fs-6">{{ passenger.passport_number || 'N/A' }}</span>
-            <span class="text-muted fs-7">Exp: {{ formatDate(passenger.passport_expiration_date) }}</span>
-          </div>
-        </template>
 
         <template v-slot:contact="{ row: passenger }">
           <span class="text-dark fw-semibold">{{ passenger.contact_number || 'No contact' }}</span>
         </template>
 
+        <template v-slot:trips="{ row: passenger }">
+          <div v-if="passenger.trips && passenger.trips.length > 0">
+            <a 
+              @click.prevent="navigateToTrip(passenger.trips[0].id)" 
+              href="#" 
+              class="text-primary text-hover-primary fw-bold">
+              {{ passenger.trips[0].trip_number }}
+            </a>
+            <span v-if="passenger.trips.length > 1" class="text-muted ms-1">
+              +{{ passenger.trips.length - 1 }}
+            </span>
+          </div>
+          <span v-else class="text-muted fs-7">No trips</span>
+        </template>
+
         <template v-slot:status="{ row: passenger }">
-          <span :class="`badge badge-light-${getStatusColor(passenger.status)} fs-7 fw-bold`">
-            {{ passenger.status || 'Active' }}
-          </span>
+          <select 
+            :value="passenger.status || 'active'"
+            @change="updatePassengerStatus(passenger, ($event.target as HTMLSelectElement).value)"
+            class="form-select form-select-sm"
+            :class="`text-${getStatusColor(passenger.status || 'active')}`"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+          </select>
         </template>
 
         <template v-slot:actions="{ row: passenger }">
@@ -94,11 +110,9 @@
             <KTIcon icon-name="down" icon-class="fs-5 m-0" />
           </a>
           <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4" data-kt-menu="true">
-            <div class="menu-item px-3"><a @click="handleView(passenger)" class="menu-link px-3">View Details</a></div>
-            <div class="menu-item px-3"><a @click="handleEdit(passenger)" class="menu-link px-3">Edit Passenger</a></div>
-            <div class="menu-item px-3"><a @click="handleViewTrips(passenger)" class="menu-link px-3">View Trips</a></div>
+            <div class="menu-item px-3"><a @click.prevent="handleEdit(passenger)" href="#" class="menu-link px-3">Edit Passenger</a></div>
             <div class="separator mt-3 opacity-75"></div>
-            <div class="menu-item px-3"><a @click="handleDelete(passenger)" class="menu-link px-3 text-danger">Delete</a></div>
+            <div class="menu-item px-3"><a @click.prevent="handleDelete(passenger)" href="#" class="menu-link px-3 text-danger">Delete</a></div>
           </div>
         </template>
       </KTDatatable>
@@ -106,6 +120,26 @@
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+  
+  <!-- Create Contact Modal -->
+  <CreateContactModal 
+    :skipRoleSelection="true"
+    @contactCreated="onContactCreated" 
+    @openPassengerModal="onOpenPassengerModal" 
+  />
+  
+  <!-- Create Passenger From Contact Modal -->
+  <CreatePassengerFromContactModal 
+    ref="passengerModalRef"
+    @passengerCreated="onPassengerCreated" 
+    @modalClosed="onPassengerModalClosed" 
+  />
+  
+  <!-- Edit Passenger Modal -->
+  <EditPassengerModal 
+    ref="editPassengerModalRef"
+    @passengerUpdated="onPassengerUpdated" 
+  />
 </template>
 
 <script lang="ts">
@@ -118,10 +152,19 @@ import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
 import { useToolbarStore } from "@/stores/toolbar";
+import CreateContactModal from "@/components/modals/CreateContactModal.vue";
+import CreatePassengerFromContactModal from "@/components/modals/CreatePassengerFromContactModal.vue";
+import EditPassengerModal from "@/components/modals/EditPassengerModal.vue";
+import { Modal } from "bootstrap";
 
 export default defineComponent({
   name: "passengers-management",
-  components: { KTDatatable },
+  components: { 
+    KTDatatable,
+    CreateContactModal,
+    CreatePassengerFromContactModal,
+    EditPassengerModal,
+  },
   setup() {
     const router = useRouter();
     const toolbarStore = useToolbarStore();
@@ -130,11 +173,13 @@ export default defineComponent({
     const selectedIds = ref([]);
     const search = ref("");
     const initData = ref([]);
+    const passengerModalRef = ref();
+    const editPassengerModalRef = ref();
 
     const headerConfig = ref([
       { columnName: "Passenger", columnLabel: "passenger", sortEnabled: true },
-      { columnName: "Passport", columnLabel: "passport", sortEnabled: false },
       { columnName: "Contact", columnLabel: "contact", sortEnabled: false },
+      { columnName: "Trips", columnLabel: "trips", sortEnabled: false },
       { columnName: "Status", columnLabel: "status", sortEnabled: true },
       { columnName: "Actions", columnLabel: "actions" },
     ]);
@@ -149,13 +194,137 @@ export default defineComponent({
         console.error("Error fetching passengers:", error);
       } finally {
         loading.value = false;
+        // Reinitialize menu components after data loads
+        setTimeout(() => {
+          MenuComponent.reinitialization();
+        }, 100);
       }
     };
 
-    const handleCreate = () => Swal.fire({ title: "Add Passenger", text: "Passenger creation form would open here", icon: "info" });
-    const handleEdit = (passenger) => Swal.fire({ title: "Edit Passenger", text: `Edit ${getPassengerName(passenger)}`, icon: "info" });
-    const handleView = (passenger) => Swal.fire({ title: "Passenger Details", html: `<div class="text-start"><p><strong>Name:</strong> ${getPassengerName(passenger)}</p><p><strong>Nationality:</strong> ${passenger.nationality}</p><p><strong>Passport:</strong> ${passenger.passport_number}</p><p><strong>Contact:</strong> ${passenger.contact_number}</p></div>`, icon: "info" });
+    const handleCreate = () => {
+      const modalElement = document.getElementById('kt_modal_create_contact');
+      if (modalElement) {
+        try {
+          const modal = new Modal(modalElement);
+          modal.show();
+        } catch (error) {
+          console.error('Error opening contact creation modal:', error);
+          Swal.fire({
+            title: "Error",
+            text: "Unable to open contact creation form. Please refresh and try again.",
+            icon: "error",
+            confirmButtonText: "OK"
+          });
+        }
+      }
+    };
+    
+    const onPassengerCreated = async (newPassenger: any) => {
+      console.log('New passenger created:', newPassenger);
+      // Refresh the passengers list
+      await fetchPassengers();
+    };
+
+    const onPassengerUpdated = async (updatedPassenger: any) => {
+      console.log('Passenger updated:', updatedPassenger);
+      // Refresh the passengers list to get the latest data
+      await fetchPassengers();
+    };
+
+    const onContactCreated = async (newContact: any) => {
+      console.log('New contact created:', newContact);
+      // Automatically trigger passenger creation for this contact
+      nextTick(() => {
+        onOpenPassengerModal(newContact);
+      });
+    };
+
+    const onPassengerModalClosed = () => {
+      console.log('Passenger creation modal closed');
+    };
+
+    const onOpenPassengerModal = (contact: any) => {
+      // Open passenger modal with contact data
+      nextTick(() => {
+        if (passengerModalRef.value?.setContact) {
+          passengerModalRef.value.setContact(contact);
+          
+          // Open the modal
+          const passengerModalElement = document.getElementById('kt_modal_create_passenger_from_contact');
+          if (passengerModalElement) {
+            try {
+              const passengerModal = new Modal(passengerModalElement);
+              passengerModal.show();
+            } catch (error) {
+              console.error('Error opening passenger modal:', error);
+            }
+          }
+        }
+      });
+    };
+    const handleEdit = (passenger) => {
+      if (editPassengerModalRef.value?.setPassenger) {
+        editPassengerModalRef.value.setPassenger(passenger);
+        
+        // Open the modal
+        const modalElement = document.getElementById('kt_modal_edit_passenger');
+        if (modalElement) {
+          try {
+            const modal = new Modal(modalElement);
+            modal.show();
+          } catch (error) {
+            console.error('Error opening edit passenger modal:', error);
+            Swal.fire({
+              title: "Error",
+              text: "Unable to open edit form. Please refresh and try again.",
+              icon: "error",
+              confirmButtonText: "OK"
+            });
+          }
+        }
+      }
+    };
+
+    const updatePassengerStatus = async (passenger, newStatus) => {
+      if (passenger.status === newStatus) return;
+      
+      try {
+        await ApiService.patch(`/passengers/${passenger.id}/`, { status: newStatus });
+        
+        // Update local passenger status
+        const passengerIndex = passengers.value.findIndex(p => p.id === passenger.id);
+        if (passengerIndex !== -1) {
+          passengers.value[passengerIndex].status = newStatus;
+        }
+        
+        Swal.fire({
+          title: "Status Updated!",
+          text: `Passenger status changed to ${newStatus}`,
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+      } catch (error) {
+        console.error('Error updating passenger status:', error);
+        Swal.fire({
+          title: "Error!",
+          text: "Failed to update passenger status. Please try again.",
+          icon: "error"
+        });
+        
+        // Refresh passengers to revert the change
+        await fetchPassengers();
+      }
+    };
+    const handleView = (passenger) => {
+      router.push(`/admin/passengers/${passenger.id}`);
+    };
     const handleViewTrips = (passenger) => router.push(`/admin/trips?passenger=${passenger.id}`);
+    
+    const navigateToTrip = (tripId) => {
+      router.push(`/admin/trips/${tripId}`);
+    };
     const handleDelete = async (passenger) => {
       const result = await Swal.fire({ title: "Delete Passenger", text: `Delete ${getPassengerName(passenger)}?`, icon: "warning", showCancelButton: true, confirmButtonText: "Yes, delete!" });
       if (result.isConfirmed) {
@@ -183,7 +352,12 @@ export default defineComponent({
     const searchItems = () => {
       passengers.value.splice(0, passengers.value.length, ...initData.value);
       if (search.value) {
-        const results = initData.value.filter(item => Object.values(item).some(val => val?.toString().toLowerCase().includes(search.value.toLowerCase())));
+        const searchTerm = search.value.toLowerCase();
+        const results = initData.value.filter(passenger => {
+          const name = getPassengerName(passenger).toLowerCase();
+          const email = passenger.info?.email?.toLowerCase() || '';
+          return name.includes(searchTerm) || email.includes(searchTerm);
+        });
         passengers.value.splice(0, passengers.value.length, ...results);
       }
       MenuComponent.reinitialization();
@@ -201,7 +375,8 @@ export default defineComponent({
 
     return {
       search, searchItems, passengers, headerConfig, loading, sort, onItemSelect, selectedIds, deleteFewPassengers, onItemsPerPageChange,
-      handleCreate, handleEdit, handleView, handleViewTrips, handleDelete, formatDate, getStatusColor, getPassengerName,
+      handleCreate, onPassengerCreated, onPassengerUpdated, onContactCreated, onPassengerModalClosed, onOpenPassengerModal, passengerModalRef,
+      handleEdit, handleView, handleDelete, formatDate, getStatusColor, getPassengerName, updatePassengerStatus, navigateToTrip, editPassengerModalRef,
     };
   },
 });

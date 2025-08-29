@@ -16,12 +16,6 @@ const MainMenuConfig: Array<MenuItem> = [
     route: "/operations",
     pages: [
       {
-        heading: "Trips",
-        route: "/admin/trips",
-        keenthemesIcon: "airplane",
-        bootstrapIcon: "bi-airplane",
-      },
-      {
         heading: "Quotes",
         route: "/admin/quotes",
         keenthemesIcon: "document",
@@ -34,7 +28,13 @@ const MainMenuConfig: Array<MenuItem> = [
         bootstrapIcon: "bi-heart-pulse",
       },
       {
-        heading: "Passengers",
+        heading: "Trips",
+        route: "/admin/trips",
+        keenthemesIcon: "airplane",
+        bootstrapIcon: "bi-airplane",
+      },
+      {
+        heading: "PAX",
         route: "/admin/passengers",
         keenthemesIcon: "people",
         bootstrapIcon: "bi-people",

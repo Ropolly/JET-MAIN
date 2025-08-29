@@ -26,6 +26,7 @@ router.register(r"staff", views.StaffViewSet, basename="staff")
 router.register(r"staff-roles", views.StaffRoleViewSet, basename="staff-role")
 router.register(r"staff-role-memberships", views.StaffRoleMembershipViewSet, basename="staff-role-membership")
 router.register(r"trip-events", views.TripEventViewSet, basename="trip-event")
+router.register(r'comments', views.CommentViewSet, basename='comment')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -33,4 +34,8 @@ urlpatterns = [
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
     path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
     path('contacts/create-with-related/', views.create_contact_with_related, name='create-contact-with-related'),
+    # Timezone utility endpoints
+    path('airports/<uuid:airport_id>/timezone-info/', views.get_airport_timezone_info, name='airport-timezone-info'),
+    path('timezone/convert/', views.convert_timezone, name='timezone-convert'),
+    path('timezone/validate-flight-times/', views.validate_flight_times, name='validate-flight-times'),
 ]

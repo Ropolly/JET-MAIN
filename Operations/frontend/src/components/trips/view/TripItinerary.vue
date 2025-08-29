@@ -91,7 +91,7 @@
                     <div class="mb-3">
                       <div class="mb-2">
                         <strong>Scheduled Departure:</strong><br>
-                        {{ formatDateTime(item.departure_time_local) }}
+                        {{ formatDateTimeWithTimezone(item.departure_time_local, item.departure_timezone_info) }}
                       </div>
                       <div v-if="item.actual_departure_time" class="mb-2">
                         <strong>Actual Departure:</strong><br>
@@ -127,7 +127,7 @@
                   <div class="fw-semibold text-gray-700 fs-7">
                     <div class="mb-2">
                       <strong>Estimated Arrival:</strong><br>
-                      {{ formatDateTime(item.arrival_time_local) }}
+                      {{ formatDateTimeWithTimezone(item.arrival_time_local, item.arrival_timezone_info) }}
                     </div>
                     <div v-if="item.actual_arrival_time" class="mb-2">
                       <strong>Actual Arrival:</strong><br>
@@ -436,7 +436,18 @@ const formatDuration = (duration?: string | number): string => {
 const formatDateTime = (dateString?: string): string => {
   try {
     if (!dateString) return 'Not scheduled';
-    return new Date(dateString).toLocaleString('en-US', {
+    
+    // Handle the case where backend sends timezone-aware strings that should be treated as local
+    let date;
+    if (dateString.includes('+00') || dateString.includes('Z')) {
+      // Strip timezone info and parse as local time
+      const dateOnly = dateString.split('+')[0].split('Z')[0];
+      date = new Date(dateOnly);
+    } else {
+      date = new Date(dateString);
+    }
+    
+    return date.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -445,6 +456,60 @@ const formatDateTime = (dateString?: string): string => {
       timeZoneName: 'short'
     });
   } catch (error) {
+    return 'Invalid date';
+  }
+};
+
+// New function to format datetime with specific airport timezone
+const formatDateTimeWithTimezone = (dateString?: string, timezoneInfo?: any): string => {
+  try {
+    if (!dateString) return 'Not scheduled';
+    
+    // Debug logging
+    console.log('formatDateTimeWithTimezone called with:', { dateString, timezoneInfo });
+    
+    // Parse the date as local time (strip any timezone info)
+    let localDate;
+    if (dateString.includes('+00') || dateString.includes('Z')) {
+      const dateOnly = dateString.split('+')[0].split('Z')[0];
+      localDate = new Date(dateOnly);
+    } else {
+      localDate = new Date(dateString);
+    }
+    
+    const dateFormat = localDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    
+    // If we have timezone info from the backend, use the formatted time
+    if (timezoneInfo?.formatted_time) {
+      console.log('Using timezone info formatted_time:', timezoneInfo.formatted_time);
+      return `${dateFormat}, ${timezoneInfo.formatted_time}`;
+    }
+    
+    // Fallback: Show time with timezone abbreviation if available
+    if (timezoneInfo?.abbreviation) {
+      console.log('Using timezone abbreviation:', timezoneInfo.abbreviation);
+      const timeFormat = localDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      return `${dateFormat}, ${timeFormat} ${timezoneInfo.abbreviation}`;
+    }
+    
+    console.log('No timezone info available, showing time as local without timezone label');
+    // Final fallback: Show time without timezone label to avoid confusion
+    const timeFormat = localDate.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${dateFormat}, ${timeFormat}`;
+  } catch (error) {
+    console.error('Error in formatDateTimeWithTimezone:', error);
     return 'Invalid date';
   }
 };
@@ -580,7 +645,7 @@ const getDestinationFbo = (tripLine: any): string => {
     left: 17px;
     top: 53px;
     width: 2px;
-    height: 60px;
+    height: 100%;
     border-left: 2px dashed #e4e6ef;
     z-index: 1;
   }

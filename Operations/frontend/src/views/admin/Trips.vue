@@ -142,12 +142,6 @@
           </div>
         </template>
 
-        <template v-slot:patient="{ row: trip }">
-          <a v-if="trip.patient" @click.prevent="navigateToPatient(trip.patient)" href="#" class="text-dark fw-bold text-hover-primary">
-            {{ getPatientName(trip.patient) }}
-          </a>
-          <span v-else class="text-muted">No patient</span>
-        </template>
 
         <template v-slot:aircraft="{ row: trip }">
           <a v-if="trip.aircraft" @click.prevent="navigateToAircraft(trip.aircraft.id)" href="#" class="badge badge-light-info text-hover-primary">
@@ -163,13 +157,21 @@
         </template>
 
         <template v-slot:status="{ row: trip }">
-          <span :class="`badge badge-light-${getStatusColor(trip.status)} fs-7 fw-bold`">
-            {{ trip.status }}
-          </span>
+          <select 
+            :value="trip.status"
+            @change="updateTripStatus(trip, ($event.target as HTMLSelectElement).value)"
+            class="form-select form-select-sm"
+            :class="`text-${getStatusColor(trip.status)}`"
+          >
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </template>
 
         <template v-slot:departure="{ row: trip }">
-          {{ formatDate(trip.estimated_departure_time) }}
+          <span class="text-dark fs-7">{{ formatDepartureDate(trip) }}</span>
         </template>
 
         <template v-slot:actions="{ row: trip }">
@@ -281,6 +283,10 @@ interface Trip {
       iata_code: string;
       name: string;
     };
+    departure_time_local: string;
+    departure_time_utc: string;
+    arrival_time_local: string;
+    arrival_time_utc: string;
   }>;
   passengers_data?: any[];
 }
@@ -308,11 +314,6 @@ export default defineComponent({
         columnName: "Trip",
         columnLabel: "trip",
         sortEnabled: true,
-      },
-      {
-        columnName: "Patient",
-        columnLabel: "patient",
-        sortEnabled: false,
       },
       {
         columnName: "Aircraft",
@@ -597,6 +598,99 @@ export default defineComponent({
       });
     };
 
+    const formatDepartureDate = (trip: Trip): string => {
+      // First try to get departure time from the first trip line
+      if (trip.trip_lines && trip.trip_lines.length > 0) {
+        const firstLine = trip.trip_lines[0];
+        if (firstLine.departure_time_local) {
+          // Parse the departure time as local time, stripping timezone info to prevent conversion
+          const dateTimeString = firstLine.departure_time_local;
+          
+          // Handle timezone-aware stored times by stripping the timezone suffix
+          let localDateString;
+          if (dateTimeString.includes('+') || dateTimeString.includes('Z')) {
+            // Strip timezone info: "2025-08-29T00:00:00+00:00" -> "2025-08-29T00:00:00"
+            localDateString = dateTimeString.split('+')[0].split('Z')[0];
+          } else {
+            localDateString = dateTimeString;
+          }
+          
+          // Create Date object from the local date string (no timezone conversion)
+          const localDate = new Date(localDateString);
+          
+          // Format the date showing the actual stored local time
+          return localDate.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        }
+      }
+      
+      // Fallback to estimated departure time
+      if (trip.estimated_departure_time) {
+        const dateTimeString = trip.estimated_departure_time;
+        let localDateString;
+        
+        if (dateTimeString.includes('+') || dateTimeString.includes('Z')) {
+          localDateString = dateTimeString.split('+')[0].split('Z')[0];
+        } else {
+          localDateString = dateTimeString;
+        }
+        
+        const localDate = new Date(localDateString);
+        
+        return localDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+      
+      return 'Not scheduled';
+    };
+
+    const updateTripStatus = async (trip: Trip, newStatus: string) => {
+      if (trip.status === newStatus) return;
+      
+      try {
+        await ApiService.patch(`/trips/${trip.id}/`, { status: newStatus });
+        
+        // Update the local trip status
+        const tripIndex = trips.value.findIndex(t => t.id === trip.id);
+        if (tripIndex !== -1) {
+          trips.value[tripIndex].status = newStatus;
+        }
+        
+        // Show success notification
+        Swal.fire({
+          title: "Status Updated!",
+          text: `Trip status changed to ${newStatus}`,
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+        // Refresh status counts
+        await fetchStatusCounts();
+        
+      } catch (error: any) {
+        console.error('Error updating trip status:', error);
+        Swal.fire({
+          title: "Error!",
+          text: "Failed to update trip status. Please try again.",
+          icon: "error"
+        });
+        
+        // Refresh the trips to revert the change in UI
+        await fetchTrips(currentPage.value, pageSize.value, search.value, activeTab.value);
+      }
+    };
+
     const deleteFewTrips = async () => {
       if (selectedIds.value.length === 0) return;
       
@@ -777,6 +871,8 @@ export default defineComponent({
       getTripTypeColor,
       getStatusColor,
       formatDate,
+      formatDepartureDate,
+      updateTripStatus,
       getAllTripsCount,
       getStatusCount,
       handleTabChange,

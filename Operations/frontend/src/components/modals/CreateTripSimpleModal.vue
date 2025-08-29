@@ -14,7 +14,7 @@
         <!--begin::Modal header-->
         <div class="modal-header">
           <!--begin::Title-->
-          <h2>Create New Trip</h2>
+          <h2>{{ quoteId ? 'Convert Quote to Trip' : 'Create New Trip' }}</h2>
           <!--end::Title-->
 
           <!--begin::Close-->
@@ -307,6 +307,8 @@ const handlePrepopulateForm = async (event: any) => {
   if (data) {
     quoteId.value = data.quoteId;
     console.log('Set quote ID to:', quoteId.value);
+    
+    // Populate form fields with quote data
     if (data.tripType) formData.type = data.tripType;
     if (data.patientId) formData.patient_id = data.patientId;
     if (data.departureAirport) {
@@ -318,6 +320,16 @@ const handlePrepopulateForm = async (event: any) => {
       // The AirportSearchSelect will handle loading airport details by ID
     }
     if (data.notes) formData.notes = data.notes;
+    
+    // Set default departure date to today
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    formData.departure_date = `${year}-${month}-${day}`;
+    
+    // Set default departure time to 9:00 AM
+    formData.departure_time = '09:00';
     
     // Generate trip number automatically
     await generateTripNumber();
@@ -559,13 +571,16 @@ onMounted(() => {
   // Add event listener for form pre-population
   if (modalRef.value) {
     modalRef.value.addEventListener('prepopulate-trip-form', handlePrepopulateForm);
+    // Add event listener for modal close to reset form
+    modalRef.value.addEventListener('hidden.bs.modal', resetForm);
   }
 });
 
 onUnmounted(() => {
-  // Clean up event listener
+  // Clean up event listeners
   if (modalRef.value) {
     modalRef.value.removeEventListener('prepopulate-trip-form', handlePrepopulateForm);
+    modalRef.value.removeEventListener('hidden.bs.modal', resetForm);
   }
 });
 
@@ -699,20 +714,12 @@ const handleSubmit = async (e: Event) => {
           trip: tripId,
           origin_airport: formData.departure_airport,
           destination_airport: formData.arrival_airport,
-          // Set basic departure/arrival times if date/time provided
+          // Only send departure time - let backend calculate arrival time from flight duration and airport timezones
           departure_time_local: formData.departure_date && formData.departure_time 
             ? `${formData.departure_date}T${formData.departure_time}:00` 
             : `${formData.departure_date || new Date().toISOString().split('T')[0]}T08:00:00`,
-          departure_time_utc: formData.departure_date && formData.departure_time 
-            ? `${formData.departure_date}T${formData.departure_time}:00` 
-            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T08:00:00`,
-          // Set arrival time 2 hours after departure as default
-          arrival_time_local: formData.departure_date && formData.departure_time 
-            ? `${formData.departure_date}T${String(parseInt(formData.departure_time.split(':')[0]) + 2).padStart(2, '0')}:${formData.departure_time.split(':')[1]}:00`
-            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T10:00:00`,
-          arrival_time_utc: formData.departure_date && formData.departure_time 
-            ? `${formData.departure_date}T${String(parseInt(formData.departure_time.split(':')[0]) + 2).padStart(2, '0')}:${formData.departure_time.split(':')[1]}:00`
-            : `${formData.departure_date || new Date().toISOString().split('T')[0]}T10:00:00`,
+          // Let backend calculate departure_time_utc from local time + airport timezone
+          // Don't send arrival times - let backend calculate from departure + flight_time
           distance: '500.00', // Default distance
           flight_time: '02:00:00', // Default 2 hour flight time
           ground_time: '00:30:00', // Default 30 min ground time

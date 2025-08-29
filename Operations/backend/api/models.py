@@ -31,6 +31,7 @@ class Modification(models.Model):
     before = models.TextField(null=True, blank=True)
     after = models.TextField(null=True, blank=True)
     time = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="modifications")
     
     class Meta:
         ordering = ['-time']
@@ -295,12 +296,15 @@ class Quote(BaseModel):
     patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes", db_column="patient_id")
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
-        ("confirmed", "Confirmed"),
         ("active", "Active"),
         ("completed", "Completed"),
-        ("cancelled", "Cancelled"),
-        ("paid", "Paid")
+        ("cancelled", "Cancelled")
     ], default="pending", db_index=True)
+    payment_status = models.CharField(max_length=20, choices=[
+        ("pending", "Pending"),
+        ("partial", "Partial Paid"),
+        ("paid", "Paid")
+    ], default="pending")
     number_of_stops = models.PositiveIntegerField(default=0)
     quote_pdf = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="quote_pdfs", db_column="quote_pdf_id")
     quote_pdf_status = models.CharField(max_length=20, choices=[
@@ -458,4 +462,20 @@ class TripEvent(BaseModel):
         indexes = [
             models.Index(fields=["trip", "start_time_utc"]),
             models.Index(fields=["event_type"]),
+        ]
+
+
+class Comment(BaseModel):
+    """
+    Comments attached to any model instance via a generic foreign key.
+    """
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.UUIDField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    text = models.TextField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
         ]

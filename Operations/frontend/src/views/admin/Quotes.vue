@@ -173,7 +173,7 @@
                class="text-dark fw-bold text-hover-primary fs-6">
               {{ getContactName(quote) }}
             </a>
-            <span class="text-muted fs-7">{{ getPatientName(quote) }}</span>
+            <span class="text-muted fs-7">{{ quote.contact?.business_name || quote.contact?.email || '' }}</span>
           </div>
         </template>
 
@@ -193,16 +193,19 @@
         </template>
 
         <template v-slot:status="{ row: quote }">
-          <span :class="`badge badge-light-${getStatusColor(quote.status)} fs-7 fw-bold`">
-            {{ quote.status }}
-          </span>
+          <select 
+            :value="quote.status"
+            @change="updateQuoteStatus(quote, ($event.target as HTMLSelectElement).value)"
+            class="form-select form-select-sm"
+            :class="`text-${getStatusColor(quote.status)}`"
+          >
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </template>
 
-        <template v-slot:pdf_status="{ row: quote }">
-          <span :class="`badge badge-light-${getPdfStatusColor(quote.quote_pdf_status)} fs-8 fw-bold`">
-            {{ quote.quote_pdf_status }}
-          </span>
-        </template>
 
         <template v-slot:actions="{ row: quote }">
           <a
@@ -221,13 +224,6 @@
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleView(quote)" class="menu-link px-3"
-                >View Quote</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
               <a @click="handleEdit(quote)" class="menu-link px-3"
                 >Edit Quote</a
               >
@@ -235,22 +231,8 @@
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleCreateTrip(quote)" class="menu-link px-3"
-                >Create Trip</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
               <a @click="handleDownloadPdf(quote)" class="menu-link px-3"
                 >Download PDF</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click="handleEmailQuote(quote)" class="menu-link px-3"
-                >Email Quote</a
               >
             </div>
             <!--end::Menu item-->
@@ -279,6 +261,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
+import JwtService from "@/core/services/JwtService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
 import arraySort from "array-sort";
@@ -368,11 +351,6 @@ export default defineComponent({
       {
         columnName: "Status",
         columnLabel: "status",
-        sortEnabled: true,
-      },
-      {
-        columnName: "PDF Status",
-        columnLabel: "pdf_status",
         sortEnabled: true,
       },
       {
@@ -467,56 +445,55 @@ export default defineComponent({
     };
 
     const handleEdit = (quote: Quote) => {
-      Swal.fire({
-        title: "Edit Quote",
-        text: `Edit form for quote #${quote.id.slice(0, 8)} would open here`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      router.push(`/admin/quotes/${quote.id}/edit`);
     };
 
-    const handleCreateTrip = (quote: Quote) => {
-      Swal.fire({
-        title: "Create Trip",
-        text: `Create trip from quote #${quote.id.slice(0, 8)}?`,
-        icon: "question",
-        showCancelButton: true,
-        confirmButtonText: "Yes, create trip!",
-        cancelButtonText: "Cancel"
-      }).then((result) => {
-        if (result.isConfirmed) {
-          Swal.fire("Trip Created!", "Trip has been created successfully.", "success");
+
+    const handleDownloadPdf = async (quote: Quote) => {
+      try {
+        const baseURL = import.meta.env.VITE_APP_API_URL || "http://localhost:8001/api";
+        const token = JwtService.getToken();
+        
+        const response = await fetch(`${baseURL}/quotes/${quote.id}/pdf/`, {
+          method: 'GET',
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      });
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `quote_${quote.id.slice(0, 8)}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        Swal.fire({
+          title: "Success!",
+          text: "PDF downloaded successfully",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+      } catch (error: any) {
+        console.error('Error downloading PDF:', error);
+        Swal.fire({
+          title: "Error!",
+          text: "Failed to download PDF. Please try again.",
+          icon: "error"
+        });
+      }
     };
 
-    const handleDownloadPdf = (quote: Quote) => {
-      Swal.fire({
-        title: "Download PDF",
-        text: `Download PDF for quote #${quote.id.slice(0, 8)}`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
-    };
 
-    const handleEmailQuote = (quote: Quote) => {
-      Swal.fire({
-        title: "Email Quote",
-        text: `Send quote #${quote.id.slice(0, 8)} via email?`,
-        icon: "question",
-        showCancelButton: true,
-        confirmButtonText: "Send",
-        cancelButtonText: "Cancel"
-      }).then((result) => {
-        if (result.isConfirmed) {
-          Swal.fire("Email Sent!", "Quote has been emailed successfully.", "success");
-        }
-      });
-    };
-
-    const handleView = (quote: Quote) => {
-      router.push(`/admin/quotes/${quote.id}`);
-    };
 
     const handleDelete = async (quote: Quote) => {
       const result = await Swal.fire({
@@ -537,6 +514,87 @@ export default defineComponent({
           console.error('Error deleting quote:', error);
           Swal.fire("Error!", "Failed to delete quote. Please try again.", "error");
         }
+      }
+    };
+
+    const updateQuoteStatus = async (quote: Quote, newStatus: string) => {
+      if (quote.status === newStatus) return;
+      
+      // If changing to cancelled, prompt for cancellation reason
+      if (newStatus === 'cancelled') {
+        const result = await Swal.fire({
+          title: 'Quote Cancellation',
+          text: 'Please enter a reason for cancellation:',
+          input: 'textarea',
+          inputPlaceholder: 'Enter cancellation reason...',
+          inputAttributes: {
+            'aria-label': 'Cancellation reason',
+            'style': 'min-height: 100px;'
+          },
+          showCancelButton: true,
+          confirmButtonText: 'Cancel Quote',
+          cancelButtonText: 'Keep Current Status',
+          confirmButtonColor: '#dc3545',
+          inputValidator: (value) => {
+            if (!value || value.trim().length === 0) {
+              return 'Please enter a reason for cancellation';
+            }
+            if (value.trim().length < 10) {
+              return 'Please provide a more detailed reason (at least 10 characters)';
+            }
+          }
+        });
+
+        if (!result.isConfirmed) {
+          // User cancelled, refresh the page to reset dropdowns
+          await fetchQuotes(currentPage.value, pageSize.value, search.value, activeTab.value);
+          return;
+        }
+
+        // Save the cancellation reason as a comment
+        try {
+          await ApiService.post('/comments/', {
+            content_type: getContentTypeId('quote'),
+            object_id: quote.id,
+            text: `Quote cancelled: ${result.value.trim()}`
+          });
+        } catch (error) {
+          console.error('Error saving cancellation comment:', error);
+          // Continue with status update even if comment fails
+        }
+      }
+      
+      try {
+        await ApiService.patch(`/quotes/${quote.id}/`, { status: newStatus });
+        
+        // Update the local quote status
+        const quoteIndex = quotes.value.findIndex(q => q.id === quote.id);
+        if (quoteIndex !== -1) {
+          quotes.value[quoteIndex].status = newStatus;
+        }
+        
+        // Show success notification
+        Swal.fire({
+          title: "Status Updated!",
+          text: `Quote status changed to ${newStatus}`,
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+        // Refresh status counts
+        await fetchStatusCounts();
+        
+      } catch (error: any) {
+        console.error('Error updating quote status:', error);
+        Swal.fire({
+          title: "Error!",
+          text: "Failed to update quote status. Please try again.",
+          icon: "error"
+        });
+        
+        // Refresh the quotes to revert the change in UI
+        await fetchQuotes(currentPage.value, pageSize.value, search.value, activeTab.value);
       }
     };
 
@@ -604,13 +662,26 @@ export default defineComponent({
     const getStatusColor = (status: string): string => {
       const colors: Record<string, string> = {
         pending: 'warning',
-        confirmed: 'info',
         active: 'primary',
         completed: 'success',
         cancelled: 'danger',
-        paid: 'success',
       };
       return colors[status] || 'secondary';
+    };
+
+    const getContentTypeId = (entityType: string): number => {
+      // Map entity types to content type IDs
+      const contentTypeMap: Record<string, number> = {
+        'quote': 22,
+        'trip': 23,
+        'patient': 17,
+        'contact': 9,
+        'passenger': 18,
+        'aircraft': 15,
+        'fbo': 10,
+        // Add more mappings as needed
+      };
+      return contentTypeMap[entityType] || 1;
     };
 
     const getPdfStatusColor = (status: string): string => {
@@ -770,11 +841,8 @@ export default defineComponent({
       handleTabChange,
       handleCreate,
       handleQuoteCreated,
-      handleCreateTrip,
       handleDownloadPdf,
-      handleEmailQuote,
       handleEdit,
-      handleView,
       handleDelete,
       getContactName,
       getPatientName,
@@ -785,9 +853,9 @@ export default defineComponent({
       formatCurrency,
       formatDate,
       getStatusColor,
-      getPdfStatusColor,
       getAllQuotesCount,
       getStatusCount,
+      updateQuoteStatus,
     };
   },
 });

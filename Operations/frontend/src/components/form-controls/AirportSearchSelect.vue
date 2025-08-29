@@ -374,9 +374,9 @@ const formatAirportType = (type: string): string => {
 
 // Watch for external value changes (moved here after loadAirportById is defined)
 watch(() => props.modelValue, async (newValue) => {
-  if (newValue && (!selectedAirport.value || selectedAirport.value.id !== newValue)) {
+  if (newValue && newValue !== '' && (!selectedAirport.value || selectedAirport.value.id !== newValue)) {
     await loadAirportById(newValue);
-  } else if (!newValue) {
+  } else if (!newValue || newValue === '') {
     clearSelection();
   }
 }, { immediate: true });
