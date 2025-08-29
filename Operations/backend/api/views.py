@@ -808,10 +808,73 @@ class TripViewSet(BaseViewSet):
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
     
+    def generate_trip_number(self):
+        """
+        Generate a unique five-digit auto-incrementing trip number.
+        Format: 00001, 00002, etc.
+        """
+        from django.db.models import Max
+        import re
+        
+        # Get the highest existing trip number
+        max_trip = Trip.objects.aggregate(max_num=Max('trip_number'))['max_num']
+        
+        if not max_trip:
+            # First trip
+            return '00001'
+        
+        # Extract numeric value from trip numbers (handle various formats)
+        try:
+            # Try to extract numeric part from trip number
+            match = re.search(r'\d+', max_trip)
+            if match:
+                max_num = int(match.group())
+            else:
+                max_num = 0
+        except (ValueError, AttributeError):
+            # If we can't parse existing numbers, start fresh
+            max_num = 0
+        
+        # Increment and format as 5-digit number
+        new_num = max_num + 1
+        return str(new_num).zfill(5)
+    
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve', 'trip_lines'):
             return TripReadSerializer
         return TripWriteSerializer
+    
+    def perform_create(self, serializer):
+        """
+        Override perform_create to automatically generate trip number if not provided.
+        """
+        # Check if trip_number is provided in the validated data
+        if not serializer.validated_data.get('trip_number'):
+            # Generate a unique trip number
+            trip_number = self.generate_trip_number()
+            
+            # Ensure uniqueness (in case of race conditions)
+            while Trip.objects.filter(trip_number=trip_number).exists():
+                # If somehow the number exists, generate the next one
+                import re
+                match = re.search(r'\d+', trip_number)
+                if match:
+                    num = int(match.group()) + 1
+                    trip_number = str(num).zfill(5)
+                else:
+                    # Fallback to timestamp if we can't parse
+                    import time
+                    trip_number = f"T{int(time.time())}"
+            
+            # Save with the generated trip number
+            instance = serializer.save(created_by=self.request.user, trip_number=trip_number)
+        else:
+            # Trip number was provided, use it
+            instance = serializer.save(created_by=self.request.user)
+        
+        # Track creation
+        from .utils import track_creation
+        track_creation(instance, self.request.user)
     
     def get_permissions(self):
         """

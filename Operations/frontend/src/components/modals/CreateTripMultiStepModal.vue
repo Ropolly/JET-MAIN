@@ -14,7 +14,7 @@
         <!--begin::Modal header-->
         <div class="modal-header">
           <!--begin::Title-->
-          <h2>{{ quoteId ? 'Convert Quote to Trip' : 'Create New Trip' }} - Step {{ currentStep }} of {{ totalSteps }}</h2>
+          <h2>{{ getModalTitle() }} - Step {{ currentStep }} of {{ totalSteps }}</h2>
           <!--end::Title-->
 
           <!--begin::Close-->
@@ -184,7 +184,7 @@
                       :disabled="isSubmitting || !isCurrentStepValid"
                     >
                       <span v-if="!isSubmitting" class="indicator-label">
-                        Create Trip
+                        {{ editMode ? 'Update Trip' : 'Create Trip' }}
                         <KTIcon icon-name="arrow-right" icon-class="fs-4 ms-1" />
                       </span>
                       <span v-else class="indicator-progress">
@@ -264,6 +264,8 @@ const currentStep = ref(1);
 const totalSteps = 3;
 const isSubmitting = ref(false);
 const quoteId = ref<string | null>(null);
+const editMode = ref(false);
+const editTripId = ref<string | null>(null);
 const stepValidation = ref<Record<number, boolean>>({
   1: false,
   2: false,
@@ -292,10 +294,18 @@ const aircraft = ref<any[]>([]);
 const patients = ref<any[]>([]);
 const staffMembers = ref<any[]>([]);
 
-const emit = defineEmits(['tripCreated']);
+const emit = defineEmits(['tripCreated', 'tripUpdated']);
 
 // Step validation
 const isCurrentStepValid = ref(false);
+
+// Modal title helper
+const getModalTitle = () => {
+  if (editMode.value) {
+    return 'Edit Trip';
+  }
+  return quoteId.value ? 'Convert Quote to Trip' : 'Create New Trip';
+};
 
 const handleStepValidated = (isValid: boolean) => {
   stepValidation.value[currentStep.value] = isValid;
@@ -415,21 +425,39 @@ const handleSubmit = async () => {
   isSubmitting.value = true;
 
   try {
-    // Create the main trip first
-    const tripApiData = {
-      trip_number: tripData.trip_number,
-      type: tripData.type,
-      aircraft: tripData.aircraft_id || null,
-      patient: tripData.patient_id || null,
-      quote: quoteId.value || null,
-      notes: tripData.notes,
-      status: 'pending',
-      email_chain: []
-    };
+    let tripResponse;
+    let createdTrip;
+    
+    if (editMode.value && editTripId.value) {
+      // Update existing trip
+      const tripApiData = {
+        type: tripData.type,
+        aircraft: tripData.aircraft_id || null,
+        patient: tripData.patient_id || null,
+        notes: tripData.notes
+      };
+      
+      console.log('Updating trip with data:', tripApiData);
+      tripResponse = await ApiService.patch(`/trips/${editTripId.value}/`, tripApiData);
+      createdTrip = tripResponse.data;
+      
+    } else {
+      // Create new trip
+      const tripApiData = {
+        trip_number: tripData.trip_number,
+        type: tripData.type,
+        aircraft: tripData.aircraft_id || null,
+        patient: tripData.patient_id || null,
+        quote: quoteId.value || null,
+        notes: tripData.notes,
+        status: 'pending',
+        email_chain: []
+      };
 
-    console.log('Creating trip with data:', tripApiData);
-    const tripResponse = await ApiService.post('/trips/', tripApiData);
-    const createdTrip = tripResponse.data;
+      console.log('Creating trip with data:', tripApiData);
+      tripResponse = await ApiService.post('/trips/', tripApiData);
+      createdTrip = tripResponse.data;
+    }
     
     console.log('Trip created:', createdTrip);
 
@@ -441,21 +469,26 @@ const handleSubmit = async () => {
       await addPassengersToTrip(createdTrip.id);
     }
 
+    const tripNumber = tripResponse.data.trip_number;
+    const actionText = editMode.value ? 'updated' : 'created';
+    const eventName = editMode.value ? 'tripUpdated' : 'tripCreated';
+    
     Swal.fire({
       title: "Success!",
-      text: `Trip ${tripData.trip_number} has been created successfully.`,
+      text: `Trip ${tripNumber} has been ${actionText} successfully.`,
       icon: "success",
       confirmButtonText: "OK"
     }).then(() => {
       hideModal(modalRef.value);
-      emit('tripCreated', createdTrip);
+      emit(eventName, createdTrip);
       resetForm();
     });
 
   } catch (error: any) {
-    console.error('Error creating trip:', error);
+    const actionText = editMode.value ? 'updating' : 'creating';
+    console.error(`Error ${actionText} trip:`, error);
     
-    let errorMessage = "Failed to create trip. Please try again.";
+    let errorMessage = `Failed to ${editMode.value ? 'update' : 'create'} trip. Please try again.`;
     if (error.response?.data) {
       errorMessage = typeof error.response.data === 'object' 
         ? JSON.stringify(error.response.data) 
@@ -766,6 +799,12 @@ const getContactIdFromStaffId = (staffId: string): string => {
   return staff?.contact?.id || staff?.contact_id || '';
 };
 
+const getStaffIdFromContactId = (contactId: string): string => {
+  if (!contactId) return '';
+  const staff = staffMembers.value.find(s => s.contact?.id === contactId || s.contact_id === contactId);
+  return staff?.id || '';
+};
+
 const resetForm = () => {
   tripData.trip_number = '';
   tripData.type = '';
@@ -777,6 +816,10 @@ const resetForm = () => {
   tripData.passengers = [];
   quoteId.value = null;
   
+  // Reset edit mode state
+  editMode.value = false;
+  editTripId.value = null;
+  
   currentStep.value = 1;
   stepValidation.value = { 1: false, 2: false, 3: true };
   isCurrentStepValid.value = false;
@@ -786,7 +829,86 @@ const resetForm = () => {
 const handlePrepopulateForm = async (event: any) => {
   const data = event.detail;
   console.log('Received pre-populate data:', data);
+  
   if (data) {
+    // Check if this is edit mode
+    if (data.mode === 'edit' && data.tripId && data.tripData) {
+      editMode.value = true;
+      editTripId.value = data.tripId;
+      
+      // Populate with existing trip data
+      const trip = data.tripData;
+      
+      // Step 1: Trip Details
+      tripData.type = trip.type || '';
+      tripData.aircraft_id = trip.aircraft?.id || '';
+      tripData.patient_id = trip.patient?.id || '';
+      tripData.notes = trip.notes || '';
+      
+      // Step 2: Flight Legs - populate from trip_lines
+      if (trip.trip_lines && trip.trip_lines.length > 0) {
+        try {
+          tripData.legs = trip.trip_lines.map((line: any, index: number) => ({
+            id: `edit-leg-${index + 1}`,
+            origin_airport: line.origin_airport?.id || '',
+            destination_airport: line.destination_airport?.id || '',
+            departure_date: line.departure_time_local ? line.departure_time_local.split('T')[0] : '',
+            departure_time: line.departure_time_local ? line.departure_time_local.split('T')[1]?.substring(0, 5) : '',
+            pre_flight_duty_hours: line.pre_flight_duty_hours || 1.0,
+            post_flight_duty_hours: line.post_flight_duty_hours || 1.0,
+            pic_staff_id: getStaffIdFromContactId(line.crew_line?.primary_in_command?.id),
+            sic_staff_id: getStaffIdFromContactId(line.crew_line?.secondary_in_command?.id),
+            medical_staff_ids: (line.crew_line?.medics || []).map((medic: any) => getStaffIdFromContactId(medic.id)).filter((id: string) => id),
+            departure_fbo_id: line.departure_fbo?.id || '',
+            arrival_fbo_id: line.arrival_fbo?.id || '',
+            notes: line.notes || ''
+          }));
+          console.log('Populated legs from trip_lines:', tripData.legs);
+        } catch (error) {
+          console.error('Error processing trip lines for edit:', error);
+          // Create a default leg if processing fails
+          tripData.legs = [{
+            id: 'edit-leg-1',
+            origin_airport: '',
+            destination_airport: '',
+            departure_date: '',
+            departure_time: '',
+            pre_flight_duty_hours: 1.0,
+            post_flight_duty_hours: 1.0,
+            pic_staff_id: '',
+            sic_staff_id: '',
+            medical_staff_ids: [],
+            departure_fbo_id: '',
+            arrival_fbo_id: '',
+            notes: ''
+          }];
+        }
+      } else {
+        // Create a default leg if no trip_lines exist
+        tripData.legs = [{
+          id: 'edit-leg-1',
+          origin_airport: '',
+          destination_airport: '',
+          departure_date: '',
+          departure_time: '',
+          pre_flight_duty_hours: 1.0,
+          post_flight_duty_hours: 1.0,
+          pic_staff_id: '',
+          sic_staff_id: '',
+          medical_staff_ids: [],
+          departure_fbo_id: '',
+          arrival_fbo_id: '',
+          notes: ''
+        }];
+      }
+      
+      // Set passengers if they exist
+      tripData.passengers = trip.passengers_data || [];
+      
+      return; // Exit early for edit mode
+    }
+    
+    // Quote conversion mode (existing logic)
     quoteId.value = data.quoteId;
     
     // Populate Step 1: Trip Details

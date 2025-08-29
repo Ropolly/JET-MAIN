@@ -26,7 +26,7 @@
         <!--begin::Col-->
         <div class="col-sm-6 col-xl-3">
           <div class="border border-dashed border-gray-300 text-center min-w-125px rounded py-3 px-4">
-            <span class="fs-6 fw-semibold text-gray-700">Total Flight Time</span>
+            <span class="fs-6 fw-semibold text-gray-700">Flight Time</span>
             <div class="fs-2 fw-bold text-gray-800">{{ getTotalFlightTime() }}</div>
           </div>
         </div>

@@ -468,12 +468,41 @@ export default defineComponent({
     };
 
     const handleEdit = (trip: Trip) => {
-      Swal.fire({
-        title: "Edit Trip",
-        text: `Trip editing functionality would be implemented here for trip ${trip.trip_number}`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      // Open the multi-step trip creation modal in edit mode
+      const modalElement = document.getElementById('kt_modal_create_trip_multistep');
+      
+      if (modalElement) {
+        try {
+          // Populate the modal with existing trip data
+          const event = new CustomEvent('prepopulate-trip-form', {
+            detail: {
+              mode: 'edit',
+              tripId: trip.id,
+              tripData: trip
+            }
+          });
+          modalElement.dispatchEvent(event);
+          
+          const modal = new Modal(modalElement);
+          modal.show();
+        } catch (error) {
+          console.error('Error opening edit modal:', error);
+          Swal.fire({
+            title: "Error",
+            text: "Unable to open edit modal. Please refresh and try again.",
+            icon: "error",
+            confirmButtonText: "OK"
+          });
+        }
+      } else {
+        console.error('Edit modal not found');
+        Swal.fire({
+          title: "Error",
+          text: "Edit functionality is not available. Please refresh and try again.",
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+      }
     };
 
     const handleView = (trip: Trip) => {
@@ -831,7 +860,61 @@ export default defineComponent({
         createToolbarActions.primary('add-trip', 'Create Trip', openMultiStepTripModal, 'plus'),
         createToolbarActions.secondary('add-simple-trip', 'Quick Trip', openCreateTripModal, 'rocket')
       ]);
+      
+      // Check if we should open edit modal from trip detail page
+      checkForEditMode();
     });
+    
+    const checkForEditMode = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const editTripId = urlParams.get('edit');
+      
+      if (editTripId) {
+        // Get stored edit data
+        const editDataString = sessionStorage.getItem('editTripData');
+        if (editDataString) {
+          try {
+            const editData = JSON.parse(editDataString);
+            
+            // Clear the stored data
+            sessionStorage.removeItem('editTripData');
+            
+            // Find the trip in our loaded trips or fetch it
+            let targetTrip = trips.value.find(t => t.id === editTripId);
+            
+            if (targetTrip || editData.tripData) {
+              // Use the stored trip data if local trip not found
+              const tripToEdit = targetTrip || editData.tripData;
+              
+              setTimeout(() => {
+                const modalElement = document.getElementById('kt_modal_create_trip_multistep');
+                if (modalElement) {
+                  // Populate the modal with trip data
+                  const event = new CustomEvent('prepopulate-trip-form', {
+                    detail: {
+                      mode: 'edit',
+                      tripId: editData.tripId,
+                      tripData: tripToEdit
+                    }
+                  });
+                  modalElement.dispatchEvent(event);
+                  
+                  const modal = new Modal(modalElement);
+                  modal.show();
+                }
+              }, 500); // Give the page time to load
+            }
+          } catch (error) {
+            console.error('Error parsing edit data:', error);
+          }
+        }
+        
+        // Clean up URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('edit');
+        window.history.replaceState({}, document.title, url.pathname);
+      }
+    };
     
     onUnmounted(() => {
       // Clear search timeout
