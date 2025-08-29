@@ -52,7 +52,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 import FlightStatistics from "@/components/trips/view/FlightStatistics.vue";
@@ -101,6 +101,7 @@ export default defineComponent({
   },
   setup() {
     const route = useRoute();
+    const router = useRouter();
     const trip = ref<Trip | null>(null);
     const loading = ref(true);
     const error = ref<string | null>(null);
@@ -153,8 +154,18 @@ export default defineComponent({
     };
 
     const handleEditTrip = () => {
-      // Navigate to edit trip page or open modal
-      console.log('Edit trip:', trip.value?.id);
+      // Navigate back to trips page and trigger edit modal
+      if (trip.value?.id) {
+        // Store edit data in sessionStorage for the trips page to pick up
+        sessionStorage.setItem('editTripData', JSON.stringify({
+          mode: 'edit',
+          tripId: trip.value.id,
+          tripData: trip.value
+        }));
+        
+        // Navigate to trips page with a flag to open edit modal
+        router.push('/admin/trips?edit=' + trip.value.id);
+      }
     };
 
     const handleGenerateManifest = () => {

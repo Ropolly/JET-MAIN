@@ -798,6 +798,8 @@ class TripWriteSerializer(serializers.ModelSerializer):
     passenger_ids = serializers.PrimaryKeyRelatedField(
         source='passengers', queryset=Passenger.objects.all(), many=True, write_only=True, required=False
     )
+    # Make trip_number optional - it will be auto-generated if not provided
+    trip_number = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = Trip
