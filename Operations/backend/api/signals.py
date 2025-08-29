@@ -3,20 +3,45 @@ from django.dispatch import receiver
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 import json
+import threading
 
 from .models import Modification, BaseModel
 
+# Thread-local storage for the current user and tracking state
+_local = threading.local()
+
+def set_current_user(user):
+    """Set the current user for modification tracking"""
+    _local.user = user
+
+def get_current_user():
+    """Get the current user from thread-local storage"""
+    return getattr(_local, 'user', None)
+
+def set_skip_signal_tracking(skip):
+    """Set flag to skip signal-based tracking (for ViewSet operations)"""
+    _local.skip_signal_tracking = skip
+
+def get_skip_signal_tracking():
+    """Check if signal-based tracking should be skipped"""
+    return getattr(_local, 'skip_signal_tracking', False)
+
 def get_model_fields(instance):
-    """Get all fields from a model instance"""
+    """Get all fields from a model instance, excluding system fields"""
+    excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
     return {field.name: getattr(instance, field.name) 
             for field in instance._meta.fields 
-            if not field.is_relation and field.name != 'id'}
+            if not field.is_relation and field.name not in excluded_fields}
 
 @receiver(pre_save)
 def track_model_changes(sender, instance, **kwargs):
     """Track changes to models that inherit from BaseModel"""
     # Skip if it's not a BaseModel or it's the Modification model itself
     if not isinstance(instance, BaseModel) or sender.__name__ == 'Modification':
+        return
+    
+    # Skip if ViewSet is handling tracking
+    if get_skip_signal_tracking():
         return
     
     # Skip if it's a new instance
@@ -47,7 +72,8 @@ def track_model_changes(sender, instance, **kwargs):
                 object_id=instance.pk,
                 field=field_name,
                 before=str(old_value) if old_value is not None else None,
-                after=str(new_value) if new_value is not None else None
+                after=str(new_value) if new_value is not None else None,
+                user=get_current_user()
             )
     except sender.DoesNotExist:
         # This is a new instance, no need to track changes

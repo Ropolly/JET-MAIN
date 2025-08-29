@@ -50,13 +50,25 @@
         />
       </div>
       <div class="col-md-4 fv-row">
-        <label class="required fs-6 fw-semibold mb-2">Departure Time</label>
+        <label class="required fs-6 fw-semibold mb-2">
+          Departure Time
+          <span v-if="originTimezoneInfo" class="text-muted ms-1">
+            ({{ originTimezoneInfo.abbreviation }})
+          </span>
+        </label>
         <input
           v-model="legData.departure_time"
           type="time"
           class="form-control form-control-solid"
           @change="emitCrewChange"
         />
+        <div class="form-text">
+          <span v-if="originTimezoneInfo">
+            {{ originTimezoneInfo.timezone }}
+            <span v-if="originTimezoneInfo.is_dst" class="text-warning">(DST Active)</span>
+          </span>
+          <span v-else class="text-muted">Select departure airport to see timezone</span>
+        </div>
       </div>
       <div class="col-md-4 fv-row">
         <label class="fs-6 fw-semibold mb-2">Flight Time (hours)</label>
@@ -87,14 +99,27 @@
         <div class="form-text">Auto-calculated from departure time + flight time</div>
       </div>
       <div class="col-md-6 fv-row">
-        <label class="fs-6 fw-semibold mb-2">Arrival Time</label>
+        <label class="fs-6 fw-semibold mb-2">
+          Arrival Time
+          <span v-if="destinationTimezoneInfo" class="text-muted ms-1">
+            ({{ destinationTimezoneInfo.abbreviation }})
+          </span>
+        </label>
         <input
           v-model="legData.arrival_time"
           type="time"
           class="form-control form-control-solid"
           readonly
         />
-        <div class="form-text">Auto-calculated from departure time + flight time</div>
+        <div class="form-text">
+          <span v-if="destinationTimezoneInfo">
+            {{ destinationTimezoneInfo.timezone }}
+            <span v-if="destinationTimezoneInfo.is_dst" class="text-warning">(DST Active)</span>
+            <br>
+          </span>
+          <span v-else class="text-muted">Select arrival airport to see timezone<br></span>
+          Auto-calculated from departure time + flight time
+        </div>
       </div>
     </div>
     <!--end::Arrival Time Section---->
@@ -257,6 +282,10 @@ const arrivalFbos = ref<any[]>([]);
 const originAirportObject = ref<any>(null);
 const destinationAirportObject = ref<any>(null);
 
+// Store timezone information for airports
+const originTimezoneInfo = ref<any>(null);
+const destinationTimezoneInfo = ref<any>(null);
+
 // Filter staff by roles
 const today = new Date().toISOString().split('T')[0];
 
@@ -331,6 +360,37 @@ const getStaffDisplayName = (staff: any): string => {
   return contact.email || 'Staff Member';
 };
 
+// Timezone loading functions
+const loadOriginTimezoneInfo = async (airportId: string) => {
+  if (!airportId) {
+    originTimezoneInfo.value = null;
+    return;
+  }
+  
+  try {
+    const response = await ApiService.get(`/airports/${airportId}/timezone-info/`);
+    originTimezoneInfo.value = response.data;
+  } catch (error) {
+    console.error('Error loading origin timezone info:', error);
+    originTimezoneInfo.value = null;
+  }
+};
+
+const loadDestinationTimezoneInfo = async (airportId: string) => {
+  if (!airportId) {
+    destinationTimezoneInfo.value = null;
+    return;
+  }
+  
+  try {
+    const response = await ApiService.get(`/airports/${airportId}/timezone-info/`);
+    destinationTimezoneInfo.value = response.data;
+  } catch (error) {
+    console.error('Error loading destination timezone info:', error);
+    destinationTimezoneInfo.value = null;
+  }
+};
+
 // Airport selection handlers
 const onOriginAirportSelected = async (airport: any) => {
   // Store full airport object for distance calculation
@@ -342,6 +402,9 @@ const onOriginAirportSelected = async (airport: any) => {
       const response = await ApiService.get(`/airports/${airport.id}/`);
       const airportDetails = response.data;
       departureFbos.value = airportDetails.fbos || [];
+      
+      // Load timezone information for departure airport
+      await loadOriginTimezoneInfo(airport.id);
     } catch (error) {
       console.error('Error loading departure FBOs:', error);
       departureFbos.value = [];
@@ -349,6 +412,7 @@ const onOriginAirportSelected = async (airport: any) => {
   } else {
     departureFbos.value = [];
     legData.departure_fbo_id = '';
+    originTimezoneInfo.value = null;
   }
   calculateFlightTimeFromDistance();
   emitCrewChange();
@@ -364,6 +428,9 @@ const onDestinationAirportSelected = async (airport: any) => {
       const response = await ApiService.get(`/airports/${airport.id}/`);
       const airportDetails = response.data;
       arrivalFbos.value = airportDetails.fbos || [];
+      
+      // Load timezone information for arrival airport
+      await loadDestinationTimezoneInfo(airport.id);
     } catch (error) {
       console.error('Error loading arrival FBOs:', error);
       arrivalFbos.value = [];
@@ -371,6 +438,7 @@ const onDestinationAirportSelected = async (airport: any) => {
   } else {
     arrivalFbos.value = [];
     legData.arrival_fbo_id = '';
+    destinationTimezoneInfo.value = null;
   }
   calculateFlightTimeFromDistance();
   emitCrewChange();
@@ -395,24 +463,51 @@ const calculateFlightTimeFromDistance = () => {
   }
 };
 
-// Calculate arrival time based on departure time and flight time
-const calculateArrivalTime = () => {
-  if (legData.departure_date && legData.departure_time && legData.flight_time_hours) {
+// Calculate arrival time based on departure time and flight time (accounting for timezones)
+const calculateArrivalTime = async () => {
+  if (legData.departure_date && legData.departure_time && legData.flight_time_hours && 
+      originTimezoneInfo.value && destinationTimezoneInfo.value) {
     try {
+      // Use backend timezone conversion API for accurate calculations
+      const conversionData = {
+        departure_date: legData.departure_date,
+        departure_time: legData.departure_time,
+        flight_time_hours: legData.flight_time_hours,
+        origin_timezone: originTimezoneInfo.value.timezone,
+        destination_timezone: destinationTimezoneInfo.value.timezone
+      };
+      
+      const response = await ApiService.post('/timezone/convert/', conversionData);
+      const result = response.data;
+      
+      if (result.arrival_date && result.arrival_time) {
+        legData.arrival_date = result.arrival_date;
+        legData.arrival_time = result.arrival_time;
+        
+        console.log('Timezone-aware calculation:');
+        console.log(`Departure: ${legData.departure_date} ${legData.departure_time} ${originTimezoneInfo.value.abbreviation}`);
+        console.log(`Flight time: ${legData.flight_time_hours} hours`);
+        console.log(`Arrival: ${result.arrival_date} ${result.arrival_time} ${destinationTimezoneInfo.value.abbreviation}`);
+      }
+    } catch (error) {
+      console.error('Error with timezone-aware calculation, falling back to simple calculation:', error);
+      
+      // Fallback to simple calculation if API fails
       const departureDateTime = new Date(`${legData.departure_date}T${legData.departure_time}:00`);
       const flightTimeMilliseconds = legData.flight_time_hours * 60 * 60 * 1000;
       const arrivalDateTime = new Date(departureDateTime.getTime() + flightTimeMilliseconds);
       
-      // Update arrival date and time
       legData.arrival_date = arrivalDateTime.toISOString().split('T')[0];
       legData.arrival_time = arrivalDateTime.toTimeString().slice(0, 5);
-      
-      console.log('Departure:', departureDateTime.toString());
-      console.log('Flight time hours:', legData.flight_time_hours);
-      console.log('Arrival:', arrivalDateTime.toString());
-    } catch (error) {
-      console.error('Error calculating arrival time:', error);
     }
+  } else if (legData.departure_date && legData.departure_time && legData.flight_time_hours) {
+    // Simple fallback when timezone info is not available yet
+    const departureDateTime = new Date(`${legData.departure_date}T${legData.departure_time}:00`);
+    const flightTimeMilliseconds = legData.flight_time_hours * 60 * 60 * 1000;
+    const arrivalDateTime = new Date(departureDateTime.getTime() + flightTimeMilliseconds);
+    
+    legData.arrival_date = arrivalDateTime.toISOString().split('T')[0];
+    legData.arrival_time = arrivalDateTime.toTimeString().slice(0, 5);
   }
 };
 
@@ -421,9 +516,16 @@ watch(() => [legData.origin_airport, legData.destination_airport], () => {
   calculateFlightTimeFromDistance();
 }, { deep: true });
 
-// Watch for departure time changes to recalculate arrival
-watch(() => [legData.departure_date, legData.departure_time], () => {
+// Watch for departure time and flight time changes to recalculate arrival
+watch(() => [legData.departure_date, legData.departure_time, legData.flight_time_hours], () => {
   calculateArrivalTime();
+});
+
+// Watch for timezone info changes to recalculate arrival with proper timezone data
+watch(() => [originTimezoneInfo.value, destinationTimezoneInfo.value], () => {
+  if (originTimezoneInfo.value && destinationTimezoneInfo.value) {
+    calculateArrivalTime();
+  }
 });
 
 // Emit crew change detection

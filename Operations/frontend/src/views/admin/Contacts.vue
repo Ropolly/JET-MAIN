@@ -80,7 +80,7 @@
               </div>
             </div>
             <div class="d-flex flex-column">
-              <a href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
+              <a @click.prevent="handleViewDetails(contact)" href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ getContactName(contact) }}
               </a>
               <span class="text-muted fs-7">{{ contact.email || 'No email' }}</span>
@@ -121,12 +121,13 @@
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click.prevent="handleView(contact)" href="#" class="menu-link px-3">
+              <a @click.prevent="handleViewDetails(contact)" href="#" class="menu-link px-3">
                 <KTIcon icon-name="eye" icon-class="fs-6 me-2" />
                 View Details
               </a>
             </div>
             <!--end::Menu item-->
+            
             <!--begin::Menu item-->
             <div class="menu-item px-3">
               <a @click.prevent="handleEdit(contact)" href="#" class="menu-link px-3">
@@ -136,42 +137,10 @@
             </div>
             <!--end::Menu item-->
             
-            <!--begin::Type-specific actions-->
-            <div v-if="!isPatient(contact)" class="menu-item px-3">
-              <a @click.prevent="handleCreatePatient(contact)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="medical-mask" icon-class="fs-6 me-2" />
-                Make Patient
-              </a>
-            </div>
             
-            <div v-if="!isStaff(contact)" class="menu-item px-3">
-              <a @click.prevent="handleCreateStaff(contact)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="people" icon-class="fs-6 me-2" />
-                Make Staff
-              </a>
-            </div>
             
-            <div v-if="isPatient(contact)" class="menu-item px-3">
-              <a @click.prevent="handleViewPatientDetails(contact)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="heart-pulse" icon-class="fs-6 me-2" />
-                View Patient Details
-              </a>
-            </div>
             
-            <div v-if="isStaff(contact)" class="menu-item px-3">
-              <a @click.prevent="handleViewStaffDetails(contact)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="badge" icon-class="fs-6 me-2" />
-                View Staff Details
-              </a>
-            </div>
             
-            <div v-if="!isPatient(contact) && !isStaff(contact)" class="menu-item px-3">
-              <a @click.prevent="handleCreateQuote(contact)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="dollar" icon-class="fs-6 me-2" />
-                Create Quote
-              </a>
-            </div>
-            <!--end::Type-specific actions-->
             <!--begin::Separator-->
             <div class="separator my-2"></div>
             <!--end::Separator-->
@@ -352,8 +321,13 @@ export default defineComponent({
       }
     };
 
-    const handleView = (contact: Contact) => {
+    const handleViewDetails = (contact: Contact) => {
       // Navigate to contact details page
+      router.push(`/admin/contacts/contacts/${contact.id}`);
+    };
+
+    const handleView = (contact: Contact) => {
+      // Navigate to contact details page  
       window.open(`/admin/contacts/contacts/${contact.id}`, '_blank');
     };
 
@@ -755,6 +729,7 @@ export default defineComponent({
       deleteFewContacts,
       onItemsPerPageChange,
       handleCreate,
+      handleViewDetails,
       handleView,
       handleEdit,
       handleCreatePatient,

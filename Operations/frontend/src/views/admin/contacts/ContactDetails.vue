@@ -30,6 +30,25 @@
             <div class="fs-5 fw-semibold text-muted mb-6">{{ getContactType() }}</div>
             <!--end::Position-->
 
+            <!--begin::Role Badges-->
+            <div class="d-flex flex-wrap justify-content-center mb-6" v-if="contactRoles.length > 0">
+              <span
+                v-for="role in contactRoles"
+                :key="role.type"
+                :class="`badge badge-light-${role.color} fs-8 fw-bold me-2 mb-2`"
+              >
+                <i :class="`ki-duotone ${role.icon} fs-7 me-1`">
+                  <span class="path1"></span>
+                  <span class="path2"></span>
+                  <span class="path3"></span>
+                  <span v-if="role.icon === 'ki-people'" class="path4"></span>
+                  <span v-if="role.icon === 'ki-people'" class="path5"></span>
+                </i>
+                {{ role.label }}
+              </span>
+            </div>
+            <!--end::Role Badges-->
+
             <!--begin::Info-->
             <div class="d-flex flex-wrap flex-center" v-if="!isPatient()">
               <!--begin::Stats-->
@@ -296,6 +315,7 @@ export default defineComponent({
     const contact = ref<any>(null);
     const loading = ref(true);
     const error = ref<string | null>(null);
+    const contactRoles = ref<Array<{type: string, label: string, color: string, icon: string}>>([]);
 
     const fetchContact = async () => {
       try {
@@ -347,11 +367,87 @@ export default defineComponent({
         const response = await ApiService.get(endpoint);
         contact.value = { ...response.data, type: contactType };
         
+        // After fetching contact, detect roles
+        await detectContactRoles();
+        
       } catch (err: any) {
         error.value = err.response?.data?.detail || "Failed to fetch contact details";
         console.error("Error fetching contact:", err);
       } finally {
         loading.value = false;
+      }
+    };
+
+    const detectContactRoles = async () => {
+      if (!contact.value) return;
+      
+      const roles: Array<{type: string, label: string, color: string, icon: string}> = [];
+      const contactId = contact.value.id || contact.value.info?.id;
+      
+      try {
+        // Check if contact is a patient
+        const patientsResponse = await ApiService.get('/patients/');
+        const patients = patientsResponse.data.results || patientsResponse.data || [];
+        const isPatientRecord = patients.some((p: any) => p.info?.id === contactId || p.id === contactId);
+        
+        if (isPatientRecord) {
+          roles.push({
+            type: 'patient',
+            label: 'Patient',
+            color: 'danger',
+            icon: 'ki-heart-pulse'
+          });
+        }
+
+        // Check if contact is a passenger
+        const passengersResponse = await ApiService.get('/passengers/');
+        const passengers = passengersResponse.data.results || passengersResponse.data || [];
+        const isPassengerRecord = passengers.some((p: any) => p.info?.id === contactId);
+        
+        if (isPassengerRecord) {
+          roles.push({
+            type: 'passenger',
+            label: 'Passenger',
+            color: 'info',
+            icon: 'ki-people'
+          });
+        }
+
+        // Check if contact is staff
+        const staffResponse = await ApiService.get('/staff/');
+        const staff = staffResponse.data.results || staffResponse.data || [];
+        const isStaffRecord = staff.some((s: any) => s.contact?.id === contactId || s.info?.id === contactId);
+        
+        if (isStaffRecord) {
+          roles.push({
+            type: 'staff',
+            label: 'Staff',
+            color: 'primary',
+            icon: 'ki-badge'
+          });
+        }
+
+        // If no specific roles found, add general contact badge
+        if (roles.length === 0) {
+          roles.push({
+            type: 'contact',
+            label: 'Contact',
+            color: 'secondary',
+            icon: 'ki-profile-circle'
+          });
+        }
+
+        contactRoles.value = roles;
+        
+      } catch (error) {
+        console.error('Error detecting contact roles:', error);
+        // Fallback to general contact badge
+        contactRoles.value = [{
+          type: 'contact',
+          label: 'Contact',
+          color: 'secondary',
+          icon: 'ki-profile-circle'
+        }];
       }
     };
 
@@ -471,6 +567,7 @@ export default defineComponent({
       contact,
       loading,
       error,
+      contactRoles,
       getContactInitials,
       getContactName,
       getContactType,

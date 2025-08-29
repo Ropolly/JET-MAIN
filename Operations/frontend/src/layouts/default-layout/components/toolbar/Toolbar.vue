@@ -15,9 +15,40 @@
       <div class="d-flex align-items-center gap-2 gap-lg-3">
         <!-- Dynamic toolbar buttons based on current view -->
         <template v-for="action in toolbarActions" :key="action.id">
+          <!-- Dropdown button -->
+          <div v-if="action.isDropdown" class="dropdown">
+            <button
+              type="button"
+              :class="getButtonClass(action.variant || 'secondary')"
+              :id="action.id"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              :disabled="action.disabled"
+            >
+              <KTIcon v-if="action.icon" :icon-name="action.icon" icon-class="fs-2" />
+              {{ action.label }}
+              <KTIcon icon-name="down" icon-class="fs-5 ms-1" />
+            </button>
+            <ul class="dropdown-menu" :aria-labelledby="action.id">
+              <template v-for="(item, index) in action.dropdownItems" :key="index">
+                <li v-if="item.divider"><hr class="dropdown-divider"></li>
+                <li v-else>
+                  <a 
+                    class="dropdown-item" 
+                    :class="item.className"
+                    href="#" 
+                    @click.prevent="item.handler"
+                  >
+                    <KTIcon v-if="item.icon" :icon-name="item.icon" icon-class="fs-3 me-2" />
+                    {{ item.label }}
+                  </a>
+                </li>
+              </template>
+            </ul>
+          </div>
           <!-- Modal trigger button -->
           <a
-            v-if="action.modalTarget"
+            v-else-if="action.modalTarget"
             href="#"
             :class="getButtonClass(action.variant || 'primary')"
             data-bs-toggle="modal"
@@ -88,6 +119,8 @@ export default defineComponent({
           return `${baseClasses} btn-warning`;
         case 'danger':
           return `${baseClasses} btn-danger`;
+        case 'dark':
+          return `${baseClasses} btn-dark`;
         default:
           return `${baseClasses} btn-primary`;
       }

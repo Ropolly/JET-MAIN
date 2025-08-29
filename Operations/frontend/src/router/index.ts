@@ -497,6 +497,16 @@ const routes: Array<RouteRecordRaw> = [
         },
       },
       {
+        path: "/admin/quotes/:id/edit",
+        name: "admin-quote-edit",
+        component: () => import("@/views/admin/quotes/EditQuote.vue"),
+        meta: {
+          pageTitle: "Edit Quote",
+          breadcrumbs: ["Administration", "Operations", "Quotes", "Edit"],
+          middleware: "auth",
+        },
+      },
+      {
         path: "/admin/patients",
         name: "admin-patients",
         component: () => import("@/views/admin/Patients.vue"),
@@ -513,6 +523,16 @@ const routes: Array<RouteRecordRaw> = [
         meta: {
           pageTitle: "Passengers",
           breadcrumbs: ["Administration", "Operations", "Passengers"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/passengers/:id",
+        name: "admin-passenger-details",
+        component: () => import("@/views/admin/passengers/PassengerDetails.vue"),
+        meta: {
+          pageTitle: "Passenger Details",
+          breadcrumbs: ["Administration", "Operations", "Passengers", "Details"],
           middleware: "auth",
         },
       },
@@ -573,6 +593,16 @@ const routes: Array<RouteRecordRaw> = [
         meta: {
           pageTitle: "FBOs",
           breadcrumbs: ["Administration", "Contacts", "FBOs"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/fbos/:id",
+        name: "admin-fbo-details",
+        component: () => import("@/views/admin/fbos/FboDetails.vue"),
+        meta: {
+          pageTitle: "FBO Details",
+          breadcrumbs: ["Administration", "Contacts", "FBOs", "Details"],
           middleware: "auth",
         },
       },

@@ -74,17 +74,13 @@
 
             <!--begin::Patient (Optional)-->
             <div class="fv-row mb-8">
-              <label class="fs-6 fw-semibold mb-2">Patient (Optional)</label>
-              <select
-                class="form-select form-select-solid"
+              <PatientSearchSelect
                 v-model="formData.patient_id"
+                label="Patient (Optional)"
+                placeholder="Search patients..."
                 :disabled="isSubmitting"
-              >
-                <option value="">No Patient</option>
-                <option v-for="patient in patients" :key="patient.id" :value="patient.id">
-                  {{ getPatientDisplayName(patient) }}
-                </option>
-              </select>
+                @patientSelected="onPatientSelected"
+              />
             </div>
             <!--end::Patient-->
 
@@ -130,9 +126,8 @@
                   :disabled="isSubmitting"
                 >
                   <option value="">Select Aircraft</option>
-                  <option v-for="plane in aircraft" :key="plane.id" :value="getAircraftTypeValue(plane)">
-                    {{ getAircraftDisplayName(plane) }}
-                  </option>
+                  <option value="65">Learjet 65</option>
+                  <option value="35">Learjet 35</option>
                   <option value="TBD">To Be Determined</option>
                 </select>
               </div>
@@ -342,6 +337,7 @@ import Swal from "sweetalert2";
 import ApiService from "@/core/services/ApiService";
 import { Modal } from "bootstrap";
 import AirportSearchSelect from "@/components/form-controls/AirportSearchSelect.vue";
+import PatientSearchSelect from "@/components/form-controls/PatientSearchSelect.vue";
 
 const emit = defineEmits(['quoteCreated']);
 
@@ -351,8 +347,7 @@ const isSubmitting = ref(false);
 // Data arrays
 const contacts = ref<any[]>([]);
 const availableContacts = ref<any[]>([]);
-const patients = ref<any[]>([]);
-const aircraft = ref<any[]>([]);
+const selectedPatient = ref<any>(null);
 
 // Selected airports for additional data and flight calculations
 const selectedPickupAirport = ref<any>(null);
@@ -414,10 +409,11 @@ const resetForm = () => {
     status: 'pending',
   });
   
-  // Reset tracking variable and selected airports
+  // Reset tracking variables and selected airports/patient
   userEditedFlightTime.value = false;
   selectedPickupAirport.value = null;
   selectedDropoffAirport.value = null;
+  selectedPatient.value = null;
 };
 
 const fetchContacts = async () => {
@@ -442,25 +438,14 @@ const fetchContacts = async () => {
   }
 };
 
-const fetchPatients = async () => {
-  try {
-    const response = await ApiService.get("/patients/?page_size=100");
-    patients.value = response.data.results || response.data || [];
-  } catch (error) {
-    console.error("Error fetching patients:", error);
-  }
+// Patient selection handler
+const onPatientSelected = (patient: any) => {
+  selectedPatient.value = patient;
+  console.log('Patient selected:', patient);
 };
 
 // Note: Airport fetching is now handled by AirportSearchSelect components
 
-const fetchAircraft = async () => {
-  try {
-    const response = await ApiService.get("/aircraft/?page_size=100");
-    aircraft.value = response.data.results || response.data || [];
-  } catch (error) {
-    console.error("Error fetching aircraft:", error);
-  }
-};
 
 const getContactDisplayName = (contact: any): string => {
   if (contact.business_name) {
@@ -472,12 +457,6 @@ const getContactDisplayName = (contact: any): string => {
   return `Contact ${contact.id.slice(0, 8)}`;
 };
 
-const getPatientDisplayName = (patient: any): string => {
-  if (patient.info?.first_name || patient.info?.last_name) {
-    return `${patient.info?.first_name || ''} ${patient.info?.last_name || ''}`.trim();
-  }
-  return `Patient ${patient.id.slice(0, 8)}`;
-};
 
 // Airport selection handlers
 const onPickupAirportSelected = (airport: any) => {
@@ -490,16 +469,6 @@ const onDropoffAirportSelected = (airport: any) => {
   console.log('Dropoff airport selected:', airport);
 };
 
-const getAircraftDisplayName = (plane: any): string => {
-  return `${plane.tail_number} - ${plane.make} ${plane.model}`;
-};
-
-const getAircraftTypeValue = (plane: any): string => {
-  // Map aircraft model to the expected value format for the Quote model
-  if (plane.model?.includes('35')) return '35';
-  if (plane.model?.includes('65')) return '65';
-  return plane.model || 'TBD';
-};
 
 // Flight time calculation functions
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -517,7 +486,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 const getAircraftCruiseSpeed = (aircraftType: string): number => {
   // Cruise speeds in knots (nautical miles per hour)
   const speeds: Record<string, number> = {
-    '35': 464, // Learjet 35A cruise speed
+    '35': 464, // Learjet 35 cruise speed
     '65': 459, // Learjet 65 cruise speed
     'TBD': 450, // Default estimate
   };
@@ -731,12 +700,8 @@ watch(() => formData.estimated_flight_hours, (newVal, oldVal) => {
 
 // Load data on component mount
 onMounted(async () => {
-  await Promise.all([
-    fetchContacts(),
-    fetchPatients(),
-    fetchAircraft()
-  ]);
-  // Note: Airports are now handled by AirportSearchSelect components
+  await fetchContacts();
+  // Note: Airports and Patients are now handled by respective SearchSelect components
 });
 </script>
 

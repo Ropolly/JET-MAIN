@@ -14,7 +14,7 @@
         <!--begin::Modal header-->
         <div class="modal-header">
           <!--begin::Title-->
-          <h2>Create New Trip - Step {{ currentStep }} of {{ totalSteps }}</h2>
+          <h2>{{ quoteId ? 'Convert Quote to Trip' : 'Create New Trip' }} - Step {{ currentStep }} of {{ totalSteps }}</h2>
           <!--end::Title-->
 
           <!--begin::Close-->
@@ -213,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, onMounted, onUnmounted } from "vue";
 import { hideModal } from "@/core/helpers/modal";
 import Swal from "sweetalert2";
 import ApiService from "@/core/services/ApiService";
@@ -263,6 +263,7 @@ const modalRef = ref<HTMLElement | null>(null);
 const currentStep = ref(1);
 const totalSteps = 3;
 const isSubmitting = ref(false);
+const quoteId = ref<string | null>(null);
 const stepValidation = ref<Record<number, boolean>>({
   1: false,
   2: false,
@@ -420,6 +421,7 @@ const handleSubmit = async () => {
       type: tripData.type,
       aircraft: tripData.aircraft_id || null,
       patient: tripData.patient_id || null,
+      quote: quoteId.value || null,
       notes: tripData.notes,
       status: 'pending',
       email_chain: []
@@ -654,13 +656,8 @@ const createTripLine = async (tripId: string, leg: TripLeg, crewLineId: string |
 
   const departureDateTime = `${leg.departure_date}T${leg.departure_time}:00`;
   
-  // Calculate arrival time based on flight time or default to 2 hours
+  // Get flight time in hours for backend calculation
   const flightTimeHours = leg.flight_time_hours || 2;
-  const arrivalTime = new Date(departureDateTime);
-  arrivalTime.setHours(arrivalTime.getHours() + flightTimeHours);
-  const arrivalDateTime = leg.arrival_date && leg.arrival_time 
-    ? `${leg.arrival_date}T${leg.arrival_time}:00`
-    : arrivalTime.toISOString().slice(0, 19);
 
   const tripLineData: any = {
     trip: tripId,
@@ -669,9 +666,8 @@ const createTripLine = async (tripId: string, leg: TripLeg, crewLineId: string |
     departure_fbo: leg.departure_fbo_id || null,
     arrival_fbo: leg.arrival_fbo_id || null,
     departure_time_local: departureDateTime,
-    departure_time_utc: departureDateTime,
-    arrival_time_local: arrivalDateTime,
-    arrival_time_utc: arrivalDateTime,
+    // Let backend calculate departure_time_utc from airport timezone
+    // Don't send arrival times - let backend calculate from departure + flight_time
     distance: '500.00',
     flight_time: hoursToIsoDuration(flightTimeHours),
     ground_time: hoursToIsoDuration(leg.pre_flight_duty_hours + leg.post_flight_duty_hours),
@@ -779,15 +775,76 @@ const resetForm = () => {
   tripData.events = [];
   tripData.patient_id = '';
   tripData.passengers = [];
+  quoteId.value = null;
   
   currentStep.value = 1;
   stepValidation.value = { 1: false, 2: false, 3: true };
   isCurrentStepValid.value = false;
 };
 
+// Handle pre-population from quote conversion
+const handlePrepopulateForm = async (event: any) => {
+  const data = event.detail;
+  console.log('Received pre-populate data:', data);
+  if (data) {
+    quoteId.value = data.quoteId;
+    
+    // Populate Step 1: Trip Details
+    if (data.tripType) tripData.type = data.tripType;
+    if (data.patientId) tripData.patient_id = data.patientId;
+    if (data.notes) tripData.notes = data.notes;
+    
+    // Pre-configure first leg with quote data
+    if (data.departureAirport && data.arrivalAirport) {
+      // Set default departure date to today
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      
+      // Create initial leg from quote data
+      const initialLeg: TripLeg = {
+        id: `leg_${Date.now()}`,
+        origin_airport: data.departureAirport,
+        destination_airport: data.arrivalAirport,
+        departure_date: `${year}-${month}-${day}`,
+        departure_time: '09:00',
+        pre_flight_duty_hours: 1.0,
+        post_flight_duty_hours: 1.0,
+        pic_staff_id: '',
+        sic_staff_id: '',
+        medical_staff_ids: [],
+        departure_fbo_id: '',
+        arrival_fbo_id: '',
+        notes: ''
+      };
+      
+      tripData.legs = [initialLeg];
+    }
+    
+    // Generate trip number automatically
+    await generateTripNumber();
+  }
+};
+
 onMounted(() => {
   fetchDropdownData();
   generateTripNumber();
+  
+  // Add event listener for form pre-population
+  if (modalRef.value) {
+    modalRef.value.addEventListener('prepopulate-trip-form', handlePrepopulateForm);
+    // Add event listener for modal close to reset form
+    modalRef.value.addEventListener('hidden.bs.modal', resetForm);
+  }
+});
+
+onUnmounted(() => {
+  // Clean up event listeners
+  if (modalRef.value) {
+    modalRef.value.removeEventListener('prepopulate-trip-form', handlePrepopulateForm);
+    modalRef.value.removeEventListener('hidden.bs.modal', resetForm);
+  }
 });
 </script>
 

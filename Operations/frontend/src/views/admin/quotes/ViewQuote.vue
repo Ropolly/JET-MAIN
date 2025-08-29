@@ -53,7 +53,7 @@
                                     
               <!--begin::Action-->            
               <div class="d-flex gap-3">
-                <!-- Buttons moved to toolbar -->
+                <!-- Actions moved to toolbar -->
               </div>                 
               <!--end::Action--> 
             </div>                
@@ -256,9 +256,35 @@
           <div class="d-print-none border border-dashed border-gray-300 card-rounded h-lg-100 min-w-md-350px p-9 bg-lighten">
             <!--begin::Labels-->
             <div class="mb-8">       
-              <span :class="`badge badge-light-${getStatusColor(quote?.status)} me-2`">
-                {{ quote?.status || 'Draft' }}
-              </span> 
+              <div class="d-flex flex-column gap-2">
+                <select 
+                  v-if="quote?.status"
+                  :value="quote.status"
+                  @change="updateQuoteStatus(($event.target as HTMLSelectElement).value)"
+                  class="form-select form-select-sm"
+                  :class="`text-${getStatusColor(quote.status)}`"
+                  style="max-width: 150px;"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <span v-else class="badge badge-light-secondary">Draft</span>
+                
+                <select 
+                  v-if="quote?.payment_status"
+                  :value="quote.payment_status"
+                  @change="updateQuotePaymentStatus(($event.target as HTMLSelectElement).value)"
+                  class="form-select form-select-sm"
+                  :class="`text-${getPaymentStatusColor(quote.payment_status)}`"
+                  style="max-width: 150px;"
+                >
+                  <option value="pending">Payment Pending</option>
+                  <option value="partial">Partial Paid</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </div>
           
             </div>                
             <!--end::Labels-->   
@@ -368,18 +394,124 @@
     <!--end::Body-->
   </div>
   
+  <!-- Updates Timeline -->
+  <UpdatesTimeline 
+    v-if="quote?.id"
+    entity-type="quote"
+    :entity-id="quote.id"
+    :allow-comments="true"
+    :entity-data="quote"
+  />
+  
   <!-- Include the Create Trip Modal -->
-  <CreateTripSimpleModal @tripCreated="onTripCreated" />
+  <CreateTripMultiStepModal @tripCreated="onTripCreated" />
+  
+  <!-- Email Quote Modal -->
+  <div 
+    class="modal fade" 
+    id="kt_modal_email_quote" 
+    tabindex="-1" 
+    aria-hidden="true"
+    ref="emailModalRef"
+  >
+    <div class="modal-dialog modal-dialog-centered mw-650px">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="fw-bold">Email Quote</h2>
+          <div 
+            class="btn btn-icon btn-sm btn-active-icon-primary" 
+            data-bs-dismiss="modal"
+          >
+            <KTIcon icon-name="cross" icon-class="fs-1" />
+          </div>
+        </div>
+        
+        <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
+          <form @submit.prevent="sendEmailQuote">
+            <!-- Email Address -->
+            <div class="fv-row mb-7">
+              <label class="required fw-semibold fs-6 mb-2">Email Address</label>
+              <input
+                v-model="emailForm.email"
+                type="email"
+                class="form-control form-control-solid mb-3 mb-lg-0"
+                placeholder="Enter email address"
+                required
+              />
+            </div>
+            
+            <!-- Subject -->
+            <div class="fv-row mb-7">
+              <label class="fw-semibold fs-6 mb-2">Subject</label>
+              <input
+                v-model="emailForm.subject"
+                type="text"
+                class="form-control form-control-solid mb-3 mb-lg-0"
+                placeholder="Quote from JET ICU Medical Transport"
+              />
+            </div>
+            
+            <!-- Message -->
+            <div class="fv-row mb-7">
+              <label class="fw-semibold fs-6 mb-2">Message (Optional)</label>
+              <textarea
+                v-model="emailForm.message"
+                class="form-control form-control-solid"
+                rows="4"
+                placeholder="Add a personal message..."
+              ></textarea>
+            </div>
+            
+            <!-- Include PDF -->
+            <div class="fv-row mb-7">
+              <div class="form-check">
+                <input
+                  v-model="emailForm.includePdf"
+                  class="form-check-input"
+                  type="checkbox"
+                  id="includePdf"
+                />
+                <label class="form-check-label fw-semibold text-gray-700" for="includePdf">
+                  Include PDF attachment
+                </label>
+              </div>
+            </div>
+          </form>
+        </div>
+        
+        <div class="modal-footer">
+          <button 
+            type="button" 
+            class="btn btn-light" 
+            data-bs-dismiss="modal"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-primary" 
+            @click="sendEmailQuote"
+            :disabled="!emailForm.email || isEmailSending"
+          >
+            <span v-if="isEmailSending" class="spinner-border spinner-border-sm me-2"></span>
+            {{ isEmailSending ? 'Sending...' : 'Send Email' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import Swal from "sweetalert2";
 import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 import { Modal } from "bootstrap";
-import CreateTripSimpleModal from "@/components/modals/CreateTripSimpleModal.vue";
+import CreateTripMultiStepModal from "@/components/modals/CreateTripMultiStepModal.vue";
+import UpdatesTimeline from "@/components/UpdatesTimeline.vue";
+import JwtService from "@/core/services/JwtService";
 
 const route = useRoute();
 const router = useRouter();
@@ -389,6 +521,16 @@ const loading = ref(true);
 const tripLoading = ref(false);
 const error = ref<string | null>(null);
 const { setToolbarActions } = useToolbar();
+
+// Email modal refs and form data
+const emailModalRef = ref<HTMLElement | null>(null);
+const isEmailSending = ref(false);
+const emailForm = ref({
+  email: '',
+  subject: '',
+  message: '',
+  includePdf: true
+});
 
 const fetchQuote = async () => {
   try {
@@ -401,7 +543,7 @@ const fetchQuote = async () => {
     quote.value = response.data;
     
     // Check if there's a trip associated with this quote
-    await checkForAssociatedTrip(quoteId);
+    checkForAssociatedTrip();
     
     // Setup toolbar actions after quote is loaded and trip check is done
     setupToolbarActions();
@@ -414,59 +556,70 @@ const fetchQuote = async () => {
   }
 };
 
-const checkForAssociatedTrip = async (quoteId: string) => {
-  try {
-    // First try to get the trips directly from the quote's trips relationship
-    try {
-      // Try to get trips for this specific quote using the related field
-      const response = await ApiService.get(`/quotes/${quoteId}/trips/`);
-      const trips = response.data.results || response.data || [];
-      
-      if (Array.isArray(trips) && trips.length > 0) {
-        associatedTrip.value = trips[0]; // Take the first trip
-        console.log('Found associated trip via quote relationship:', associatedTrip.value.id);
-        return;
-      }
-    } catch (relatedErr) {
-      // Quote trips endpoint not available, falling back to general trips query
-    }
-    
-    // Fallback: Query all trips and filter by quote
-    const response = await ApiService.get(`/trips/?quote=${quoteId}`);
-    const trips = response.data.results || response.data || [];
-    
-    if (Array.isArray(trips) && trips.length > 0) {
-      // Verify that the trip actually references this quote
-      // Based on TripReadSerializer, quote is returned as {id, quoted_amount, status}
-      const validTrips = trips.filter(trip => {
-        return trip.quote && trip.quote.id === quoteId;
-      });
-      
-      if (validTrips.length > 0) {
-        // Found a trip associated with this quote
-        associatedTrip.value = validTrips[0]; // Take the first (should only be one)
-        console.log('Found associated trip:', associatedTrip.value.id);
-      } else {
-        // No valid trips found - this quote hasn't been converted to a trip
-        associatedTrip.value = null;
-      }
-    } else {
-      // No trips found at all
-      associatedTrip.value = null;
-    }
-  } catch (err) {
-    console.error('Error checking for associated trip:', err);
-    // Don't fail the whole page if trip check fails
+const checkForAssociatedTrip = () => {
+  // Use trips data directly from the quote response
+  if (quote.value?.trips && Array.isArray(quote.value.trips) && quote.value.trips.length > 0) {
+    associatedTrip.value = quote.value.trips[0]; // Take the first trip
+    console.log('Found associated trip:', associatedTrip.value.id);
+  } else {
     associatedTrip.value = null;
+    console.log('No associated trips found for this quote');
   }
 };
 
 
 const setupToolbarActions = () => {
-  const actions = [
-    // Download PDF - secondary button (left position)
-    createToolbarActions.secondary('download-pdf', 'Download PDF', downloadQuote, 'document'),
-  ];
+  const actions = [];
+  
+  // Build dropdown items conditionally
+  const dropdownItems = [];
+  
+  // Only show Edit Quote if there's no associated trip
+  if (!associatedTrip.value) {
+    dropdownItems.push({
+      id: 'edit-quote',
+      label: 'Edit Quote',
+      icon: 'pencil',
+      handler: editQuote
+    });
+  }
+  
+  // Always show these options
+  dropdownItems.push(
+    {
+      id: 'download-pdf',
+      label: 'Download PDF',
+      icon: 'document',
+      handler: downloadQuote
+    },
+    {
+      id: 'email-quote',
+      label: 'Email Quote',
+      icon: 'sms',
+      handler: emailQuote
+    }
+  );
+  
+  // Add divider and delete option
+  dropdownItems.push(
+    { divider: true },
+    {
+      id: 'delete-quote',
+      label: 'Delete Quote',
+      icon: 'trash',
+      handler: deleteQuote,
+      className: 'text-danger'
+    }
+  );
+  
+  // Add Actions dropdown
+  actions.push({
+    id: 'quote-actions-dropdown',
+    label: 'Actions',
+    variant: 'dark',
+    isDropdown: true,
+    dropdownItems: dropdownItems
+  });
   
   // Add Convert to Trip button only if quote hasn't been converted yet
   if (!associatedTrip.value) {
@@ -564,14 +717,37 @@ const getTaxAmount = (): number => {
 
 const getStatusColor = (status: string): string => {
   switch (status?.toLowerCase()) {
-    case 'approved': case 'accepted': case 'confirmed': case 'active': case 'completed': return 'success';
+    case 'active': case 'completed': return 'success';
     case 'pending': return 'warning';
-    case 'expired': case 'rejected': case 'cancelled': return 'danger';
+    case 'cancelled': return 'danger';
     case 'sent': return 'primary';
     case 'draft': return 'secondary';
-    case 'paid': return 'info';
     default: return 'info';
   }
+};
+
+const getPaymentStatusColor = (paymentStatus: string): string => {
+  switch (paymentStatus?.toLowerCase()) {
+    case 'paid': return 'success';
+    case 'partial': return 'warning';
+    case 'pending': return 'danger';
+    default: return 'secondary';
+  }
+};
+
+const getContentTypeId = (entityType: string): number => {
+  // Map entity types to content type IDs
+  const contentTypeMap: Record<string, number> = {
+    'quote': 22,
+    'trip': 23,
+    'patient': 17,
+    'contact': 9,
+    'passenger': 18,
+    'aircraft': 15,
+    'fbo': 10,
+    // Add more mappings as needed
+  };
+  return contentTypeMap[entityType] || 1;
 };
 
 const isExpired = (): boolean => {
@@ -657,17 +833,26 @@ const getEstimatedFlightTime = (): string => {
 
 const openConvertToTripModal = () => {
   // Get the modal element and show it with pre-populated data
-  const modalElement = document.getElementById('kt_modal_create_trip_simple');
+  const modalElement = document.getElementById('kt_modal_create_trip_multistep');
   if (modalElement) {
     console.log('Opening Convert to Trip modal with quote:', quote.value);
     // Dispatch custom event with quote data for pre-population
     const eventData = {
       quoteId: quote.value?.id,
-      tripType: quote.value?.trip_type || 'medical',
-      patientId: quote.value?.patient?.id || quote.value?.patient_id,
+      tripType: 'medical', // Default to medical for quote conversions
+      patientId: quote.value?.patient?.id,
       departureAirport: quote.value?.pickup_airport?.id,
       arrivalAirport: quote.value?.dropoff_airport?.id,
-      notes: `Converted from Quote #${quote.value?.quote_number || quote.value?.id?.slice(0, 8)}`
+      notes: `Converted from Quote #${quote.value?.id?.slice(0, 8)}\n\nQuote Details:\n- Aircraft Type: ${quote.value?.aircraft_type || 'TBD'}\n- Medical Team: ${quote.value?.medical_team || 'TBD'}\n- Quoted Amount: $${quote.value?.quoted_amount || 'TBD'}`,
+      // Include additional quote info for reference
+      quoteData: {
+        aircraftType: quote.value?.aircraft_type,
+        medicalTeam: quote.value?.medical_team,
+        quotedAmount: quote.value?.quoted_amount,
+        estimatedFlightTime: quote.value?.estimated_flight_time,
+        includesGrounds: quote.value?.includes_grounds,
+        numberOfStops: quote.value?.number_of_stops
+      }
     };
     console.log('Sending pre-populate data:', eventData);
     const event = new CustomEvent('prepopulate-trip-form', {
@@ -678,16 +863,87 @@ const openConvertToTripModal = () => {
     const modal = new Modal(modalElement);
     modal.show();
   } else {
-    console.error('Could not find modal element kt_modal_create_trip_simple');
+    console.error('Could not find modal element kt_modal_create_trip_multistep');
   }
 };
 
-const downloadQuote = () => {
-  Swal.fire({
-    title: 'Download Quote',
-    text: 'Quote PDF download would be implemented here',
-    icon: 'info'
-  });
+const downloadQuote = async () => {
+  if (!quote.value?.id) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Quote not found',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+    return;
+  }
+
+  try {
+    // Show loading indicator
+    Swal.fire({
+      title: 'Generating PDF...',
+      text: 'Please wait while we prepare your quote PDF.',
+      allowOutsideClick: false,
+      showConfirmButton: false,
+      willOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    // Call the PDF endpoint using fetch for blob response
+    const baseURL = import.meta.env.VITE_APP_API_URL || "http://localhost:8001/api";
+    const token = JwtService.getToken();
+    
+    const response = await fetch(`${baseURL}/quotes/${quote.value.id}/pdf/`, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+
+    // Close loading dialog
+    Swal.close();
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `quote_${quote.value.id.slice(0, 8)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up the URL
+    window.URL.revokeObjectURL(url);
+
+    // Show success message
+    Swal.fire({
+      title: 'Success!',
+      text: 'Quote PDF has been downloaded.',
+      icon: 'success',
+      confirmButtonText: 'OK'
+    });
+
+  } catch (error: any) {
+    console.error('Error downloading PDF:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to download PDF. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+  }
+};
+
+const editQuote = () => {
+  if (!quote.value) return;
+  router.push(`/admin/quotes/${quote.value.id}/edit`);
 };
 
 const viewPatient = () => {
@@ -696,23 +952,132 @@ const viewPatient = () => {
   }
 };
 
+const updateQuoteStatus = async (newStatus: string) => {
+  if (!quote.value || quote.value.status === newStatus) return;
+  
+  // If changing to cancelled, prompt for cancellation reason
+  if (newStatus === 'cancelled') {
+    const result = await Swal.fire({
+      title: 'Quote Cancellation',
+      text: 'Please enter a reason for cancellation:',
+      input: 'textarea',
+      inputPlaceholder: 'Enter cancellation reason...',
+      inputAttributes: {
+        'aria-label': 'Cancellation reason',
+        'style': 'min-height: 100px;'
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Cancel Quote',
+      cancelButtonText: 'Keep Current Status',
+      confirmButtonColor: '#dc3545',
+      inputValidator: (value) => {
+        if (!value || value.trim().length === 0) {
+          return 'Please enter a reason for cancellation';
+        }
+        if (value.trim().length < 10) {
+          return 'Please provide a more detailed reason (at least 10 characters)';
+        }
+      }
+    });
+
+    if (!result.isConfirmed) {
+      // User cancelled, force reactive update to reset dropdown
+      const currentStatus = quote.value.status;
+      quote.value.status = '';
+      nextTick(() => {
+        quote.value.status = currentStatus;
+      });
+      return;
+    }
+
+    // Save the cancellation reason as a comment
+    try {
+      await ApiService.post('/comments/', {
+        content_type: getContentTypeId('quote'),
+        object_id: quote.value.id,
+        text: `Quote cancelled: ${result.value.trim()}`
+      });
+    } catch (error) {
+      console.error('Error saving cancellation comment:', error);
+      // Continue with status update even if comment fails
+    }
+  }
+  
+  try {
+    await ApiService.patch(`/quotes/${quote.value.id}/`, { status: newStatus });
+    
+    // Update the local quote status
+    quote.value.status = newStatus;
+    
+    // Show success notification
+    Swal.fire({
+      title: "Status Updated!",
+      text: `Quote status changed to ${newStatus}`,
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+    
+    // Refresh toolbar actions in case they depend on status
+    setupToolbarActions();
+    
+  } catch (error: any) {
+    console.error('Error updating quote status:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to update status. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+  }
+};
+
+const updateQuotePaymentStatus = async (newPaymentStatus: string) => {
+  if (!quote.value || quote.value.payment_status === newPaymentStatus) return;
+  
+  try {
+    await ApiService.patch(`/quotes/${quote.value.id}/`, { payment_status: newPaymentStatus });
+    
+    // Update the local quote payment status
+    quote.value.payment_status = newPaymentStatus;
+    
+    // Show success notification
+    Swal.fire({
+      title: "Payment Status Updated!",
+      text: `Payment status changed to ${newPaymentStatus}`,
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+    
+  } catch (error: any) {
+    console.error('Error updating quote payment status:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to update payment status. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+  }
+};
+
 // Handle trip creation success
 const onTripCreated = async (tripData: any) => {
   console.log('Trip created from quote:', tripData);
   
-  // Update quote status to confirmed/active
+  // Update quote status to active
   if (quote.value && quote.value.id) {
     try {
-      // Update the quote status to 'confirmed' since it's been converted to a trip
+      // Update the quote status to 'active' since it's been converted to a trip
       const updateData = {
-        status: 'confirmed'
+        status: 'active'
       };
       
-      console.log('Updating quote status to confirmed:', quote.value.id);
+      console.log('Updating quote status to active:', quote.value.id);
       await ApiService.patch(`/quotes/${quote.value.id}/`, updateData);
       
       // Update local quote object
-      quote.value.status = 'confirmed';
+      quote.value.status = 'active';
       
       // Set the associated trip data to show the trip card
       associatedTrip.value = tripData;
@@ -800,6 +1165,122 @@ const getAircraftTypeText = (): string => {
   };
   
   return typeMap[aircraftType] || aircraftType;
+};
+
+// Additional action handlers for dropdown menu
+const emailQuote = () => {
+  // Pre-fill form data
+  emailForm.value.email = quote.value?.contact?.email || '';
+  emailForm.value.subject = `Quote #${quote.value?.id?.slice(0, 8)} from JET ICU Medical Transport`;
+  emailForm.value.message = `Dear ${quote.value?.contact?.first_name || 'Customer'},\n\nPlease find your transportation quote attached.\n\nBest regards,\nJET ICU Medical Transport Team`;
+  emailForm.value.includePdf = true;
+  
+  // Open modal
+  const modalElement = document.getElementById('kt_modal_email_quote');
+  if (modalElement) {
+    const modal = new Modal(modalElement);
+    modal.show();
+  }
+};
+
+const sendEmailQuote = async () => {
+  if (!emailForm.value.email.trim()) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Please enter an email address.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+    return;
+  }
+  
+  isEmailSending.value = true;
+  
+  try {
+    // TODO: Replace with actual email API call when backend email service is ready
+    const emailData = {
+      quote_id: quote.value?.id,
+      to_email: emailForm.value.email,
+      subject: emailForm.value.subject,
+      message: emailForm.value.message,
+      include_pdf: emailForm.value.includePdf
+    };
+    
+    console.log('Email data prepared for backend API:', emailData);
+    console.log('PDF endpoint available at: /quotes/' + quote.value?.id + '/pdf/');
+    
+    // Simulate API call (replace with: await ApiService.post('/quotes/email/', emailData))
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Close modal
+    const modalElement = document.getElementById('kt_modal_email_quote');
+    if (modalElement) {
+      const modal = Modal.getInstance(modalElement);
+      modal?.hide();
+    }
+    
+    // Show success message
+    Swal.fire({
+      title: 'Email Sent!',
+      text: `Quote has been sent to ${emailForm.value.email}`,
+      icon: 'success',
+      confirmButtonText: 'OK'
+    });
+    
+    // Reset form
+    emailForm.value.email = '';
+    emailForm.value.subject = '';
+    emailForm.value.message = '';
+    emailForm.value.includePdf = true;
+    
+  } catch (error) {
+    console.error('Error sending email:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: 'Failed to send email. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+  } finally {
+    isEmailSending.value = false;
+  }
+};
+
+const deleteQuote = () => {
+  if (!quote.value) return;
+  
+  Swal.fire({
+    title: 'Delete Quote',
+    text: 'Are you sure you want to delete this quote? This action cannot be undone.',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, Delete',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#d33'
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        await ApiService.delete(`/quotes/${quote.value!.id}/`);
+        
+        Swal.fire({
+          title: 'Deleted!',
+          text: 'Quote has been deleted successfully.',
+          icon: 'success',
+          confirmButtonText: 'OK'
+        }).then(() => {
+          router.push('/admin/quotes');
+        });
+      } catch (error) {
+        console.error('Error deleting quote:', error);
+        Swal.fire({
+          title: 'Error!',
+          text: 'Failed to delete the quote. Please try again.',
+          icon: 'error',
+          confirmButtonText: 'OK'
+        });
+      }
+    }
+  });
 };
 
 onMounted(() => {

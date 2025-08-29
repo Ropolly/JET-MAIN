@@ -9,6 +9,12 @@ from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
 import json
 from itertools import chain
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from io import BytesIO
 # TripEvent imports moved to consolidated imports section below
 
 from .external.airport import get_airport, parse_fuel_cost
@@ -35,12 +41,13 @@ def get_fuel_prices(request, airport_code):
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment
 )
+from .utils import track_creation, track_deletion
 from .contact_service import ContactCreationService, ContactCreationSerializer
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
-    ContactSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
+    ContactSerializer, CommentSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
     AgreementSerializer, DocumentSerializer,
     # Standardized CRUD serializers
     UserProfileReadSerializer, UserProfileWriteSerializer,
@@ -85,7 +92,53 @@ class BaseViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination  # Apply pagination to all ViewSets
     
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        instance = serializer.save(created_by=self.request.user)
+        # Track creation
+        track_creation(instance, self.request.user)
+    
+    def perform_update(self, serializer):
+        from .signals import set_skip_signal_tracking
+        
+        # Get the old instance before updating
+        if serializer.instance and hasattr(serializer.instance, 'pk'):
+            old_instance = serializer.instance.__class__.objects.get(pk=serializer.instance.pk)
+            # Exclude system fields that shouldn't be tracked
+            excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
+            old_fields = {field.name: getattr(old_instance, field.name) 
+                         for field in old_instance._meta.fields 
+                         if not field.is_relation and field.name not in excluded_fields}
+        else:
+            old_fields = {}
+        
+        try:
+            # Skip signal tracking during this operation
+            set_skip_signal_tracking(True)
+            
+            # Save the instance
+            instance = serializer.save(modified_by=self.request.user)
+            
+        finally:
+            # Re-enable signal tracking
+            set_skip_signal_tracking(False)
+        
+        # Track modifications manually with user
+        if old_fields:
+            from .utils import track_modification
+            # Use same excluded fields for new values
+            excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
+            new_fields = {field.name: getattr(instance, field.name) 
+                         for field in instance._meta.fields 
+                         if not field.is_relation and field.name not in excluded_fields}
+            
+            for field_name, old_value in old_fields.items():
+                new_value = new_fields.get(field_name)
+                if old_value != new_value:
+                    track_modification(instance, field_name, old_value, new_value, self.request.user)
+        
+    def perform_destroy(self, instance):
+        # Track deletion before destroying
+        track_deletion(instance, self.request.user)
+        instance.delete()
 
 # Permission ViewSet
 class PermissionViewSet(BaseViewSet):
@@ -366,6 +419,343 @@ class QuoteViewSet(BaseViewSet):
         quote.transactions.add(transaction)
         
         return Response(TransactionReadSerializer(transaction).data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """
+        Generate and return a professional quote PDF
+        """
+        quote = self.get_object()
+        
+        # Generate PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            rightMargin=50, 
+            leftMargin=50, 
+            topMargin=50, 
+            bottomMargin=50
+        )
+        
+        # Custom styles
+        styles = getSampleStyleSheet()
+        
+        # Company header style
+        company_style = ParagraphStyle(
+            'CompanyHeader',
+            parent=styles['Normal'],
+            fontSize=18,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#1E40AF'),
+            alignment=0,  # Left alignment
+            spaceBefore=0,
+            spaceAfter=6,
+            leading=22
+        )
+        
+        # Company info style
+        company_info_style = ParagraphStyle(
+            'CompanyInfo',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#6B7280'),
+            alignment=0,
+            spaceBefore=0,
+            spaceAfter=0,
+            leading=11
+        )
+        
+        # Quote title style
+        quote_title_style = ParagraphStyle(
+            'QuoteTitle',
+            parent=styles['Normal'],
+            fontSize=24,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#1F2937'),
+            alignment=2,  # Right alignment
+            spaceBefore=0,
+            spaceAfter=6,
+            leading=28
+        )
+        
+        # Quote number style
+        quote_number_style = ParagraphStyle(
+            'QuoteNumber',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.HexColor('#6B7280'),
+            alignment=2,  # Right alignment
+            spaceBefore=0,
+            spaceAfter=0,
+            leading=12
+        )
+        
+        # Section header style
+        section_header_style = ParagraphStyle(
+            'SectionHeader',
+            parent=styles['Normal'],
+            fontSize=11,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#1F2937'),
+            spaceBefore=25,
+            spaceAfter=12,
+            leading=13,
+            leftIndent=0,
+            rightIndent=0
+        )
+        
+        # Build PDF content
+        story = []
+        
+        # Header section with company info and quote title
+        header_data = [
+            [
+                Paragraph("JET ICU MEDICAL TRANSPORT", company_style), 
+                Paragraph("QUOTE", quote_title_style)
+            ],
+            [
+                Paragraph("1511 N Westshore Blvd #650<br/>Tampa, FL 33607", company_info_style),
+                Paragraph(f"#{quote.id.hex[:8].upper()}", quote_number_style)
+            ],
+            [
+                Paragraph("Phone: (352) 796-2540<br/>Email: info@jeticu.com", company_info_style),
+                Paragraph(f"Date: {quote.created_on.strftime('%B %d, %Y') if quote.created_on else 'N/A'}", quote_number_style)
+            ]
+        ]
+        
+        header_table = Table(header_data, colWidths=[4.2*inch, 2.3*inch])
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        
+        story.append(header_table)
+        story.append(Spacer(1, 25))
+        
+        # Add customer info style
+        customer_info_style = ParagraphStyle(
+            'CustomerInfo',
+            parent=styles['Normal'],
+            fontSize=10,
+            leading=14,
+            spaceBefore=0,
+            spaceAfter=0,
+            leftIndent=0,
+            rightIndent=0
+        )
+        
+        # Bill To section
+        if quote.contact:
+            story.append(Paragraph("BILL TO", section_header_style))
+            
+            # Customer details
+            customer_lines = []
+            
+            # Name and business
+            name = f"{quote.contact.first_name} {quote.contact.last_name}"
+            if quote.contact.business_name:
+                customer_lines.append(quote.contact.business_name)
+                customer_lines.append(name)
+            else:
+                customer_lines.append(name)
+            
+            # Address
+            if quote.contact.address_line1:
+                customer_lines.append(quote.contact.address_line1)
+            if quote.contact.address_line2:
+                customer_lines.append(quote.contact.address_line2)
+            if quote.contact.city:
+                city_line = quote.contact.city
+                if quote.contact.state:
+                    city_line += f", {quote.contact.state}"
+                if quote.contact.zip:
+                    city_line += f" {quote.contact.zip}"
+                customer_lines.append(city_line)
+            
+            # Contact info
+            if quote.contact.email:
+                customer_lines.append(f"Email: {quote.contact.email}")
+            if quote.contact.phone:
+                customer_lines.append(f"Phone: {quote.contact.phone}")
+            
+            story.append(Paragraph("<br/>".join(customer_lines), customer_info_style))
+            story.append(Spacer(1, 25))
+        
+        # Service Details Section
+        story.append(Paragraph("SERVICE DETAILS", section_header_style))
+        
+        # Service table
+        service_data = [
+            ['Service', 'Details', 'Amount'],
+        ]
+        
+        # Aircraft type description
+        aircraft_desc = dict(quote._meta.get_field('aircraft_type').choices).get(quote.aircraft_type, quote.aircraft_type)
+        medical_desc = dict(quote._meta.get_field('medical_team').choices).get(quote.medical_team, quote.medical_team)
+        
+        # Route description
+        route = "Medical Air Transport"
+        if quote.pickup_airport and quote.dropoff_airport:
+            route = f"{quote.pickup_airport.name} → {quote.dropoff_airport.name}"
+        
+        service_data.append([
+            route,
+            f"Aircraft: {aircraft_desc}<br/>Medical Team: {medical_desc}<br/>Flight Time: {quote.estimated_flight_time if quote.estimated_flight_time else 'TBD'}",
+            f"${quote.quoted_amount:,.2f}"
+        ])
+        
+        # Ground transport if included
+        if quote.includes_grounds:
+            service_data.append([
+                "Ground Transportation",
+                "Airport transfers included",
+                "Included"
+            ])
+        
+        # Service table with better column distribution
+        service_table = Table(service_data, colWidths=[2.2*inch, 2.8*inch, 1.5*inch])
+        service_table.setStyle(TableStyle([
+            # Header row
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1F2937')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            
+            # Data rows
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),      # Service column
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),      # Details column
+            ('ALIGN', (2, 1), (2, -1), 'RIGHT'),     # Amount column
+            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+            
+            # Alternating row colors
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
+            
+            # Grid
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.HexColor('#1F2937')),
+            
+            # Padding - increased for better spacing
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        
+        story.append(service_table)
+        story.append(Spacer(1, 25))
+        
+        # Total section
+        total_data = [
+            ['', 'Subtotal:', f"${quote.quoted_amount:,.2f}"],
+            ['', 'Tax:', "$0.00"],
+            ['', 'TOTAL:', f"${quote.quoted_amount:,.2f}"]
+        ]
+        
+        total_table = Table(total_data, colWidths=[3.2*inch, 1.6*inch, 1.7*inch])
+        total_table.setStyle(TableStyle([
+            ('FONTNAME', (1, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (1, 0), (-1, 1), 10),
+            ('FONTSIZE', (1, 2), (-1, 2), 12),  # Total row larger
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('TEXTCOLOR', (1, 2), (-1, 2), colors.HexColor('#1F2937')),
+            ('LINEABOVE', (1, 2), (-1, 2), 1.5, colors.HexColor('#1F2937')),
+            ('TOPPADDING', (1, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (1, 0), (-1, -1), 6),
+            ('LEFTPADDING', (1, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (1, 0), (-1, -1), 4),
+        ]))
+        
+        story.append(total_table)
+        story.append(Spacer(1, 25))
+        
+        # Patient Information (if applicable)
+        if quote.patient and quote.patient.info:
+            story.append(Paragraph("PATIENT INFORMATION", section_header_style))
+            
+            patient_info_data = [
+                ['Patient Name:', f"{quote.patient.info.first_name} {quote.patient.info.last_name}"],
+            ]
+            
+            if quote.patient.info.date_of_birth:
+                patient_info_data.append(['Date of Birth:', quote.patient.info.date_of_birth.strftime('%B %d, %Y')])
+            
+            if quote.patient.info.nationality:
+                patient_info_data.append(['Nationality:', quote.patient.info.nationality])
+            
+            patient_table = Table(patient_info_data, colWidths=[1.8*inch, 4.7*inch])
+            patient_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            
+            story.append(patient_table)
+            story.append(Spacer(1, 25))
+        
+        # Terms and Conditions
+        story.append(Paragraph("TERMS & CONDITIONS", section_header_style))
+        
+        # Terms style
+        terms_style = ParagraphStyle(
+            'Terms',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            spaceBefore=0,
+            spaceAfter=0,
+            leftIndent=0,
+            rightIndent=0
+        )
+        
+        terms_text = """
+        • This quote is valid for 30 days from the date of issue<br/>
+        • Payment is due upon acceptance of services<br/>
+        • Cancellation policy: 24-hour notice required<br/>
+        • Weather and operational delays may affect scheduling<br/>
+        • All flights subject to FAA regulations and crew duty time requirements<br/>
+        • Medical equipment and staff included as specified
+        """
+        
+        story.append(Paragraph(terms_text, terms_style))
+        story.append(Spacer(1, 25))
+        
+        # Footer
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#6B7280'),
+            alignment=1,  # Center
+            spaceBefore=0,
+            spaceAfter=0,
+            leading=10
+        )
+        
+        story.append(Paragraph("Thank you for choosing JET ICU Medical Transport", footer_style))
+        story.append(Paragraph("Your trusted partner in medical aviation", footer_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Return PDF response
+        buffer.seek(0)
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="quote_{quote.id.hex[:8]}.pdf"'
+        return response
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
@@ -674,6 +1064,18 @@ class StaffRoleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = StaffRole.objects.all().order_by("code")
     serializer_class = StaffRoleSerializer
+    
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        track_creation(instance, self.request.user)
+    
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+        # Updates are automatically tracked by signals
+        
+    def perform_destroy(self, instance):
+        track_deletion(instance, self.request.user)
+        instance.delete()
 
 
 class StaffRoleMembershipViewSet(viewsets.ModelViewSet):
@@ -692,6 +1094,18 @@ class StaffRoleMembershipViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve"):
             return StaffRoleMembershipReadSerializer
         return StaffRoleMembershipWriteSerializer
+    
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        track_creation(instance, self.request.user)
+    
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+        # Updates are automatically tracked by signals
+        
+    def perform_destroy(self, instance):
+        track_deletion(instance, self.request.user)
+        instance.delete()
 
 
 @api_view(['POST'])
@@ -770,3 +1184,361 @@ class TripEventViewSet(BaseViewSet):
         return (TripEventReadSerializer
                 if self.action in ("list", "retrieve")
                 else TripEventWriteSerializer)
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing comments on any model instance.
+    Supports filtering by content_type and object_id.
+    """
+    queryset = Comment.objects.select_related('created_by', 'content_type').order_by('-created_on')
+    serializer_class = CommentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['text']
+    ordering_fields = ['created_on', 'modified_on']
+    pagination_class = StandardPagination
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by content_type and object_id if provided
+        content_type = self.request.query_params.get('content_type')
+        object_id = self.request.query_params.get('object_id')
+        
+        if content_type:
+            # Support both model name and content_type id
+            if content_type.isdigit():
+                queryset = queryset.filter(content_type_id=content_type)
+            else:
+                from django.contrib.contenttypes.models import ContentType
+                try:
+                    ct = ContentType.objects.get(model=content_type.lower())
+                    queryset = queryset.filter(content_type=ct)
+                except ContentType.DoesNotExist:
+                    queryset = queryset.none()
+        
+        if object_id:
+            queryset = queryset.filter(object_id=object_id)
+        
+        return queryset
+    
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user, modified_by=self.request.user)
+        # Track creation
+        track_creation(instance, self.request.user)
+    
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+        # Updates are automatically tracked by signals
+        
+    def perform_destroy(self, instance):
+        # Track deletion before destroying
+        track_deletion(instance, self.request.user)
+        instance.delete()
+    
+    @action(detail=False, methods=['get'])
+    def for_object(self, request):
+        """Get all comments for a specific object"""
+        model_name = request.query_params.get('model')
+        object_id = request.query_params.get('object_id')
+        
+        if not model_name or not object_id:
+            return Response(
+                {'error': 'Both model and object_id parameters are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        from django.contrib.contenttypes.models import ContentType
+        try:
+            content_type = ContentType.objects.get(model=model_name.lower())
+            comments = self.get_queryset().filter(
+                content_type=content_type,
+                object_id=object_id
+            )
+            serializer = self.get_serializer(comments, many=True)
+            return Response(serializer.data)
+        except ContentType.DoesNotExist:
+            return Response(
+                {'error': f'Model {model_name} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+# Timezone utility API endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_airport_timezone_info(request, airport_id):
+    """
+    Get timezone information for a specific airport at a given datetime
+    Query params: datetime (ISO format, optional - defaults to current time)
+    """
+    try:
+        from .models import Airport
+        from .timezone_utils import get_timezone_info
+        from datetime import datetime
+        import pytz
+        
+        airport = Airport.objects.get(id=airport_id)
+        
+        if not airport.timezone:
+            return Response({
+                'error': 'Airport does not have timezone information'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse datetime from query params or use current time
+        dt_param = request.query_params.get('datetime')
+        if dt_param:
+            try:
+                dt = datetime.fromisoformat(dt_param.replace('Z', '+00:00'))
+            except ValueError:
+                return Response({
+                    'error': 'Invalid datetime format. Use ISO format (e.g., 2023-12-25T14:30:00Z)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            dt = timezone.now()
+        
+        tz_info = get_timezone_info(airport.timezone, dt)
+        tz_info['airport'] = {
+            'id': airport.id,
+            'name': airport.name,
+            'ident': airport.ident,
+            'timezone': airport.timezone
+        }
+        
+        return Response(tz_info)
+        
+    except Airport.DoesNotExist:
+        return Response({
+            'error': 'Airport not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error getting timezone info: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def convert_timezone(request):
+    """
+    Convert times between UTC and local airport time
+    
+    Request body:
+    {
+        "airport_id": "uuid",
+        "datetime": "2023-12-25T14:30:00",
+        "from_timezone": "local" or "utc",
+        "to_timezone": "utc" or "local"
+    }
+    """
+    try:
+        from .models import Airport
+        from .timezone_utils import convert_local_to_utc, convert_utc_to_local
+        from datetime import datetime
+        import pytz
+        
+        data = request.data
+        airport_id = data.get('airport_id')
+        dt_str = data.get('datetime')
+        from_tz = data.get('from_timezone', 'local')
+        to_tz = data.get('to_timezone', 'utc')
+        
+        if not all([airport_id, dt_str]):
+            return Response({
+                'error': 'airport_id and datetime are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        airport = Airport.objects.get(id=airport_id)
+        
+        if not airport.timezone:
+            return Response({
+                'error': 'Airport does not have timezone information'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse datetime
+        try:
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if dt.tzinfo:
+                dt = dt.replace(tzinfo=None)  # Make naive for conversion functions
+        except ValueError:
+            return Response({
+                'error': 'Invalid datetime format. Use ISO format (e.g., 2023-12-25T14:30:00)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Perform conversion
+        if from_tz == 'local' and to_tz == 'utc':
+            converted_dt = convert_local_to_utc(dt, airport.timezone)
+        elif from_tz == 'utc' and to_tz == 'local':
+            converted_dt = convert_utc_to_local(dt, airport.timezone)
+        else:
+            return Response({
+                'error': 'Invalid timezone conversion. Use local<->utc'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'original_datetime': dt.isoformat(),
+            'converted_datetime': converted_dt.isoformat(),
+            'airport': {
+                'id': airport.id,
+                'name': airport.name,
+                'ident': airport.ident,
+                'timezone': airport.timezone
+            },
+            'conversion': f'{from_tz} -> {to_tz}'
+        })
+        
+    except Airport.DoesNotExist:
+        return Response({
+            'error': 'Airport not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Conversion error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def validate_flight_times(request):
+    """
+    Validate timezone consistency between local and UTC times for flight legs
+    
+    Request body:
+    {
+        "departure_airport_id": "uuid",
+        "departure_local": "2023-12-25T14:30:00",
+        "departure_utc": "2023-12-25T19:30:00Z",
+        "arrival_airport_id": "uuid", 
+        "arrival_local": "2023-12-25T16:30:00",
+        "arrival_utc": "2023-12-25T21:30:00Z"
+    }
+    """
+    try:
+        from .models import Airport
+        from .timezone_utils import validate_time_consistency, check_dst_transition_warning, calculate_flight_duration_with_timezones
+        from datetime import datetime
+        
+        data = request.data
+        
+        # Parse departure info
+        dep_airport_id = data.get('departure_airport_id')
+        dep_local_str = data.get('departure_local')
+        dep_utc_str = data.get('departure_utc')
+        
+        # Parse arrival info
+        arr_airport_id = data.get('arrival_airport_id')
+        arr_local_str = data.get('arrival_local')
+        arr_utc_str = data.get('arrival_utc')
+        
+        if not all([dep_airport_id, dep_local_str, dep_utc_str]):
+            return Response({
+                'error': 'departure_airport_id, departure_local, and departure_utc are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        dep_airport = Airport.objects.get(id=dep_airport_id)
+        
+        # Parse departure times
+        dep_local = datetime.fromisoformat(dep_local_str.replace('Z', '+00:00')).replace(tzinfo=None)
+        dep_utc = datetime.fromisoformat(dep_utc_str.replace('Z', '+00:00'))
+        
+        results = {
+            'departure_valid': False,
+            'arrival_valid': False,
+            'warnings': []
+        }
+        
+        # Validate departure times
+        if dep_airport.timezone:
+            results['departure_valid'] = validate_time_consistency(dep_local, dep_utc, dep_airport.timezone)
+            
+            # Check for DST warnings
+            dst_warning = check_dst_transition_warning(dep_local, dep_airport.timezone)
+            if dst_warning:
+                results['warnings'].append(f"Departure: {dst_warning['message']}")
+        
+        # Validate arrival times if provided
+        if arr_airport_id and arr_local_str and arr_utc_str:
+            arr_airport = Airport.objects.get(id=arr_airport_id)
+            arr_local = datetime.fromisoformat(arr_local_str.replace('Z', '+00:00')).replace(tzinfo=None)
+            arr_utc = datetime.fromisoformat(arr_utc_str.replace('Z', '+00:00'))
+            
+            if arr_airport.timezone:
+                results['arrival_valid'] = validate_time_consistency(arr_local, arr_utc, arr_airport.timezone)
+                
+                # Check for DST warnings
+                dst_warning = check_dst_transition_warning(arr_local, arr_airport.timezone)
+                if dst_warning:
+                    results['warnings'].append(f"Arrival: {dst_warning['message']}")
+                
+                # Calculate flight duration with timezone info
+                duration, info = calculate_flight_duration_with_timezones(
+                    dep_local, dep_airport.timezone,
+                    arr_local, arr_airport.timezone
+                )
+                
+                results['flight_duration_hours'] = duration
+                results['flight_info'] = info
+        
+        results['overall_valid'] = results['departure_valid'] and (
+            results['arrival_valid'] if 'arrival_valid' in results and arr_airport_id else True
+        )
+        
+        return Response(results)
+        
+    except Airport.DoesNotExist:
+        return Response({
+            'error': 'Airport not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Validation error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def convert_timezone(request):
+    """
+    Convert departure time + flight duration to arrival time accounting for timezones
+    Used by frontend forms to display correct arrival times
+    """
+    try:
+        departure_date = request.data.get('departure_date')
+        departure_time = request.data.get('departure_time')
+        flight_time_hours = request.data.get('flight_time_hours')
+        origin_timezone = request.data.get('origin_timezone')
+        destination_timezone = request.data.get('destination_timezone')
+        
+        if not all([departure_date, departure_time, flight_time_hours, origin_timezone, destination_timezone]):
+            return Response({
+                'error': 'Missing required fields: departure_date, departure_time, flight_time_hours, origin_timezone, destination_timezone'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        from .timezone_utils import convert_local_to_utc, convert_utc_to_local
+        from datetime import datetime, timedelta
+        
+        # Create departure datetime
+        departure_local = datetime.strptime(f"{departure_date} {departure_time}:00", "%Y-%m-%d %H:%M:%S")
+        
+        # Convert to UTC using origin timezone
+        departure_utc = convert_local_to_utc(departure_local, origin_timezone)
+        
+        # Add flight time
+        arrival_utc = departure_utc + timedelta(hours=float(flight_time_hours))
+        
+        # Convert to destination local time
+        arrival_local = convert_utc_to_local(arrival_utc, destination_timezone)
+        
+        return Response({
+            'arrival_date': arrival_local.date().isoformat(),
+            'arrival_time': arrival_local.time().strftime('%H:%M'),
+            'departure_utc': departure_utc.isoformat(),
+            'arrival_utc': arrival_utc.isoformat(),
+            'flight_duration_hours': float(flight_time_hours)
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': f'Timezone conversion error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

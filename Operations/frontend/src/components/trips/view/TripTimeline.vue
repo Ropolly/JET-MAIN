@@ -45,11 +45,11 @@
               </div>
               <div class="row text-gray-600 fs-7">
                 <div class="col-md-6">
-                  <div><strong>Departure:</strong> {{ formatDateTime(item.departure_time_local) }}</div>
+                  <div><strong>Departure:</strong> {{ formatDateTimeWithTimezone(item.departure_time_local, item.departure_timezone_info) }}</div>
                   <div><strong>Distance:</strong> {{ formatDistance(item.distance) }}</div>
                 </div>
                 <div class="col-md-6">
-                  <div><strong>Arrival:</strong> {{ formatDateTime(item.arrival_time_local) }}</div>
+                  <div><strong>Arrival:</strong> {{ formatDateTimeWithTimezone(item.arrival_time_local, item.arrival_timezone_info) }}</div>
                   <div><strong>Flight Time:</strong> {{ formatDuration(item.flight_time) }}</div>
                 </div>
               </div>
@@ -98,10 +98,10 @@
               </div>
               <div class="row text-gray-600 fs-7">
                 <div class="col-md-6">
-                  <div><strong>Start:</strong> {{ formatDateTime(item.start_time_local) }}</div>
+                  <div><strong>Start:</strong> {{ formatDateTimeWithTimezone(item.start_time_local, item.airport_timezone_info) }}</div>
                 </div>
                 <div class="col-md-6" v-if="item.end_time_local">
-                  <div><strong>End:</strong> {{ formatDateTime(item.end_time_local) }}</div>
+                  <div><strong>End:</strong> {{ formatDateTimeWithTimezone(item.end_time_local, item.airport_timezone_info) }}</div>
                   <div><strong>Duration:</strong> {{ calculateEventDuration(item.start_time_utc, item.end_time_utc) }}</div>
                 </div>
               </div>
@@ -219,10 +219,49 @@ export default defineComponent({
     const formatDateTime = (dateTimeString: string | undefined): string => {
       if (!dateTimeString) return 'TBD';
       try {
-        const date = new Date(dateTimeString);
+        // Handle the case where backend sends timezone-aware strings that should be treated as local
+        let date;
+        if (dateTimeString.includes('+00') || dateTimeString.includes('Z')) {
+          // Strip timezone info and parse as local time
+          const dateOnly = dateTimeString.split('+')[0].split('Z')[0];
+          date = new Date(dateOnly);
+        } else {
+          date = new Date(dateTimeString);
+        }
         return date.toLocaleString();
       } catch {
         return 'Invalid Date';
+      }
+    };
+
+    // Format datetime with airport timezone information
+    const formatDateTimeWithTimezone = (dateString?: string, timezoneInfo?: any): string => {
+      try {
+        if (!dateString) return 'TBD';
+        
+        // If we have timezone info from the backend, use the formatted time
+        if (timezoneInfo?.formatted_time) {
+          // Parse the date as local time, not UTC
+          let localDate;
+          if (dateString.includes('+00') || dateString.includes('Z')) {
+            // This is stored as UTC but represents local time - parse as local
+            const dateOnly = dateString.split('+')[0].split('Z')[0];
+            localDate = new Date(dateOnly);
+          } else {
+            localDate = new Date(dateString);
+          }
+          
+          return localDate.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          }) + ', ' + timezoneInfo.formatted_time;
+        }
+        
+        // Fallback to regular formatting
+        return formatDateTime(dateString);
+      } catch (error) {
+        return 'Invalid date';
       }
     };
 
@@ -293,6 +332,7 @@ export default defineComponent({
       loading,
       error,
       formatDateTime,
+      formatDateTimeWithTimezone,
       formatDistance,
       formatDuration,
       calculateEventDuration,

@@ -81,33 +81,44 @@
               <a @click.prevent="handleViewPatientDetails(patient)" href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ getPatientName(patient) }}
               </a>
-              <span class="text-muted fs-7">{{ formatDateOfBirth(patient.date_of_birth) }}</span>
+              <span class="text-muted fs-7">{{ patient.info?.email || 'No email' }}</span>
             </div>
           </div>
         </template>
 
-        <template v-slot:medical="{ row: patient }">
-          <div class="d-flex flex-column">
-            <span class="text-dark fw-semibold fs-6">
-              {{ patient.special_instructions || 'No special instructions' }}
-            </span>
-            <span class="text-muted fs-7">{{ patient.nationality || 'Nationality not set' }}</span>
-          </div>
+        <template v-slot:phone="{ row: patient }">
+          <span class="text-dark fs-7">{{ patient.info?.phone || 'N/A' }}</span>
         </template>
 
-        <template v-slot:mobility="{ row: patient }">
-          <div class="d-flex flex-column">
-            <span :class="`badge badge-light-${(patient.bed_at_origin || patient.bed_at_destination) ? 'warning' : 'success'} fs-7 fw-bold mb-1`">
-              {{ (patient.bed_at_origin || patient.bed_at_destination) ? 'Bed Required' : 'No Bed Needed' }}
-            </span>
-            <span class="text-muted fs-8">
-              {{ getBedRequirements(patient) }}
+
+        <template v-slot:trips="{ row: patient }">
+          <div v-if="patient.trips && patient.trips.length > 0">
+            <a 
+              @click.prevent="navigateToTrip(patient.trips[0].id)" 
+              href="#" 
+              class="text-primary text-hover-primary fw-bold">
+              {{ patient.trips[0].trip_number }}
+            </a>
+            <span v-if="patient.trips.length > 1" class="text-muted ms-1">
+              +{{ patient.trips.length - 1 }}
             </span>
           </div>
+          <span v-else class="text-muted fs-7">No trips</span>
         </template>
 
-        <template v-slot:created="{ row: patient }">
-          {{ formatDate(patient.created_on) }}
+        <template v-slot:quotes="{ row: patient }">
+          <div v-if="patient.quotes && patient.quotes.length > 0">
+            <a 
+              @click.prevent="navigateToQuote(patient.quotes[0].id)" 
+              href="#" 
+              class="text-primary text-hover-primary fw-bold">
+              #{{ patient.quotes[0].id.slice(0, 8) }}
+            </a>
+            <span v-if="patient.quotes.length > 1" class="text-muted ms-1">
+              +{{ patient.quotes.length - 1 }}
+            </span>
+          </div>
+          <span v-else class="text-muted fs-7">No quotes</span>
         </template>
 
         <template v-slot:actions="{ row: patient }">
@@ -127,41 +138,9 @@
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click.prevent="handleView(patient)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="eye" icon-class="fs-6 me-2" />
-                View Details
-              </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
               <a @click.prevent="handleEdit(patient)" href="#" class="menu-link px-3">
                 <KTIcon icon-name="pencil" icon-class="fs-6 me-2" />
                 Edit Patient
-              </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click.prevent="handleViewContact(patient)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="profile-user" icon-class="fs-6 me-2" />
-                View Contact
-              </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click.prevent="handleViewTrips(patient)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="airplane" icon-class="fs-6 me-2" />
-                View Trips
-              </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click.prevent="handleUpdateStatus(patient)" href="#" class="menu-link px-3">
-                <KTIcon icon-name="flag" icon-class="fs-6 me-2" />
-                Update Status
               </a>
             </div>
             <!--end::Menu item-->
@@ -200,10 +179,17 @@
     @patientCreated="onPatientFromContactCreated" 
     @modalClosed="onPatientFromContactModalClosed" 
   />
+  
+  <!-- Edit Patient Modal -->
+  <EditPatientModal 
+    ref="editPatientModalRef"
+    @patientUpdated="onPatientUpdated" 
+  />
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, nextTick } from "vue";
+import { useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
@@ -214,6 +200,7 @@ import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 // CreatePatientModal removed - using direct contact modal workflow
 import CreateContactModal from "@/components/modals/CreateContactModal.vue";
 import CreatePatientFromContactModal from "@/components/modals/CreatePatientFromContactModal.vue";
+import EditPatientModal from "@/components/modals/EditPatientModal.vue";
 import { Modal } from "bootstrap";
 
 interface Patient {
@@ -239,6 +226,8 @@ interface Patient {
   bed_at_origin: boolean;
   bed_at_destination: boolean;
   created_on: string;
+  trips: Array<{id: string, trip_number: string}>;
+  quotes: Array<{id: string}>;
 }
 
 export default defineComponent({
@@ -248,14 +237,17 @@ export default defineComponent({
     // CreatePatientModal removed - using direct workflow
     CreateContactModal,
     CreatePatientFromContactModal,
+    EditPatientModal,
   },
   setup() {
+    const router = useRouter();
     const patients = ref<Patient[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
     const { setToolbarActions } = useToolbar();
     const contactModalRef = ref();
     const patientFromContactModalRef = ref();
+    const editPatientModalRef = ref();
     const createPatientModalRef = ref();
 
     const headerConfig = ref([
@@ -265,19 +257,19 @@ export default defineComponent({
         sortEnabled: true,
       },
       {
-        columnName: "Special Instructions",
-        columnLabel: "medical",
+        columnName: "Phone",
+        columnLabel: "phone",
         sortEnabled: false,
       },
       {
-        columnName: "Bed Requirements",
-        columnLabel: "mobility",
-        sortEnabled: true,
+        columnName: "Trips",
+        columnLabel: "trips",
+        sortEnabled: false,
       },
       {
-        columnName: "Created",
-        columnLabel: "created",
-        sortEnabled: true,
+        columnName: "Quotes",
+        columnLabel: "quotes",
+        sortEnabled: false,
       },
       {
         columnName: "Actions",
@@ -337,12 +329,20 @@ export default defineComponent({
     };
 
     const handleEdit = (patient: Patient) => {
-      Swal.fire({
-        title: "Edit Patient",
-        text: `Edit form for ${getPatientName(patient)} would open here`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      if (editPatientModalRef.value?.setPatient) {
+        editPatientModalRef.value.setPatient(patient);
+        
+        // Open the edit modal
+        const editModalElement = document.getElementById('kt_modal_edit_patient');
+        if (editModalElement) {
+          try {
+            const editModal = new Modal(editModalElement);
+            editModal.show();
+          } catch (error) {
+            console.error('Error opening edit patient modal:', error);
+          }
+        }
+      }
     };
 
     const handleView = (patient: Patient) => {
@@ -418,6 +418,14 @@ export default defineComponent({
         // Navigate to patient details page using patient ID
         router.push(`/admin/contacts/patients/${patient.id}`);
       }
+    };
+
+    const navigateToTrip = (tripId: string) => {
+      router.push(`/admin/trips/${tripId}`);
+    };
+
+    const navigateToQuote = (quoteId: string) => {
+      router.push(`/admin/quotes/${quoteId}`);
     };
 
     const handleViewTrips = (patient: Patient) => {
@@ -564,6 +572,12 @@ export default defineComponent({
       console.log('Patient from contact modal closed');
     };
 
+    const onPatientUpdated = (updatedPatient: any) => {
+      console.log('Patient updated:', updatedPatient);
+      // Refresh the patients list
+      fetchPatients();
+    };
+
     const openContactForPatientCreation = () => {
       console.log('Opening contact creation modal for patient');
       nextTick(() => {
@@ -681,12 +695,10 @@ export default defineComponent({
       onItemsPerPageChange,
       handleCreate,
       handleEdit,
-      handleView,
       handleDelete,
-      handleViewContact,
       handleViewPatientDetails,
-      handleViewTrips,
-      handleUpdateStatus,
+      navigateToTrip,
+      navigateToQuote,
       getPatientName,
       formatDate,
       formatDateOfBirth,
@@ -695,9 +707,11 @@ export default defineComponent({
       onContactCreatedForPatient,
       onPatientFromContactCreated,
       onPatientFromContactModalClosed,
+      onPatientUpdated,
       openContactForPatientCreation,
       contactModalRef,
       patientFromContactModalRef,
+      editPatientModalRef,
       createPatientModalRef,
     };
   },
