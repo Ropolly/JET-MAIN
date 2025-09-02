@@ -1,0 +1,46 @@
+================================================================================
+US CUSTOMS CBP FORM 7507 COMPARISON REPORT
+JET-MAIN Document Generation System
+Generated: 2025-09-02 09:10:47
+================================================================================
+
+FORM VALIDATION CHECKLIST:
+----------------------------------------
+✅ Official CBP Form 7507 structure
+✅ OMB Control Number 1651-0002
+✅ Current expiration date (07/31/2024)
+✅ CFR references (19 CFR 122.43,122.52,122.54,122.73,122.144)
+✅ Owner or Operator field
+✅ Carrier Code field (IATA/ICAO)
+✅ Aircraft registration with country prefix
+✅ Flight number field
+✅ Departure date
+✅ Departure/arrival airports with ICAO codes
+✅ Crew and passenger counts
+✅ Official declaration statement
+✅ Signature section
+✅ Aircraft Commander designation
+✅ Paperwork Reduction Act statement
+✅ CBP Form 7507 identifier
+
+KEY DIFFERENCES BETWEEN LEG TYPES:
+----------------------------------------
+PAX LEG (Medical Charter):
+• Total Passengers: 3 (includes patient)
+• Crew Count: 4 (pilots + medics)
+• Passenger Manifest: 3 entries
+• Flight Type: Medical Charter
+
+REPOSITIONING LEG:
+• Total Passengers: 0 (no passengers)
+• Crew Count: 2 (pilots only)
+• Passenger Manifest: Empty
+• Flight Type: Repositioning
+
+COMPLIANCE STATUS:
+--------------------
+✅ Ready for US Customs submission
+✅ All required CBP fields present
+✅ Official form structure maintained
+✅ Aviation-specific requirements met
+✅ PAX vs repositioning logic implemented

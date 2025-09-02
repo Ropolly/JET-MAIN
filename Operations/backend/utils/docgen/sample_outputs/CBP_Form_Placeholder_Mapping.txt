@@ -1,0 +1,84 @@
+================================================================================
+CBP FORM 7507 PLACEHOLDER MAPPING
+Document Generator Field Mapping Reference
+================================================================================
+
+PLACEHOLDER: {{AIRCRAFT_COMPANY}}
+Description: Aircraft owner/operator company
+Example Value: JET Charter Services LLC
+------------------------------------------------------------
+
+PLACEHOLDER: {{CARRIER_CODE}}
+Description: IATA/ICAO carrier code
+Example Value: JCS
+------------------------------------------------------------
+
+PLACEHOLDER: {{AIRCRAFT_TAIL}}
+Description: Aircraft registration/tail number
+Example Value: N525JT
+------------------------------------------------------------
+
+PLACEHOLDER: {{FLIGHT_NUMBER}}
+Description: Flight number or trip identifier
+Example Value: JET001
+------------------------------------------------------------
+
+PLACEHOLDER: {{DEPARTURE_DATE}}
+Description: Date of departure
+Example Value: 09/02/2024
+------------------------------------------------------------
+
+PLACEHOLDER: {{ORIGIN_AIRPORT}}
+Description: Departure airport name
+Example Value: Teterboro Airport
+------------------------------------------------------------
+
+PLACEHOLDER: {{ORIGIN_ICAO}}
+Description: Departure airport ICAO code
+Example Value: KTEB
+------------------------------------------------------------
+
+PLACEHOLDER: {{DESTINATION_AIRPORT}}
+Description: Arrival airport name
+Example Value: Miami International Airport
+------------------------------------------------------------
+
+PLACEHOLDER: {{DESTINATION_ICAO}}
+Description: Arrival airport ICAO code
+Example Value: KMIA
+------------------------------------------------------------
+
+PLACEHOLDER: {{CREW_COUNT}}
+Description: Total crew members
+Example Value: 4
+------------------------------------------------------------
+
+PLACEHOLDER: {{TOTAL_PAX_COUNT}}
+Description: Total passengers (including patient)
+Example Value: 3
+------------------------------------------------------------
+
+PLACEHOLDER: {{PRIMARY_PILOT}}
+Description: Primary pilot name for signature
+Example Value: Captain John Smith
+------------------------------------------------------------
+
+PLACEHOLDER: {{PILOT_TITLE}}
+Description: Pilot title/designation
+Example Value: Aircraft Commander
+------------------------------------------------------------
+
+PLACEHOLDER: {{PASSENGERS_AND_PATIENT_LIST}}
+Description: Formatted passenger/patient manifest
+Example Value: [Dynamic content]
+------------------------------------------------------------
+
+PASSENGER MANIFEST FORMAT:
+------------------------------
+For each passenger/patient:
+• Name (Type) - Nationality: Country - Passport: Number - DOB: Date
+
+Example:
+1. Robert Wilson (Patient) - Nationality: United States - Passport: P123456789 - DOB: 1965-03-15
+2. Emily Wilson (Passenger) - Nationality: United States - Passport: P987654321 - DOB: 1968-07-22
+3. Dr. Jennifer Thompson (Passenger) - Nationality: United States - Passport: P456789123 - DOB: 1972-11-08

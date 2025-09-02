@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from . import document_views
 
 router = DefaultRouter()
 router.register(r'permissions', views.PermissionViewSet)
@@ -38,4 +39,10 @@ urlpatterns = [
     path('airports/<uuid:airport_id>/timezone-info/', views.get_airport_timezone_info, name='airport-timezone-info'),
     path('timezone/convert/', views.convert_timezone, name='timezone-convert'),
     path('timezone/validate-flight-times/', views.validate_flight_times, name='validate-flight-times'),
+    
+    # Document generation endpoints
+    path('documents/gendec/<uuid:trip_line_id>/', document_views.generate_gendec, name='generate-gendec'),
+    path('documents/handling-request/<uuid:trip_line_id>/', document_views.generate_handling_request, name='generate-handling-request'),
+    path('documents/trip/<uuid:trip_id>/', document_views.generate_trip_documents, name='generate-trip-documents'),
+    path('documents/info/', document_views.document_info, name='document-info'),
 ]

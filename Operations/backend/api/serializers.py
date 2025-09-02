@@ -159,7 +159,7 @@ class AircraftSerializer(serializers.ModelSerializer):
 class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
-        fields = ['id', 'filename', 'flag', 'created_on']
+        fields = ['id', 'filename', 'document_type', 'created_on']
 
 # Agreement serializer
 class AgreementSerializer(serializers.ModelSerializer):
@@ -907,7 +907,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Document
-        fields = ['id', 'filename', 'flag', 'content_type', 'download_url', 'created_on']
+        fields = ['id', 'filename', 'content_type', 'download_url', 'created_on', 'document_type']
     
     def get_content_type(self, obj):
         # Return MIME type based on file extension
@@ -926,7 +926,7 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Document
-        fields = ['id', 'filename', 'content', 'flag']
+        fields = ['id', 'filename', 'content', 'document_type']
 
 # 8) Transactions
 class TransactionPublicReadSerializer(serializers.ModelSerializer):

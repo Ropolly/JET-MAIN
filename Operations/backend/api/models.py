@@ -185,11 +185,21 @@ class Airport(BaseModel):
 
 # Document model (for file storage)
 class Document(models.Model):
+    DOCUMENT_TYPE_CHOICES = [
+        ('gendec', 'General Declaration'),
+        ('customer_itin', 'Customer Itinerary'),
+        ('itinerary', 'Itinerary'),
+        ('handling_request', 'Handling Request'),
+        ('quote_form', 'Quote Form'),
+        ('other', 'Other'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     filename = models.CharField(max_length=255)
     content = models.BinaryField()
     flag = models.IntegerField(default=0)
     created_on = models.DateTimeField(auto_now_add=True)
+    document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPE_CHOICES, default='other')
     
     def __str__(self):
         return self.filename

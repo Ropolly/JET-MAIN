@@ -1,0 +1,56 @@
+================================================================================
+SAMPLE: US CUSTOMS CBP FORM 7507 - PAX LEG (MEDICAL CHARTER)
+Generated: 2025-09-02 09:10:47
+Trip: JET-2024-0902
+================================================================================
+
+DEPARTMENT OF HOMELAND SECURITY
+
+OMB CONTROL NUMBER: 1651-0002
+EXPIRATION DATE: 07/31/2024
+
+U.S. Customs and Border Protection
+
+GENERAL DECLARATION
+(Outward/Inward)
+
+AGRICULTURE, CUSTOMS, IMMIGRATION, AND PUBLIC HEALTH
+19 CFR 122.43,122.52,122.54,122.73,122.144
+
+Owner or Operator: JET Charter Services LLC        Carrier Code (if applicable): JCS
+
+Marks of Nationality and Registration: N525JT        Flight No.: JET001        Date: 09/02/2024
+
+Departure from: Teterboro Airport (KTEB)
+
+Arrival at: Miami International Airport (KMIA)
+
+Total Number of Crew: 4        Total Number of Passengers: 3
+
+I declare that all statements and particulars contained in this General Declaration, and in any supplementary forms required to be presented with this General Declaration, are complete, exact and true to the best of my knowledge and that all through passengers will continue/have continued on the flight.
+
+Printed Name: Captain John Smith
+
+Title: Aircraft Commander
+
+SIGNATURE: _____________________________________________
+           Authorized Agent or Aircraft Commander
+
+
+============================================================
+PASSENGER AND PATIENT MANIFEST
+============================================================
+
+1. Robert Wilson (Patient) - Nationality: United States - Passport: P123456789 - DOB: 1965-03-15
+2. Emily Wilson (Passenger) - Nationality: United States - Passport: P987654321 - DOB: 1968-07-22
+3. Dr. Jennifer Thompson (Passenger) - Nationality: United States - Passport: P456789123 - DOB: 1972-11-08
+
+────────────────────────────────────────────────────────────
+
+The information requested by the official General Declaration may be furnished on ICAO Annex 9, Appendix 1, provided the form approximates (but does not exceed) 8 1/2" x 11", and is printed on white paper of appropriate quality.
+
+This form may be printed by private parties provided it conforms to official form in size, wording, arrangement, and quality and color of paper.
+
+Paperwork Reduction Act Statement: An agency may not conduct or sponsor an information collection and a person is not required to respond to this information unless it displays a current valid OMB control number and an expiration date. The control number for this collection is 1651-0002. The obligation to respond is mandatory. The estimated average time to complete this application is 2 minutes. If you have any comments regarding the burden estimate you can write to U.S. Customs and Border Protection, Office of Regulations and Rulings, 90K Street, NE, Washington DC 20002.
+
+CBP Form 7507 (07/24)
