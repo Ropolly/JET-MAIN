@@ -5,329 +5,400 @@ Converted from custom test scripts to proper Django TestCase.
 """
 
 from django.test import TestCase
-from unittest.mock import patch, Mock
+from django.contrib.auth.models import User
+from unittest.mock import Mock, patch, MagicMock
 from decimal import Decimal
-from finance.models import Transaction, PaymentMethod
+from datetime import date, timedelta
 from finance.services.payment_processor import PaymentProcessorService
+from finance.services.finance_service import FinanceService, InvoiceService
+from finance.models import Transaction, PaymentMethod, Invoice, LineItem
 from contacts.models import Contact
 
 
-class PaymentProcessorTestCase(TestCase):
-    """Test case for payment processing functionality."""
+class PaymentProcessorServiceTest(TestCase):
+    """Test cases for PaymentProcessorService."""
     
     def setUp(self):
-        """Set up test data for payment processor tests."""
-        self.contact = Contact.objects.create(
-            first_name="John",
-            last_name="Doe",
-            email="john.doe@test.com"
+        """Set up test data."""
+        self.service = PaymentProcessorService()
+        
+    @patch('stripe.PaymentIntent.create')
+    def test_stripe_payment_intent_creation(self, mock_stripe_create):
+        """Test Stripe payment intent creation."""
+        # Mock Stripe response
+        mock_intent = Mock()
+        mock_intent.id = 'pi_test123'
+        mock_intent.client_secret = 'pi_test123_secret'
+        mock_intent.status = 'requires_payment_method'
+        mock_stripe_create.return_value = mock_intent
+        
+        result = self.service.create_payment_intent(
+            amount=Decimal('100.00'),
+            currency='usd',
+            provider='stripe'
         )
         
-        self.transaction = Transaction.objects.create(
-            amount=Decimal('1500.00'),
+        self.assertEqual(result['payment_intent_id'], 'pi_test123')
+        self.assertEqual(result['client_secret'], 'pi_test123_secret')
+        self.assertEqual(result['status'], 'requires_payment_method')
+        
+    @patch('squareup.payments_api.PaymentsApi.create_payment')
+    def test_square_payment_creation(self, mock_square_create):
+        """Test Square payment creation."""
+        # Mock Square response
+        mock_response = Mock()
+        mock_payment = Mock()
+        mock_payment.id = 'sq_test123'
+        mock_payment.status = 'COMPLETED'
+        mock_response.body = {'payment': mock_payment}
+        mock_square_create.return_value = mock_response
+        
+        result = self.service.process_payment(
+            amount=Decimal('50.00'),
+            payment_method_token='cnon:test-token',
+            provider='square'
+        )
+        
+        self.assertEqual(result['transaction_id'], 'sq_test123')
+        self.assertEqual(result['status'], 'COMPLETED')
+        
+    def test_unsupported_provider_error(self):
+        """Test error handling for unsupported payment provider."""
+        with self.assertRaises(ValueError):
+            self.service.create_payment_intent(
+                amount=Decimal('100.00'),
+                provider='unsupported_provider'
+            )
+            
+    @patch('stripe.Refund.create')
+    def test_stripe_refund_processing(self, mock_stripe_refund):
+        """Test Stripe refund processing."""
+        # Mock Stripe refund response
+        mock_refund = Mock()
+        mock_refund.id = 're_test123'
+        mock_refund.status = 'succeeded'
+        mock_refund.amount = 5000  # $50.00 in cents
+        mock_stripe_refund.return_value = mock_refund
+        
+        result = self.service.process_refund(
+            transaction_id='pi_original123',
+            amount=Decimal('50.00'),
+            provider='stripe'
+        )
+        
+        self.assertEqual(result['refund_id'], 're_test123')
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['amount'], Decimal('50.00'))
+        
+    def test_payment_validation(self):
+        """Test payment amount and currency validation."""
+        with self.assertRaises(ValueError):
+            self.service.create_payment_intent(
+                amount=Decimal('0.00'),  # Zero amount
+                provider='stripe'
+            )
+            
+        with self.assertRaises(ValueError):
+            self.service.create_payment_intent(
+                amount=Decimal('-10.00'),  # Negative amount
+                provider='stripe'
+            )
+
+
+class FinanceServiceTest(TestCase):
+    """Test cases for FinanceService business logic."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        self.contact = Contact.objects.create(
+            first_name='John',
+            last_name='Customer',
+            email='john@example.com',
+            phone='+1234567890'
+        )
+        
+    def test_create_transaction_record(self):
+        """Test transaction record creation."""
+        transaction = FinanceService.create_transaction(
+            transaction_id='txn_test123',
+            amount=Decimal('250.00'),
             currency='USD',
-            transaction_type='payment',
-            payment_status='created',
-            customer_name='John Doe',
-            email='john.doe@test.com',
+            payment_provider='stripe',
+            customer_email='john@example.com',
             description='Test flight payment'
         )
         
-        self.payment_method = PaymentMethod.objects.create(
-            contact=self.contact,
-            method_type='credit_card',
-            is_default=True,
-            card_last_four='1234',
-            card_brand='visa'
+        self.assertEqual(transaction.transaction_id, 'txn_test123')
+        self.assertEqual(transaction.amount, Decimal('250.00'))
+        self.assertEqual(transaction.currency, 'USD')
+        self.assertEqual(transaction.status, 'pending')
+        
+    def test_calculate_payment_fees(self):
+        """Test payment fee calculations."""
+        # Stripe fees: 2.9% + $0.30
+        stripe_fee = FinanceService.calculate_payment_fees(
+            amount=Decimal('100.00'),
+            provider='stripe'
         )
+        expected_stripe = Decimal('100.00') * Decimal('0.029') + Decimal('0.30')
+        self.assertEqual(stripe_fee, expected_stripe)
         
-        self.stripe_service = PaymentProcessorService(provider='stripe')
-        self.square_service = PaymentProcessorService(provider='square')
-    
-    def test_stripe_provider_initialization(self):
-        """Test Stripe payment processor initialization."""
-        service = PaymentProcessorService(provider='stripe')
+        # Square fees: 2.6% + $0.10
+        square_fee = FinanceService.calculate_payment_fees(
+            amount=Decimal('100.00'),
+            provider='square'
+        )
+        expected_square = Decimal('100.00') * Decimal('0.026') + Decimal('0.10')
+        self.assertEqual(square_fee, expected_square)
         
-        self.assertEqual(service.provider, 'stripe')
-        self.assertEqual(service.base_url, 'https://api.stripe.com/v1')
-    
-    def test_square_provider_initialization(self):
-        """Test Square payment processor initialization."""
-        service = PaymentProcessorService(provider='square')
-        
-        self.assertEqual(service.provider, 'square')
-        # Should use sandbox URL by default
-        self.assertIn('sandbox', service.base_url)
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_stripe_payment_intent_creation_success(self, mock_post):
-        """Test successful Stripe payment intent creation."""
-        # Mock successful Stripe response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'id': 'pi_test_123',
-            'client_secret': 'pi_test_123_secret',
-            'amount': 150000,  # $1500 in cents
-            'currency': 'usd',
-            'status': 'requires_payment_method'
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-        
-        # Test payment intent creation
-        result = self.stripe_service.create_payment_intent(
-            amount=Decimal('1500.00'),
+    def test_transaction_status_updates(self):
+        """Test transaction status transitions."""
+        transaction = Transaction.objects.create(
+            transaction_id='status_test',
+            amount=Decimal('100.00'),
             currency='USD',
-            customer_email='test@example.com',
-            description='Test payment'
+            status='pending'
         )
         
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['id'], 'pi_test_123')
-        self.assertEqual(result['amount'], 1500.0)
-        self.assertEqual(result['currency'], 'USD')
-        self.assertEqual(result['provider'], 'stripe')
-        mock_post.assert_called_once()
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_stripe_payment_intent_creation_failure(self, mock_post):
-        """Test Stripe payment intent creation failure."""
-        # Mock failed response
-        mock_post.side_effect = Exception("API Error")
+        # Valid transition: pending -> completed
+        updated = FinanceService.update_transaction_status(
+            transaction.id, 'completed'
+        )
+        self.assertEqual(updated.status, 'completed')
         
-        # Test payment intent creation
-        result = self.stripe_service.create_payment_intent(
-            amount=Decimal('1500.00'),
-            currency='USD'
+        # Invalid transition: completed -> pending
+        with self.assertRaises(ValueError):
+            FinanceService.update_transaction_status(
+                transaction.id, 'pending'
+            )
+
+
+class InvoiceServiceTest(TestCase):
+    """Test cases for InvoiceService."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.contact = Contact.objects.create(
+            first_name='Jane',
+            last_name='Client',
+            email='jane@example.com',
+            company='Test Aviation'
         )
         
-        # Should return None on failure
-        self.assertIsNone(result)
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_square_payment_creation_success(self, mock_post):
-        """Test successful Square payment creation."""
-        # Mock successful Square response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'payment': {
-                'id': 'sq_test_123',
-                'amount_money': {
-                    'amount': 150000,  # $1500 in cents
-                    'currency': 'USD'
+    def test_create_invoice_with_line_items(self):
+        """Test invoice creation with line items."""
+        invoice = InvoiceService.create_invoice(
+            customer=self.contact,
+            invoice_number='INV-2024-001',
+            due_date=date.today() + timedelta(days=30),
+            line_items=[
+                {
+                    'description': 'Flight JFK-LAX',
+                    'quantity': 1,
+                    'unit_price': Decimal('15000.00')
                 },
-                'status': 'COMPLETED'
-            }
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-        
-        # Test payment creation
-        result = self.square_service.create_payment_intent(
-            amount=Decimal('1500.00'),
-            currency='USD',
-            description='Test payment'
-        )
-        
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['id'], 'sq_test_123')
-        self.assertEqual(result['amount'], 1500.0)
-        self.assertEqual(result['provider'], 'square')
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_stripe_payment_confirmation_success(self, mock_post):
-        """Test successful Stripe payment confirmation."""
-        # Mock successful confirmation response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'id': 'pi_test_123',
-            'status': 'succeeded',
-            'amount': 150000,
-            'currency': 'usd'
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-        
-        # Test payment confirmation
-        result = self.stripe_service.confirm_payment('pi_test_123', 'pm_test_456')
-        
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['status'], 'succeeded')
-        self.assertEqual(result['provider'], 'stripe')
-    
-    @patch('finance.services.payment_processor.requests.get')
-    def test_square_payment_status_check(self, mock_get):
-        """Test Square payment status check."""
-        # Mock successful status response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'payment': {
-                'id': 'sq_test_123',
-                'status': 'COMPLETED',
-                'amount_money': {
-                    'amount': 150000,
-                    'currency': 'USD'
+                {
+                    'description': 'Ground handling',
+                    'quantity': 2,
+                    'unit_price': Decimal('500.00')
                 }
-            }
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
-        
-        # Test status check
-        result = self.square_service.confirm_payment('sq_test_123')
-        
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['status'], 'COMPLETED')
-        self.assertEqual(result['provider'], 'square')
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_stripe_refund_creation_success(self, mock_post):
-        """Test successful Stripe refund creation."""
-        # Mock successful refund response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'id': 're_test_123',
-            'amount': 150000,
-            'currency': 'usd',
-            'status': 'succeeded'
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-        
-        # Test refund creation
-        result = self.stripe_service.create_refund(
-            'pi_test_123',
-            amount=Decimal('1500.00'),
-            reason='requested_by_customer'
+            ]
         )
         
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['id'], 're_test_123')
-        self.assertEqual(result['amount'], 1500.0)
-        self.assertEqual(result['status'], 'succeeded')
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_square_refund_creation_success(self, mock_post):
-        """Test successful Square refund creation."""
-        # Mock successful refund response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'refund': {
-                'id': 'sq_refund_123',
-                'amount_money': {
-                    'amount': 150000,
-                    'currency': 'USD'
-                },
-                'status': 'COMPLETED'
-            }
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        self.assertEqual(invoice.customer, self.contact)
+        self.assertEqual(invoice.invoice_number, 'INV-2024-001')
+        self.assertEqual(invoice.status, 'draft')
         
-        # Test refund creation
-        result = self.square_service.create_refund(
-            'sq_test_123',
-            amount=Decimal('1500.00'),
-            reason='Customer request'
+        # Check line items
+        line_items = invoice.line_items.all()
+        self.assertEqual(line_items.count(), 2)
+        
+        # Check total calculation
+        expected_total = Decimal('15000.00') + (Decimal('500.00') * 2)
+        self.assertEqual(invoice.total_amount, expected_total)
+        
+    def test_invoice_payment_tracking(self):
+        """Test invoice payment tracking."""
+        invoice = Invoice.objects.create(
+            customer=self.contact,
+            invoice_number='PAY-TEST-001',
+            total_amount=Decimal('1000.00'),
+            status='sent'
         )
         
-        # Assertions
-        self.assertIsNotNone(result)
-        self.assertEqual(result['id'], 'sq_refund_123')
-        self.assertEqual(result['amount'], 1500.0)
-        self.assertEqual(result['status'], 'COMPLETED')
-    
-    @patch('finance.services.payment_processor.PaymentProcessorService.create_payment_intent')
-    @patch('finance.services.payment_processor.TransactionService.process_payment')
-    def test_transaction_processing_success(self, mock_process_payment, mock_create_intent):
-        """Test successful transaction processing."""
-        # Mock payment intent creation
-        mock_create_intent.return_value = {
-            'id': 'pi_test_123',
-            'client_secret': 'pi_test_123_secret',
-            'amount': 1500.0,
-            'currency': 'USD',
-            'status': 'requires_payment_method'
-        }
-        
-        # Mock transaction processing
-        mock_process_payment.return_value = self.transaction
-        
-        # Test transaction processing
-        result = self.stripe_service.process_transaction(str(self.transaction.id))
-        
-        # Assertions
-        self.assertIsNotNone(result)
-        mock_create_intent.assert_called_once()
-        mock_process_payment.assert_called_once()
-    
-    def test_transaction_processing_invalid_transaction(self):
-        """Test transaction processing with invalid transaction ID."""
-        result = self.stripe_service.process_transaction('invalid-id')
-        self.assertIsNone(result)
-    
-    def test_unsupported_provider(self):
-        """Test unsupported payment provider."""
-        service = PaymentProcessorService(provider='unsupported')
-        
-        result = service.create_payment_intent(
-            amount=Decimal('100.00'),
-            currency='USD'
+        # Record partial payment
+        InvoiceService.record_payment(
+            invoice_id=invoice.id,
+            amount=Decimal('600.00'),
+            payment_method='credit_card',
+            transaction_id='txn_partial'
         )
         
-        self.assertIsNone(result)
-    
-    @patch('finance.services.payment_processor.requests.post')
-    def test_network_error_handling(self, mock_post):
-        """Test network error handling."""
-        # Mock network error
-        mock_post.side_effect = Exception("Network timeout")
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.paid_amount, Decimal('600.00'))
+        self.assertEqual(invoice.balance_due, Decimal('400.00'))
+        self.assertEqual(invoice.status, 'partially_paid')
         
-        # Test payment intent creation with error
-        result = self.stripe_service.create_payment_intent(
-            amount=Decimal('100.00'),
-            currency='USD'
+        # Record remaining payment
+        InvoiceService.record_payment(
+            invoice_id=invoice.id,
+            amount=Decimal('400.00'),
+            payment_method='credit_card',
+            transaction_id='txn_final'
         )
         
-        self.assertIsNone(result)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.paid_amount, Decimal('1000.00'))
+        self.assertEqual(invoice.balance_due, Decimal('0.00'))
+        self.assertEqual(invoice.status, 'paid')
+        
+    def test_overdue_invoice_detection(self):
+        """Test overdue invoice detection."""
+        past_due_date = date.today() - timedelta(days=5)
+        
+        overdue_invoice = Invoice.objects.create(
+            customer=self.contact,
+            invoice_number='OVERDUE-001',
+            total_amount=Decimal('500.00'),
+            due_date=past_due_date,
+            status='sent'
+        )
+        
+        overdue_invoices = InvoiceService.get_overdue_invoices()
+        self.assertIn(overdue_invoice, overdue_invoices)
+        
+        # Check days overdue calculation
+        days_overdue = InvoiceService.calculate_days_overdue(overdue_invoice)
+        self.assertEqual(days_overdue, 5)
+
+
+class TransactionModelTest(TestCase):
+    """Test cases for Transaction model."""
     
-    def test_api_key_configuration(self):
-        """Test API key configuration for different providers."""
-        # Test with missing API key (should handle gracefully)
-        with patch('finance.services.payment_processor.getattr', return_value=None):
-            service = PaymentProcessorService(provider='stripe')
-            result = service.create_payment_intent(
-                amount=Decimal('100.00'),
-                currency='USD'
+    def test_transaction_creation(self):
+        """Test Transaction model creation."""
+        transaction = Transaction.objects.create(
+            transaction_id='test_txn_123',
+            amount=Decimal('150.00'),
+            currency='USD',
+            status='completed',
+            payment_provider='stripe',
+            description='Test payment'
+        )
+        
+        self.assertEqual(transaction.transaction_id, 'test_txn_123')
+        self.assertEqual(transaction.amount, Decimal('150.00'))
+        self.assertEqual(transaction.currency, 'USD')
+        self.assertEqual(transaction.status, 'completed')
+        self.assertEqual(str(transaction), 'test_txn_123 - $150.00')
+        
+    def test_transaction_amount_validation(self):
+        """Test transaction amount validation."""
+        with self.assertRaises(Exception):
+            Transaction.objects.create(
+                transaction_id='invalid_txn',
+                amount=Decimal('-50.00'),  # Negative amount should fail
+                currency='USD',
+                status='pending'
             )
-            self.assertIsNone(result)
+
+
+class PaymentMethodModelTest(TestCase):
+    """Test cases for PaymentMethod model."""
     
-    def test_convenience_functions(self):
-        """Test convenience functions."""
-        from finance.services.payment_processor import create_payment_intent, process_transaction
+    def test_payment_method_creation(self):
+        """Test PaymentMethod model creation."""
+        payment_method = PaymentMethod.objects.create(
+            customer_email='test@example.com',
+            provider='stripe',
+            provider_payment_method_id='pm_test123',
+            payment_type='card',
+            last_four_digits='4242',
+            expiry_month=12,
+            expiry_year=2025
+        )
         
-        # Test create_payment_intent convenience function
-        with patch.object(PaymentProcessorService, 'create_payment_intent') as mock_create:
-            mock_create.return_value = {'id': 'test_123'}
-            
-            result = create_payment_intent(
-                amount=Decimal('100.00'),
-                currency='USD'
-            )
-            
-            self.assertIsNotNone(result)
-            mock_create.assert_called_once()
+        self.assertEqual(payment_method.customer_email, 'test@example.com')
+        self.assertEqual(payment_method.provider, 'stripe')
+        self.assertEqual(payment_method.last_four_digits, '4242')
+        self.assertTrue(payment_method.is_active)
         
-        # Test process_transaction convenience function
-        with patch.object(PaymentProcessorService, 'process_transaction') as mock_process:
-            mock_process.return_value = self.transaction
-            
-            result = process_transaction(str(self.transaction.id))
-            
-            self.assertIsNotNone(result)
-            mock_process.assert_called_once()
+    def test_payment_method_masking(self):
+        """Test payment method number masking."""
+        payment_method = PaymentMethod.objects.create(
+            customer_email='mask@example.com',
+            provider='square',
+            payment_type='card',
+            last_four_digits='1234'
+        )
+        
+        masked = payment_method.get_masked_number()
+        self.assertEqual(masked, '****-****-****-1234')
+        
+    def test_expired_payment_method_detection(self):
+        """Test detection of expired payment methods."""
+        # Create expired payment method
+        expired_method = PaymentMethod.objects.create(
+            customer_email='expired@example.com',
+            provider='stripe',
+            payment_type='card',
+            last_four_digits='9999',
+            expiry_month=1,
+            expiry_year=2020  # Expired
+        )
+        
+        self.assertTrue(expired_method.is_expired())
+        
+        # Create valid payment method
+        valid_method = PaymentMethod.objects.create(
+            customer_email='valid@example.com',
+            provider='stripe',
+            payment_type='card',
+            last_four_digits='1111',
+            expiry_month=12,
+            expiry_year=2030  # Future
+        )
+        
+        self.assertFalse(valid_method.is_expired())
+
+
+class LineItemModelTest(TestCase):
+    """Test cases for LineItem model."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.contact = Contact.objects.create(
+            first_name='Test',
+            last_name='Customer',
+            email='customer@example.com'
+        )
+        
+        self.invoice = Invoice.objects.create(
+            customer=self.contact,
+            invoice_number='LINE-TEST-001',
+            total_amount=Decimal('0.00')
+        )
+        
+    def test_line_item_total_calculation(self):
+        """Test line item total calculation."""
+        line_item = LineItem.objects.create(
+            invoice=self.invoice,
+            description='Test service',
+            quantity=3,
+            unit_price=Decimal('100.00'),
+            tax_rate=Decimal('0.08')  # 8% tax
+        )
+        
+        expected_subtotal = Decimal('300.00')  # 3 * 100
+        expected_tax = expected_subtotal * Decimal('0.08')  # 24.00
+        expected_total = expected_subtotal + expected_tax  # 324.00
+        
+        self.assertEqual(line_item.subtotal, expected_subtotal)
+        self.assertEqual(line_item.tax_amount, expected_tax)
+        self.assertEqual(line_item.total, expected_total)
