@@ -15,6 +15,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from io import BytesIO
+import logging
 # TripEvent imports moved to consolidated imports section below
 
 from .external.airport import get_airport, parse_fuel_cost
@@ -41,10 +42,13 @@ def get_fuel_prices(request, airport_code):
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract
 )
 from .utils import track_creation, track_deletion
 from .contact_service import ContactCreationService, ContactCreationSerializer
+from utils.services.docuseal_service import DocuSealService
+
+logger = logging.getLogger(__name__)
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
     ContactSerializer, CommentSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
@@ -62,6 +66,8 @@ from .serializers import (
     PatientReadSerializer, PatientWriteSerializer, StaffReadSerializer, StaffWriteSerializer,
     StaffRoleSerializer,
     StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
+    ContractReadSerializer, ContractWriteSerializer, ContractCreateFromTripSerializer, 
+    ContractDocuSealActionSerializer, DocuSealWebhookSerializer,
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -1621,4 +1627,439 @@ def convert_timezone(request):
     except Exception as e:
         return Response({
             'error': f'Timezone conversion error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Contract ViewSet
+class ContractViewSet(BaseViewSet):
+    queryset = Contract.objects.all()
+    search_fields = ['title', 'contract_type', 'signer_email', 'status']
+    ordering_fields = ['created_on', 'date_sent', 'date_signed', 'status']
+    filterset_fields = ['contract_type', 'status', 'trip']
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action."""
+        if self.action in ['list', 'retrieve']:
+            return ContractReadSerializer
+        elif self.action == 'create_from_trip':
+            return ContractCreateFromTripSerializer
+        elif self.action in ['send_for_signature', 'docuseal_action']:
+            return ContractDocuSealActionSerializer
+        return ContractWriteSerializer
+    
+    @action(detail=False, methods=['post'])
+    def create_from_trip(self, request):
+        """Create multiple contracts for a trip."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        trip = serializer.validated_data['trip_id']
+        contract_types = serializer.validated_data['contract_types']
+        send_immediately = serializer.validated_data.get('send_immediately', False)
+        custom_signer_email = serializer.validated_data.get('custom_signer_email')
+        custom_signer_name = serializer.validated_data.get('custom_signer_name')
+        
+        try:
+            # Get customer contact from quote
+            customer_contact = None
+            if trip.quote and hasattr(trip.quote, 'contact'):
+                customer_contact = trip.quote.contact
+            
+            logger.info(f"Trip {trip.trip_number}: quote={bool(trip.quote)}, customer_contact={bool(customer_contact)}")
+            patient = trip.patient
+            
+            # Determine signer details
+            if custom_signer_email:
+                signer_email = custom_signer_email
+                signer_name = custom_signer_name or ''
+            elif customer_contact:
+                signer_email = customer_contact.email
+                signer_name = f"{customer_contact.first_name} {customer_contact.last_name}".strip()
+            else:
+                return Response({
+                    'error': 'No signer information available'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            contracts_created = []
+            docuseal_service = DocuSealService()
+            
+            for contract_type in contract_types:
+                # Generate contract title
+                contract_type_display = dict(Contract.CONTRACT_TYPES)[contract_type]
+                title = f"{contract_type_display} - {trip.trip_number}"
+                
+                # Create contract
+                contract = Contract.objects.create(
+                    title=title,
+                    contract_type=contract_type,
+                    trip=trip,
+                    customer_contact=customer_contact,
+                    patient=patient,
+                    signer_email=signer_email,
+                    signer_name=signer_name,
+                    created_by=request.user
+                )
+                
+                contracts_created.append(contract)
+                
+                # If send_immediately is True, attempt to send via DocuSeal
+                if send_immediately:
+                    try:
+                        logger.info(f"Attempting to send contract {contract.id} for signature")
+                        result = self._send_contract_for_signature(contract, docuseal_service)
+                        logger.info(f"Successfully sent contract {contract.id}: {result}")
+                    except Exception as e:
+                        logger.error(f"Failed to send contract {contract.id}: {str(e)}", exc_info=True)
+                        contract.status = 'failed'
+                        contract.notes = f"Failed to send: {str(e)}"
+                        contract.save()
+            
+            # Serialize created contracts
+            serializer = ContractReadSerializer(contracts_created, many=True)
+            
+            return Response({
+                'message': f'Created {len(contracts_created)} contracts',
+                'contracts': serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Failed to create contracts: {str(e)}")
+            return Response({
+                'error': f'Failed to create contracts: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def send_for_signature(self, request, pk=None):
+        """Send contract to DocuSeal for signature."""
+        contract = self.get_object()
+        
+        try:
+            docuseal_service = DocuSealService()
+            result = self._send_contract_for_signature(contract, docuseal_service)
+            
+            serializer = ContractReadSerializer(contract)
+            return Response({
+                'message': 'Contract sent for signature',
+                'contract': serializer.data,
+                'docuseal_response': result
+            })
+            
+        except Exception as e:
+            logger.error(f"Failed to send contract for signature: {str(e)}")
+            return Response({
+                'error': f'Failed to send contract: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def docuseal_action(self, request, pk=None):
+        """Perform DocuSeal-specific actions on contract."""
+        contract = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        action_type = serializer.validated_data['action']
+        custom_message = serializer.validated_data.get('custom_message', '')
+        
+        try:
+            docuseal_service = DocuSealService()
+            
+            if action_type == 'send_for_signature':
+                result = self._send_contract_for_signature(contract, docuseal_service)
+                message = 'Contract sent for signature'
+                
+            elif action_type == 'resend':
+                result = self._resend_contract(contract, docuseal_service)
+                message = 'Contract resent'
+                
+            elif action_type == 'cancel':
+                result = self._cancel_contract(contract, docuseal_service)
+                message = 'Contract cancelled'
+                
+            elif action_type == 'archive':
+                result = self._archive_contract(contract, docuseal_service)
+                message = 'Contract archived'
+                
+            else:
+                return Response({
+                    'error': f'Unknown action: {action_type}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            contract_serializer = ContractReadSerializer(contract)
+            return Response({
+                'message': message,
+                'contract': contract_serializer.data,
+                'docuseal_response': result
+            })
+            
+        except Exception as e:
+            logger.error(f"DocuSeal action failed: {str(e)}")
+            return Response({
+                'error': f'Action failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _send_contract_for_signature(self, contract, docuseal_service):
+        """Helper method to send contract for signature."""
+        from django.conf import settings
+        
+        # Get template configuration
+        template_config = settings.DOCUSEAL_CONTRACT_SETTINGS['templates'].get(contract.contract_type)
+        if not template_config:
+            raise ValueError(f"No template configuration found for contract type: {contract.contract_type}")
+        
+        # Use the pre-configured template ID
+        template_id = template_config['template_id']
+        requires_jet_icu_signature = template_config.get('requires_jet_icu_signature', False)
+        
+        # Prepare data for field mapping
+        trip_data = {
+            'trip_number': contract.trip.trip_number,
+            'type': contract.trip.type,
+            'estimated_departure_time': str(contract.trip.estimated_departure_time) if contract.trip.estimated_departure_time else '',
+            'notes': contract.trip.notes or '',
+        }
+        
+        # Get trip lines data - pass as objects for easier access
+        trip_lines_data = list(contract.trip.trip_lines.all().order_by('departure_time_utc'))
+        
+        # Get quote data if available
+        quote_data = None
+        if contract.trip.quote:
+            quote_data = {
+                'quoted_amount': str(contract.trip.quote.quoted_amount)
+            }
+        
+        # Get contact data
+        contact_data = None
+        if contract.customer_contact:
+            contact_data = {
+                'first_name': contract.customer_contact.first_name or '',
+                'last_name': contract.customer_contact.last_name or '',
+                'business_name': contract.customer_contact.business_name or '',
+                'email': contract.customer_contact.email or '',
+                'phone': contract.customer_contact.phone or '',
+                'address_line1': contract.customer_contact.address_line1 or '',
+                'address_line2': contract.customer_contact.address_line2 or '',
+                'city': contract.customer_contact.city or '',
+                'state': contract.customer_contact.state or '',
+                'zip': contract.customer_contact.zip or '',
+                'country': contract.customer_contact.country or '',
+            }
+        
+        # Get patient data
+        patient_data = None
+        if contract.patient:
+            patient_data = {
+                'info': {
+                    'first_name': contract.patient.info.first_name or '',
+                    'last_name': contract.patient.info.last_name or '',
+                    'phone': contract.patient.info.phone or '',
+                    'address_line1': contract.patient.info.address_line1 or '',
+                    'city': contract.patient.info.city or '',
+                    'state': contract.patient.info.state or '',
+                    'zip': contract.patient.info.zip or '',
+                },
+                'date_of_birth': str(contract.patient.date_of_birth) if contract.patient.date_of_birth else '',
+                'nationality': contract.patient.nationality or '',
+                'passport_number': contract.patient.passport_number or '',
+                'special_instructions': contract.patient.special_instructions or '',
+            }
+        
+        # Get passengers data
+        passengers = contract.trip.passengers.all()
+        passengers_data = []
+        for passenger in passengers:
+            passengers_data.append({
+                'info': {
+                    'first_name': passenger.info.first_name or '',
+                    'last_name': passenger.info.last_name or '',
+                }
+            })
+        
+        # Generate field mappings based on contract type
+        fields = docuseal_service.create_contract_fields_mapping(
+            contract_type=contract.contract_type,
+            trip_data=trip_data,
+            trip_lines_data=trip_lines_data,
+            contact_data=contact_data,
+            patient_data=patient_data,
+            passengers_data=passengers_data,
+            quote_data=quote_data
+        )
+        
+        # Get roles from template configuration
+        customer_role = template_config.get('customer_role', 'patient')
+        jet_icu_role = template_config.get('jet_icu_role', 'jet_icu')
+        
+        # Prepare submitters list - assign fields to JET ICU role as requested
+        if requires_jet_icu_signature:
+            # For contracts requiring JET ICU signature, customer signs but JET ICU gets the field data
+            submitters = [
+                {
+                    'name': contract.signer_name,
+                    'email': contract.signer_email,
+                    'role': customer_role,
+                    'fields': {}  # Customer doesn't fill fields, just signs
+                },
+                {
+                    'name': 'JET ICU Representative', 
+                    'email': settings.DOCUSEAL_JET_ICU_SIGNER_EMAIL,
+                    'role': jet_icu_role,
+                    'fields': fields  # JET ICU gets all the field data
+                }
+            ]
+        else:
+            # For single-signature contracts, assign fields to the JET ICU role (First Party)
+            submitters = [
+                {
+                    'name': contract.signer_name,
+                    'email': contract.signer_email, 
+                    'role': customer_role,
+                    'fields': {}  # Customer signs as Second Party with no fields
+                },
+                {
+                    'name': 'JET ICU Representative',
+                    'email': settings.DOCUSEAL_JET_ICU_SIGNER_EMAIL,
+                    'role': jet_icu_role,
+                    'fields': fields  # JET ICU (First Party) gets all the field data
+                }
+            ]
+        
+        # Store template ID in contract
+        contract.docuseal_template_id = template_id
+        
+        # Create submission
+        submission_result = docuseal_service.create_submission(
+            template_id=template_id,
+            submitters=submitters,
+            send_email=True
+        )
+        
+        # DocuSeal returns an array of submitters, get the submission_id from the first one
+        if isinstance(submission_result, list) and len(submission_result) > 0:
+            first_submitter = submission_result[0]
+            submission_id = first_submitter.get('submission_id')
+            
+            # Update contract
+            contract.docuseal_submission_id = str(submission_id)
+            contract.status = 'pending'
+            contract.date_sent = timezone.now()
+            contract.docuseal_response_data = {
+                'submitters': submission_result,
+                'submission_id': submission_id
+            }
+            contract.save()
+            
+            logger.info(f"Contract {contract.id} updated with submission_id: {submission_id}")
+        else:
+            logger.error(f"Unexpected DocuSeal response format: {type(submission_result)}")
+            raise ValueError("Unexpected DocuSeal response format")
+        
+        return submission_result
+    
+    def _generate_contract_summary(self, contract):
+        """Generate a summary of contract details for logging/display."""
+        from django.conf import settings
+        template_config = settings.DOCUSEAL_CONTRACT_SETTINGS['templates'].get(contract.contract_type, {})
+        return {
+            'contract_id': str(contract.id),
+            'contract_type': contract.contract_type,
+            'template_id': template_config.get('template_id'),
+            'template_name': template_config.get('name'),
+            'trip_number': contract.trip.trip_number,
+            'signer_email': contract.signer_email,
+            'requires_jet_icu_signature': template_config.get('requires_jet_icu_signature', False)
+        }
+    
+    def _resend_contract(self, contract, docuseal_service):
+        """Resend existing contract."""
+        # Implementation for resending would go here
+        contract.date_sent = timezone.now()
+        contract.save()
+        return {'status': 'resent'}
+    
+    def _cancel_contract(self, contract, docuseal_service):
+        """Cancel contract."""
+        contract.status = 'cancelled'
+        contract.save()
+        return {'status': 'cancelled'}
+    
+    def _archive_contract(self, contract, docuseal_service):
+        """Archive contract."""
+        if contract.docuseal_submission_id:
+            result = docuseal_service.archive_submission(contract.docuseal_submission_id)
+            contract.status = 'cancelled'
+            contract.save()
+            return result
+        return {'status': 'archived'}
+
+
+# DocuSeal Webhook Handler
+@api_view(['POST'])
+@permission_classes([])  # Allow unauthenticated access for webhooks
+def docuseal_webhook(request):
+    """Handle DocuSeal webhook events."""
+    try:
+        # Validate webhook (in production, you'd verify the signature)
+        webhook_data = request.data
+        
+        # Process webhook
+        docuseal_service = DocuSealService()
+        processed_event = docuseal_service.process_webhook_event(webhook_data)
+        
+        submission_id = processed_event.get('submission_id')
+        event_type = processed_event.get('event_type')
+        
+        if submission_id:
+            # Find contract by submission ID
+            try:
+                contract = Contract.objects.get(docuseal_submission_id=submission_id)
+                
+                # Update contract based on event type
+                if event_type == 'form.completed':
+                    contract.status = 'signed'
+                    contract.date_signed = timezone.now()
+                    
+                    # Download signed document
+                    try:
+                        signed_doc_content = docuseal_service.get_submission_documents(submission_id)
+                        
+                        # Create Document record for signed document
+                        signed_document = Document.objects.create(
+                            filename=f"{contract.title}_signed.pdf",
+                            content=signed_doc_content,
+                            document_type='contract',
+                            trip=contract.trip,
+                            created_by_id=1  # System user
+                        )
+                        contract.signed_document = signed_document
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to download signed document: {str(e)}")
+                
+                elif event_type == 'form.viewed':
+                    # Contract was viewed but not necessarily completed
+                    pass
+                    
+                elif event_type == 'form.started':
+                    # Signing process started
+                    pass
+                
+                # Update response data
+                contract.docuseal_response_data.update({
+                    'last_webhook_event': processed_event,
+                    'last_webhook_time': timezone.now().isoformat()
+                })
+                contract.save()
+                
+                logger.info(f"Updated contract {contract.id} from webhook event {event_type}")
+                
+            except Contract.DoesNotExist:
+                logger.warning(f"No contract found for submission ID: {submission_id}")
+        
+        return Response({'status': 'processed'}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"DocuSeal webhook processing failed: {str(e)}")
+        return Response({
+            'error': 'Webhook processing failed'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

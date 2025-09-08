@@ -166,3 +166,39 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# DocuSeal Integration Settings
+DOCUSEAL_API_KEY = os.environ.get('DOCUSEAL_API_KEY', 'iMDk8MquWy9jnnMudnde52Efzfe8HKjx9BdCL4BzePT')
+DOCUSEAL_BASE_URL = os.environ.get('DOCUSEAL_BASE_URL', 'https://api.docuseal.com')
+DOCUSEAL_WEBHOOK_SECRET = os.environ.get('DOCUSEAL_WEBHOOK_SECRET', None)
+DOCUSEAL_JET_ICU_SIGNER_EMAIL = os.environ.get('DOCUSEAL_JET_ICU_SIGNER_EMAIL', 'contracts@jeticu.com')
+
+# DocuSeal Contract Settings
+DOCUSEAL_CONTRACT_SETTINGS = {
+    'default_expiration_days': 30,
+    'send_email_notifications': True,
+    'auto_generate_on_trip_creation': True,
+    'templates': {
+        'consent_transport': {
+            'template_id': '1712631',
+            'name': 'Consent for Transport',
+            'requires_jet_icu_signature': True,  # JET ICU needs to be involved for field data
+            'customer_role': 'patient',       # Customer signs as patient
+            'jet_icu_role': 'jet_icu',        # JET ICU gets the field data
+        },
+        'payment_agreement': {
+            'template_id': '1712677',
+            'name': 'Air Ambulance Payment Agreement',
+            'requires_jet_icu_signature': True,
+            'customer_role': 'customer',      # Customer signs as customer
+            'jet_icu_role': 'jet_icu',        # JET ICU signs as jet_icu (gets the field data)
+        },
+        'patient_service_agreement': {
+            'template_id': '1712724',
+            'name': 'Patient Service Agreement',
+            'requires_jet_icu_signature': True,
+            'customer_role': 'patient',       # Customer signs as patient
+            'jet_icu_role': 'jet_icu',        # JET ICU signs as jet_icu (gets the field data)
+        }
+    }
+}

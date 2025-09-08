@@ -500,3 +500,83 @@ class Comment(BaseModel):
         indexes = [
             models.Index(fields=["content_type", "object_id"]),
         ]
+
+
+class Contract(BaseModel):
+    """
+    Contract model for managing DocuSeal integration and document signing workflows.
+    Extends the existing Agreement functionality with DocuSeal-specific fields.
+    """
+    CONTRACT_TYPES = [
+        ('consent_transport', 'Consent for Transport'),
+        ('payment_agreement', 'Air Ambulance Payment Agreement'),
+        ('patient_service_agreement', 'Patient Service Agreement'),
+    ]
+    
+    CONTRACT_STATUS = [
+        ('draft', 'Draft'),
+        ('pending', 'Pending Signature'),
+        ('signed', 'Signed'),
+        ('completed', 'Completed'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+        ('failed', 'Failed'),
+    ]
+    
+    # Basic contract information
+    title = models.CharField(max_length=255)
+    contract_type = models.CharField(max_length=30, choices=CONTRACT_TYPES)
+    status = models.CharField(max_length=20, choices=CONTRACT_STATUS, default='draft')
+    
+    # Relationships
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='contracts')
+    customer_contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='customer_contracts', null=True, blank=True)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='patient_contracts', null=True, blank=True)
+    
+    # DocuSeal integration fields
+    docuseal_template_id = models.CharField(max_length=100, blank=True, null=True)
+    docuseal_submission_id = models.CharField(max_length=100, blank=True, null=True)
+    docuseal_webhook_id = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Signing details
+    signer_email = models.EmailField()
+    signer_name = models.CharField(max_length=255, blank=True, null=True)
+    date_sent = models.DateTimeField(null=True, blank=True)
+    date_signed = models.DateTimeField(null=True, blank=True)
+    date_expired = models.DateTimeField(null=True, blank=True)
+    
+    # Document storage
+    unsigned_document = models.ForeignKey(
+        Document, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='unsigned_contracts'
+    )
+    signed_document = models.ForeignKey(
+        Document, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='signed_contracts'
+    )
+    
+    # Additional metadata
+    notes = models.TextField(blank=True, null=True)
+    docuseal_response_data = models.JSONField(default=dict, blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['trip', 'contract_type']),
+            models.Index(fields=['status']),
+            models.Index(fields=['docuseal_submission_id']),
+        ]
+        
+    def __str__(self):
+        return f"{self.title} - {self.get_contract_type_display()} ({self.get_status_display()})"
+    
+    def is_pending_signature(self):
+        return self.status == 'pending'
+    
+    def is_signed(self):
+        return self.status in ['signed', 'completed']
