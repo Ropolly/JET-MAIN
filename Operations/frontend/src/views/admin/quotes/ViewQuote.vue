@@ -397,6 +397,7 @@
   <!-- Updates Timeline -->
   <UpdatesTimeline 
     v-if="quote?.id"
+    ref="updatesTimelineRef"
     entity-type="quote"
     :entity-id="quote.id"
     :allow-comments="true"
@@ -524,6 +525,7 @@ const { setToolbarActions } = useToolbar();
 
 // Email modal refs and form data
 const emailModalRef = ref<HTMLElement | null>(null);
+const updatesTimelineRef = ref<any>(null);
 const isEmailSending = ref(false);
 const emailForm = ref({
   email: '',
@@ -1081,6 +1083,25 @@ const onTripCreated = async (tripData: any) => {
       
       // Set the associated trip data to show the trip card
       associatedTrip.value = tripData;
+      
+      // Add a comment to track the conversion
+      try {
+        await ApiService.post('/comments/', {
+          content_type: getContentTypeId('quote'),
+          object_id: quote.value.id,
+          text: `Quote converted to Trip #${tripData.trip_number}. Trip ID: ${tripData.id}`
+        });
+        console.log('Added conversion comment to quote');
+        
+        // Refresh the updates timeline to show the new comment
+        if (updatesTimelineRef.value) {
+          setTimeout(() => {
+            updatesTimelineRef.value.refresh();
+          }, 500); // Small delay to ensure comment is saved
+        }
+      } catch (commentError) {
+        console.error('Error adding conversion comment:', commentError);
+      }
       
       setupToolbarActions(); // Refresh toolbar to hide Convert button
       

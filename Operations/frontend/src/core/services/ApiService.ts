@@ -22,7 +22,7 @@ class ApiService {
     
     // Set base URL from environment or default to Django backend
     ApiService.vueInstance.axios.defaults.baseURL =
-      import.meta.env.VITE_APP_API_URL || "http://localhost:8000/api";
+      import.meta.env.VITE_APP_API_URL || "http://localhost:8001/api";
     
     // Set default headers
     ApiService.vueInstance.axios.defaults.headers.common["Accept"] = "application/json";

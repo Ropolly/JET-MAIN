@@ -284,6 +284,7 @@ const combinedItemsArray = computed({
   }
 });
 
+
 // Accordion controls
 const toggleAccordion = (index: number) => {
   activeAccordion.value = activeAccordion.value === index ? -1 : index;
@@ -408,6 +409,7 @@ const getArrivalTimeForEvent = (eventIndex: number): string => {
   return '';
 };
 
+
 // Update event airport when dragged between different legs
 const updateEventAirportAfterDrag = (eventItem: any, newIndex: number) => {
   const defaultAirport = getDefaultAirportForEvent(newIndex);
@@ -520,13 +522,63 @@ const removeLeg = (index: number) => {
 
 // Add new event
 const addEvent = () => {
-  // Find the default airport based on the last leg
+  // Find the default airport, date, and time based on the last leg
   let defaultAirport = '';
+  let inheritedDate = '';
+  let inheritedTime = '';
+  
   if (legs.length > 0) {
     const lastLeg = legs[legs.length - 1];
     if (lastLeg.destination_airport) {
       defaultAirport = lastLeg.destination_airport;
       console.log(`Setting new overnight stay airport to ${defaultAirport} (arrival of last leg)`);
+    }
+    
+    // Inherit arrival date/time from the last leg, or departure if no arrival
+    if (lastLeg.arrival_date && lastLeg.arrival_time) {
+      inheritedDate = lastLeg.arrival_date;
+      inheritedTime = lastLeg.arrival_time;
+    } else if (lastLeg.departure_date && lastLeg.departure_time) {
+      inheritedDate = lastLeg.departure_date;
+      inheritedTime = lastLeg.departure_time;
+    } else if (lastLeg.departure_date) {
+      inheritedDate = lastLeg.departure_date;
+      inheritedTime = '18:00'; // Default to 6 PM if no time available
+    }
+    console.log(`Setting overnight stay date/time to ${inheritedDate} ${inheritedTime} (from last leg)`);
+  }
+
+  // Provide default values if nothing inherited
+  if (!inheritedDate) {
+    const today = new Date();
+    inheritedDate = today.toISOString().split('T')[0];
+  }
+  if (!inheritedTime) {
+    inheritedTime = '18:00'; // Default to 6 PM
+  }
+
+  // Calculate end time (8 hours after start time)
+  let endDate = inheritedDate;
+  let endTime = inheritedTime;
+  
+  if (inheritedDate && inheritedTime) {
+    try {
+      const startDateTime = new Date(`${inheritedDate}T${inheritedTime}:00`);
+      const endDateTime = new Date(startDateTime.getTime() + (8 * 60 * 60 * 1000)); // +8 hours
+      
+      endDate = endDateTime.toISOString().split('T')[0];
+      endTime = endDateTime.toTimeString().slice(0, 5);
+    } catch (error) {
+      console.error('Error calculating end time:', error);
+      // Fallback to next day if calculation fails
+      try {
+        const nextDay = new Date(inheritedDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        endDate = nextDay.toISOString().split('T')[0];
+        endTime = '08:00'; // 8 AM next day
+      } catch (fallbackError) {
+        console.error('Fallback calculation also failed:', fallbackError);
+      }
     }
   }
 
@@ -534,17 +586,38 @@ const addEvent = () => {
     id: uuidv4(),
     event_type: 'OVERNIGHT',
     airport_id: defaultAirport,
-    start_date: '',
-    start_time: '',
+    start_date: inheritedDate,
+    start_time: inheritedTime,
+    end_date: endDate,
+    end_time: endTime,
     notes: ''
   };
 
-  // Always add events at the end
+  // Add event to events array
   events.push(newEvent);
   emit('update:events', events);
   
-  // Add to chronological order at the end
-  chronologicalOrder.value.push(newEvent.id);
+  // Insert event in chronological order right after the last leg
+  if (legs.length > 0) {
+    const lastLegId = legs[legs.length - 1].id;
+    const lastLegIndex = chronologicalOrder.value.indexOf(lastLegId);
+    
+    if (lastLegIndex !== -1) {
+      // Insert right after the last leg
+      chronologicalOrder.value.splice(lastLegIndex + 1, 0, newEvent.id);
+    } else {
+      // Fallback: add all leg IDs to chronological order first, then add event
+      legs.forEach(leg => {
+        if (!chronologicalOrder.value.includes(leg.id)) {
+          chronologicalOrder.value.push(leg.id);
+        }
+      });
+      chronologicalOrder.value.push(newEvent.id);
+    }
+  } else {
+    // No legs exist, just add the event
+    chronologicalOrder.value.push(newEvent.id);
+  }
   
   // Open the newly added event accordion after Vue updates
   setTimeout(() => {
@@ -580,20 +653,20 @@ const shouldShowCrewChangeWarning = (legIndex: number): boolean => {
 
 // Handle crew change
 const handleCrewChange = (legIndex: number, crewChanged: boolean) => {
-  if (crewChanged && legIndex > 0) {
-    // Auto-create crew change event before this leg
-    const leg = legs[legIndex];
-    const previousLeg = legs[legIndex - 1];
-    
-    if (!leg || !previousLeg) return;
-    
-    // Check if crew change event already exists for this transition
-    const existingEvent = events.find(e => 
-      e.event_type === 'CREW_CHANGE' && 
-      e.before_leg_id === leg.id
-    );
-    
-    if (!existingEvent) {
+  const leg = legs[legIndex];
+  const previousLeg = legs[legIndex - 1];
+  
+  if (!leg || !previousLeg || legIndex === 0) return;
+  
+  // Check if crew change event already exists for this transition
+  const existingEventIndex = events.findIndex(e => 
+    e.event_type === 'CREW_CHANGE' && 
+    e.before_leg_id === leg.id
+  );
+  
+  if (crewChanged) {
+    // Crew is different from previous leg, create crew change event if it doesn't exist
+    if (existingEventIndex === -1) {
       // Get the best available date/time for the crew change event
       const eventDate = leg.departure_date || previousLeg.departure_date || '';
       const eventTime = leg.departure_time || previousLeg.departure_time || '';
@@ -626,6 +699,23 @@ const handleCrewChange = (legIndex: number, crewChanged: boolean) => {
       } else {
         console.warn('Cannot create crew change event - missing date/time data');
       }
+    }
+  } else {
+    // Crew is the same as previous leg, remove crew change event if it exists
+    if (existingEventIndex !== -1) {
+      const eventToRemove = events[existingEventIndex];
+      
+      // Remove from events array
+      events.splice(existingEventIndex, 1);
+      emit('update:events', events);
+      
+      // Remove from chronological order
+      const orderIndex = chronologicalOrder.value.indexOf(eventToRemove.id);
+      if (orderIndex !== -1) {
+        chronologicalOrder.value.splice(orderIndex, 1);
+      }
+      
+      console.log('Removed crew change event - crew matches previous leg');
     }
   }
 };
@@ -675,6 +765,14 @@ watch(() => [legs, events], () => {
   
   // Update overnight stay airports when leg destinations change
   updateOvernightAirportsBasedOnLegs();
+  
+  // Check for crew changes between all legs and update events accordingly
+  legs.forEach((leg, index) => {
+    if (index > 0) {
+      const crewChanged = shouldShowCrewChangeWarning(index);
+      handleCrewChange(index, crewChanged);
+    }
+  });
   
   // Preload airport details for display
   [...legs, ...events].forEach(item => {

@@ -128,6 +128,34 @@ class GroundSerializer(serializers.ModelSerializer):
                  'country', 'notes', 'contacts', 'created_on', 'created_by', 
                  'modified_on', 'modified_by']
 
+# Document Serializers
+class DocumentSerializer(serializers.ModelSerializer):
+    document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Document
+        fields = [
+            'id', 'filename', 'file_path', 'document_type', 'document_type_display',
+            'created_on', 'created_by', 'created_by_name', 'trip', 'contact', 
+            'patient', 'passenger'
+        ]
+        read_only_fields = ['id', 'created_on']
+    
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+        return None
+
+class DocumentCreateSerializer(serializers.Serializer):
+    """Serializer for document generation request."""
+    document_type = serializers.ChoiceField(
+        choices=Document.DOCUMENT_TYPES,
+        required=False,
+        allow_blank=True,
+        help_text="Specific document type to generate. If not provided, generates all applicable documents."
+    )
+
 class AirportSerializer(serializers.ModelSerializer):
     fbos = FBOSerializer(many=True, read_only=True)
     grounds = GroundSerializer(many=True, read_only=True)
