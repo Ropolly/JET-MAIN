@@ -1455,8 +1455,7 @@ def get_airport_timezone_info(request, airport_id):
                     'error': 'Invalid datetime format. Use ISO format (e.g., 2023-12-25T14:30:00Z)'
                 }, status=status.HTTP_400_BAD_REQUEST)
         else:
-            from django.utils import timezone as django_timezone
-            dt = django_timezone.now()
+            dt = timezone.now()
         
         tz_info = get_timezone_info(airport.timezone, dt)
         tz_info['airport'] = {
@@ -1475,6 +1474,86 @@ def get_airport_timezone_info(request, airport_id):
     except Exception as e:
         return Response({
             'error': f'Error getting timezone info: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def convert_timezone(request):
+    """
+    Convert times between UTC and local airport time
+    
+    Request body:
+    {
+        "airport_id": "uuid",
+        "datetime": "2023-12-25T14:30:00",
+        "from_timezone": "local" or "utc",
+        "to_timezone": "utc" or "local"
+    }
+    """
+    try:
+        from .models import Airport
+        from .timezone_utils import convert_local_to_utc, convert_utc_to_local
+        from datetime import datetime
+        import pytz
+        
+        data = request.data
+        airport_id = data.get('airport_id')
+        dt_str = data.get('datetime')
+        from_tz = data.get('from_timezone', 'local')
+        to_tz = data.get('to_timezone', 'utc')
+        
+        if not all([airport_id, dt_str]):
+            return Response({
+                'error': 'airport_id and datetime are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        airport = Airport.objects.get(id=airport_id)
+        
+        if not airport.timezone:
+            return Response({
+                'error': 'Airport does not have timezone information'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse datetime
+        try:
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if dt.tzinfo:
+                dt = dt.replace(tzinfo=None)  # Make naive for conversion functions
+        except ValueError:
+            return Response({
+                'error': 'Invalid datetime format. Use ISO format (e.g., 2023-12-25T14:30:00)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Perform conversion
+        if from_tz == 'local' and to_tz == 'utc':
+            converted_dt = convert_local_to_utc(dt, airport.timezone)
+        elif from_tz == 'utc' and to_tz == 'local':
+            converted_dt = convert_utc_to_local(dt, airport.timezone)
+        else:
+            return Response({
+                'error': 'Invalid timezone conversion. Use local<->utc'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'original_datetime': dt.isoformat(),
+            'converted_datetime': converted_dt.isoformat(),
+            'airport': {
+                'id': airport.id,
+                'name': airport.name,
+                'ident': airport.ident,
+                'timezone': airport.timezone
+            },
+            'conversion': f'{from_tz} -> {to_tz}'
+        })
+        
+    except Airport.DoesNotExist:
+        return Response({
+            'error': 'Airport not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Conversion error: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

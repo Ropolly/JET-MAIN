@@ -1,16 +1,16 @@
 <template>
-  <div class="card mb-5 mb-xxl-8 mt-5">
+  <div class="card mb-5 mb-xxl-8">
     <!--begin::Header-->
     <div class="card-header align-items-center border-0 mt-4">
       <h3 class="card-title align-items-start flex-column">
         <span class="fw-bold mb-2 text-gray-900">Updates</span>
-        <span class="text-muted fw-semibold fs-7">Comments and actions taken on {{ entityType }}</span>
+        <span class="text-muted fw-semibold fs-7">Comments and actions taken on trip</span>
       </h3>
     </div>
     <!--end::Header-->
     
     <!-- Comment Form -->
-    <div style="padding: 0px 29.25px 0px 29.25px" v-if="allowComments">
+    <div style="padding: 0px 29.25px 0px 29.25px">
       <form @submit.prevent="submitComment" id="comment-form">
         <div class="col-xl-12 fv-row fv-plugins-icon-container">
           <input 
@@ -74,7 +74,7 @@
           <!--end::Info-->
 
           <!--begin::Action-->
-          <div class="text-gray-500 fs-7">
+          <div class="text-gray-500 fs-7 text-end">
             {{ formatTimeAgo(item.timestamp) }}
           </div>
           <!--end::Action-->
@@ -85,7 +85,7 @@
       <div v-else class="text-center py-10">
         <KTIcon icon-name="file-text" icon-class="fs-3x text-muted mb-4" />
         <div class="text-muted fs-6">No updates yet</div>
-        <div class="text-muted fs-7" v-if="allowComments">Be the first to add a comment</div>
+        <div class="text-muted fs-7">Be the first to add a comment</div>
       </div>
     </div>
     <!--end: Card Body-->
@@ -99,10 +99,8 @@ import Swal from 'sweetalert2';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 
 interface Props {
-  entityType: string; // 'quote', 'trip', 'patient', etc.
-  entityId: string;
-  allowComments?: boolean;
-  entityData?: any; // Optional entity data to extract creation info
+  tripId: string;
+  tripData?: any; // Optional trip data to extract creation info
 }
 
 interface Comment {
@@ -130,9 +128,7 @@ interface TimelineItem {
   data: Comment | Modification;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  allowComments: true
-});
+const props = withDefaults(defineProps<Props>(), {});
 
 // Reactive state
 const commentText = ref('');
@@ -146,20 +142,20 @@ const modifications = ref<Modification[]>([]);
 const timelineItems = computed<TimelineItem[]>(() => {
   const items: TimelineItem[] = [];
   
-  // Add entity creation from entityData if available and no creation modification exists
-  if (props.entityData?.created_on) {
+  // Add trip creation from tripData if available and no creation modification exists
+  if (props.tripData?.created_on) {
     const hasCreationMod = modifications.value.some(mod => mod.field === '__created__');
     
     if (!hasCreationMod) {
       items.push({
-        id: `creation-${props.entityId}`,
+        id: `creation-${props.tripId}`,
         type: 'creation',
-        timestamp: props.entityData.created_on,
-        user: props.entityData.created_by_name || 
-              props.entityData.created_by?.username || 
-              (props.entityData.created_by?.first_name && props.entityData.created_by?.last_name 
-                ? `${props.entityData.created_by.first_name} ${props.entityData.created_by.last_name}`.trim()
-                : props.entityData.created_by?.first_name || props.entityData.created_by?.last_name) ||
+        timestamp: props.tripData.created_on,
+        user: props.tripData.created_by_name || 
+              props.tripData.created_by?.username || 
+              (props.tripData.created_by?.first_name && props.tripData.created_by?.last_name 
+                ? `${props.tripData.created_by.first_name} ${props.tripData.created_by.last_name}`.trim()
+                : props.tripData.created_by?.first_name || props.tripData.created_by?.last_name) ||
               'System',
         data: {
           field: '__created__',
@@ -222,11 +218,9 @@ const getTimelineTitle = (item: TimelineItem): string => {
     case 'comment':
       return `${item.user} added a comment`;
     case 'creation':
-      const entityName = formatFieldName(props.entityType);
-      return `${item.user} created ${entityName}`;
+      return `${item.user} created trip`;
     case 'deletion':
-      const deletedEntityName = formatFieldName(props.entityType);
-      return `${item.user} deleted ${deletedEntityName}`;
+      return `${item.user} deleted trip`;
     case 'modification':
       const mod = item.data as Modification;
       const formattedField = formatFieldName(mod.field);
@@ -242,10 +236,9 @@ const getTimelineContent = (item: TimelineItem): string => {
       const comment = item.data as Comment;
       return comment.text;
     case 'creation':
-      const entityName = props.entityType.charAt(0).toUpperCase() + props.entityType.slice(1);
-      return `${entityName} was created and is now available in the system`;
+      return 'Trip was created and is now available in the system';
     case 'deletion':
-      return `${props.entityType.charAt(0).toUpperCase() + props.entityType.slice(1)} was deleted`;
+      return 'Trip was deleted';
     case 'modification':
       const mod = item.data as Modification;
       if (mod.before && mod.after) {
@@ -271,7 +264,7 @@ const formatTimeAgo = (timestamp: string): string => {
 
 const fetchComments = async () => {
   try {
-    const { data } = await ApiService.get(`/comments/for_object/?model=${props.entityType}&object_id=${props.entityId}`);
+    const { data } = await ApiService.get(`/comments/for_object/?model=trip&object_id=${props.tripId}`);
     comments.value = data || [];
   } catch (error) {
     console.error('Error fetching comments:', error);
@@ -281,8 +274,7 @@ const fetchComments = async () => {
 
 const fetchModifications = async () => {
   try {
-    const modelName = props.entityType.charAt(0).toUpperCase() + props.entityType.slice(1);
-    const { data } = await ApiService.get(`/modifications/for_object/?model=${modelName}&object_id=${props.entityId}`);
+    const { data } = await ApiService.get(`/modifications/for_object/?model=Trip&object_id=${props.tripId}`);
     modifications.value = data || [];
   } catch (error) {
     console.error('Error fetching modifications:', error);
@@ -298,8 +290,8 @@ const submitComment = async () => {
   try {
     // Create comment using content type ID
     await ApiService.post('/comments/', {
-      content_type: getContentTypeId(props.entityType),
-      object_id: props.entityId,
+      content_type: getContentTypeId('trip'),
+      object_id: props.tripId,
       text: commentText.value.trim()
     });
     
@@ -358,15 +350,15 @@ const loadData = async () => {
   }
 };
 
-// Watch for changes in entity ID
-watch(() => props.entityId, () => {
-  if (props.entityId) {
+// Watch for changes in trip ID
+watch(() => props.tripId, () => {
+  if (props.tripId) {
     loadData();
   }
 }, { immediate: true });
 
 onMounted(() => {
-  if (props.entityId) {
+  if (props.tripId) {
     loadData();
   }
 });

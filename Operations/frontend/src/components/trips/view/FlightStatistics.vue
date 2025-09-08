@@ -5,7 +5,7 @@
     <div class="card-header">
       <!--begin::Card title-->
       <div class="card-title">
-        <h2 class="fw-bold">Flight Statistics</h2>
+        <h2 class="fw-bold">Trip Summary</h2>
       </div>
       <!--end::Card title-->
     </div>
@@ -13,51 +13,46 @@
 
     <!--begin::Card body-->
     <div class="card-body pt-3">
-      <div class="row g-6" v-if="getTripLines().length > 0">
-        <!--begin::Col-->
-        <div class="col-sm-6 col-xl-3">
-          <div class="border border-dashed border-gray-300 text-center min-w-125px rounded py-3 px-4">
-            <span class="fs-6 fw-semibold text-gray-700">Total Distance</span>
-            <div class="fs-2 fw-bold text-gray-800">{{ getTotalDistance() }} <span class="fs-7 text-muted">nm</span></div>
+      <div class="row g-5">
+        <!--begin::Col - Trip Info-->
+        <div class="col-4">
+          <div class="position-relative ps-6 py-3">
+            <!--begin::Bar-->
+            <div class="position-absolute h-100 w-4px rounded top-0 start-0 bg-light-secondary"></div>
+            <!--end::Bar-->
+            <div class="fs-6 fw-semibold text-gray-700">Trip <span class="fw-bold">{{ trip?.trip_number || '-' }}</span></div>
+            <div class="fs-7 text-muted">Created {{ formatDate(trip?.created_on) }}</div>
           </div>
         </div>
         <!--end::Col-->
 
-        <!--begin::Col-->
-        <div class="col-sm-6 col-xl-3">
-          <div class="border border-dashed border-gray-300 text-center min-w-125px rounded py-3 px-4">
-            <span class="fs-6 fw-semibold text-gray-700">Flight Time</span>
-            <div class="fs-2 fw-bold text-gray-800">{{ getTotalFlightTime() }}</div>
+        <!--begin::Col - Patient Info-->
+        <div class="col-4">
+          <div class="position-relative ps-6 py-3">
+            <!--begin::Bar-->
+            <div class="position-absolute h-100 w-4px rounded top-0 start-0 bg-light-secondary"></div>
+            <!--end::Bar-->
+            <div class="fs-6 fw-semibold text-gray-700"><span class="fw-bold">{{ getPatientName() }}</span></div>
+            <div class="fs-7 text-muted">Patient</div>
           </div>
         </div>
         <!--end::Col-->
 
-        <!--begin::Col-->
-        <div class="col-sm-6 col-xl-3">
-          <div class="border border-dashed border-gray-300 text-center min-w-125px rounded py-3 px-4">
-            <span class="fs-6 fw-semibold text-gray-700">Flight Legs</span>
-            <div class="fs-2 fw-bold text-gray-800">{{ getTripLines().length }}</div>
-          </div>
-        </div>
-        <!--end::Col-->
-
-        <!--begin::Col-->
-        <div class="col-sm-6 col-xl-3">
-          <div class="border border-dashed border-gray-300 text-center min-w-125px rounded py-3 px-4">
-            <span class="fs-6 fw-semibold text-gray-700">Trip Status</span>
-            <div class="fs-2 fw-bold">
-              <span :class="`badge badge-light-${getStatusColor()} fs-6`">
+        <!--begin::Col - Trip Type & Status-->
+        <div class="col-4">
+          <div class="position-relative ps-6 py-3">
+            <!--begin::Bar-->
+            <div class="position-absolute h-100 w-4px rounded top-0 start-0 bg-light-secondary"></div>
+            <!--end::Bar-->
+            <div class="fs-6 fw-semibold text-gray-700"><span class="fw-bold">{{ formatTripType(trip?.type) }}</span></div>
+            <div class="fs-7 text-muted">
+              <span :class="`badge badge-light-${getStatusColor()} fs-7`">
                 {{ trip?.status || 'Pending' }}
               </span>
             </div>
           </div>
         </div>
         <!--end::Col-->
-      </div>
-      
-      <!-- Empty state when no trip lines -->
-      <div v-else class="text-center py-10">
-        <div class="text-muted">No flight statistics available</div>
       </div>
     </div>
     <!--end::Card body-->
@@ -66,8 +61,6 @@
 </template>
 
 <script setup lang="ts">
-import { calculateTripDistance, formatDistance } from '@/core/helpers/distanceCalculator';
-
 interface Props {
   trip: any;
   loading: boolean;
@@ -75,51 +68,24 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// Get trip lines from the trip
-const getTripLines = (): any[] => {
-  return props.trip?.trip_lines || [];
-};
-
-// Calculate total distance from all trip lines using coordinates
-const getTotalDistance = (): string => {
-  const tripLines = getTripLines();
-  const totalDistance = calculateTripDistance(tripLines);
-  return formatDistance(totalDistance, false);
-};
-
-// Calculate total flight time from all trip lines
-const getTotalFlightTime = (): string => {
-  const tripLines = getTripLines();
-  let totalMinutes = 0;
-  
-  tripLines.forEach(line => {
-    if (line.flight_time) {
-      // Parse flight_time which might be in format "HH:MM:SS" or minutes
-      if (typeof line.flight_time === 'string' && line.flight_time.includes(':')) {
-        const parts = line.flight_time.split(':');
-        const hours = parseInt(parts[0]) || 0;
-        const minutes = parseInt(parts[1]) || 0;
-        totalMinutes += hours * 60 + minutes;
-      } else if (typeof line.flight_time === 'number') {
-        totalMinutes += line.flight_time;
-      } else {
-        totalMinutes += parseInt(line.flight_time) || 0;
-      }
-    }
-  });
-  
-  if (totalMinutes === 0) return 'TBD';
-  
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  
-  if (hours === 0) {
-    return `${minutes}m`;
+const getPatientInitials = (): string => {
+  if (props.trip?.patient?.info) {
+    const first = props.trip.patient.info.first_name?.charAt(0) || '';
+    const last = props.trip.patient.info.last_name?.charAt(0) || '';
+    return (first + last).toUpperCase() || 'P';
   }
-  return `${hours}h ${minutes}m`;
+  return 'P';
 };
 
-// Get status color based on trip status
+const getPatientName = (): string => {
+  if (props.trip?.patient?.info) {
+    const first = props.trip.patient.info.first_name || '';
+    const last = props.trip.patient.info.last_name || '';
+    return `${first} ${last}`.trim() || 'Unknown Patient';
+  }
+  return 'No Patient Assigned';
+};
+
 const getStatusColor = (): string => {
   const status = props.trip?.status?.toLowerCase();
   switch (status) {
@@ -128,6 +94,46 @@ const getStatusColor = (): string => {
     case 'cancelled': return 'danger';
     case 'pending': return 'warning';
     default: return 'secondary';
+  }
+};
+
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+};
+
+// Format trip type to title case
+const formatTripType = (type?: string): string => {
+  if (!type) return 'Medical Transport';
+  
+  // Handle special cases
+  const typeMap: { [key: string]: string } = {
+    'medical': 'Medical Transport',
+    'charter': 'Charter',
+    'part 91': 'Part 91',
+    'part_91': 'Part 91',
+    'maintenance': 'Maintenance',
+    'other': 'Other'
+  };
+  
+  const lowerType = type.toLowerCase();
+  if (typeMap[lowerType]) {
+    return typeMap[lowerType];
+  }
+  
+  // Default: convert to title case
+  return type.split(/[_\s]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const viewPatient = () => {
+  if (props.trip?.patient?.id) {
+    window.open(`/admin/contacts/patients/${props.trip.patient.id}`, '_blank');
   }
 };
 </script>

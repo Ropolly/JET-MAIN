@@ -24,10 +24,10 @@
   <!--end::Associated Quote Alert-->
 
   <!--begin::Layout-->
-  <div class="d-flex flex-column flex-lg-row">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-start">
     <!--begin::Content-->
-    <div class="flex-lg-row-fluid me-lg-15 order-2 order-lg-1 mb-10 mb-lg-0">
-      <!-- Flight Statistics Card -->
+    <div class="flex-lg-row-fluid me-lg-5 order-2 order-lg-1 mb-10 mb-lg-0">
+      <!-- Trip Summary Card -->
       <FlightStatistics :trip="trip" :loading="loading" />
 
       <!-- Aircraft Details Card -->
@@ -35,15 +35,20 @@
 
       <!-- Combined Itinerary & Timeline Card -->
       <TripItinerary :trip="trip" :loading="loading" />
+
+      <!-- Trip Documents Card -->
+      <div data-kt-element="documents">
+        <TripDocuments v-if="trip?.id" :trip-id="trip.id" />
+      </div>
     </div>
     <!--end::Content-->
 
     <!--begin::Sidebar-->
     <div
-      class="flex-column flex-lg-row-auto w-lg-250px w-xl-300px mb-10 order-1 order-lg-2"
+      class="flex-column flex-lg-row-auto w-lg-350px w-xl-400px mb-10 order-1 order-lg-2"
     >
-      <!-- Trip Summary Card -->
-      <TripSummary :trip="trip" :loading="loading" />
+      <!-- Trip Comments Card -->
+      <TripComments v-if="trip?.id" :trip-id="trip.id" :trip-data="trip" />
     </div>
     <!--end::Sidebar-->
   </div>
@@ -55,10 +60,12 @@ import { defineComponent, ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
+import Swal from "sweetalert2";
 import FlightStatistics from "@/components/trips/view/FlightStatistics.vue";
 import TripItinerary from "@/components/trips/view/TripItinerary.vue";
 import AircraftDetails from "@/components/trips/view/AircraftDetails.vue";
-import TripSummary from "@/components/trips/view/TripSummary.vue";
+import TripDocuments from "@/components/trips/view/TripDocuments.vue";
+import TripComments from "@/components/trips/view/TripComments.vue";
 
 interface Trip {
   id: string;
@@ -97,7 +104,8 @@ export default defineComponent({
     FlightStatistics,
     TripItinerary,
     AircraftDetails,
-    TripSummary,
+    TripDocuments,
+    TripComments,
   },
   setup() {
     const route = useRoute();
@@ -168,19 +176,93 @@ export default defineComponent({
       }
     };
 
-    const handleGenerateManifest = () => {
-      // Generate manifest for trip
-      console.log('Generate manifest for trip:', trip.value?.trip_number);
+    const handleGenerateDocuments = () => {
+      // Scroll to documents section
+      const documentsSection = document.querySelector('[data-kt-element="documents"]');
+      if (documentsSection) {
+        documentsSection.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
+
+    const setupToolbarActions = () => {
+      const actions = [];
+      
+      // Build dropdown items
+      const dropdownItems = [
+        {
+          id: 'edit-trip',
+          label: 'Edit Trip',
+          icon: 'pencil',
+          handler: handleEditTrip
+        },
+        {
+          id: 'generate-documents',
+          label: 'Generate Documents',
+          icon: 'file-plus',
+          handler: handleGenerateDocuments
+        },
+        { divider: true },
+        {
+          id: 'delete-trip',
+          label: 'Delete Trip',
+          icon: 'trash',
+          handler: handleDeleteTrip,
+          className: 'text-danger'
+        }
+      ];
+      
+      // Add Actions dropdown
+      actions.push({
+        id: 'trip-actions-dropdown',
+        label: 'Actions',
+        variant: 'dark',
+        isDropdown: true,
+        dropdownItems: dropdownItems
+      });
+      
+      setToolbarActions(actions);
+    };
+
+    const handleDeleteTrip = () => {
+      if (!trip.value) return;
+      
+      Swal.fire({
+        title: 'Delete Trip',
+        text: 'Are you sure you want to delete this trip? This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          try {
+            await ApiService.delete(`/trips/${trip.value!.id}/`);
+            
+            Swal.fire({
+              title: 'Deleted!',
+              text: 'Trip has been deleted successfully.',
+              icon: 'success',
+              confirmButtonText: 'OK'
+            }).then(() => {
+              router.push('/admin/trips');
+            });
+          } catch (error) {
+            console.error('Error deleting trip:', error);
+            Swal.fire({
+              title: 'Error!',
+              text: 'Failed to delete the trip. Please try again.',
+              icon: 'error',
+              confirmButtonText: 'OK'
+            });
+          }
+        }
+      });
     };
 
     onMounted(() => {
       fetchTrip();
-      
-      // Setup toolbar actions
-      setToolbarActions([
-        createToolbarActions.primary('edit-trip', 'Edit Trip', handleEditTrip, 'pencil'),
-        createToolbarActions.secondary('generate-manifest', 'Generate Manifest', handleGenerateManifest, 'printer')
-      ]);
+      setupToolbarActions();
     });
 
     return {
@@ -189,6 +271,8 @@ export default defineComponent({
       error,
       formatQuoteAmount,
       viewQuote,
+      handleDeleteTrip,
+      setupToolbarActions,
     };
   },
 });

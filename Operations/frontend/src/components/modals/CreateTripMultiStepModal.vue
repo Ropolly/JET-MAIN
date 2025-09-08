@@ -52,7 +52,7 @@
                       <!--begin::Label-->
                       <div class="stepper-label">
                         <h3 class="stepper-title">Trip Details</h3>
-                        <div class="stepper-desc fw-semibold">Trip type, aircraft & number</div>
+                        <div class="stepper-desc fw-semibold">Trip type and aircraft</div>
                       </div>
                       <!--end::Label-->
                     </div>
@@ -275,7 +275,6 @@ const stepValidation = ref<Record<number, boolean>>({
 // Main trip data structure
 const tripData = reactive({
   // Step 1: Trip Details
-  trip_number: '',
   type: '',
   aircraft_id: '',
   notes: '',
@@ -351,64 +350,6 @@ const fetchDropdownData = async () => {
   }
 };
 
-// Generate unique trip number
-const generateTripNumber = async () => {
-  try {
-    const response = await ApiService.get('/trips/?ordering=-created_on&page_size=200');
-    const existingTrips = response.data.results || response.data || [];
-    
-    let maxTripNumber = 0;
-    for (const trip of existingTrips) {
-      if (trip.trip_number) {
-        const numberOnly = parseInt(trip.trip_number, 10);
-        if (!isNaN(numberOnly) && numberOnly > maxTripNumber) {
-          maxTripNumber = numberOnly;
-        }
-      }
-    }
-    
-    if (maxTripNumber < 10000) {
-      maxTripNumber = 9999;
-    }
-    
-    let nextTripNumber = maxTripNumber + 1;
-    if (nextTripNumber > 99999) {
-      nextTripNumber = 10000;
-    }
-    
-    const tripNumber = String(nextTripNumber).padStart(5, '0');
-    
-    // Check uniqueness
-    const checkResponse = await ApiService.get(`/trips/?trip_number=${tripNumber}`);
-    const conflictingTrips = checkResponse.data.results || checkResponse.data || [];
-    
-    if (conflictingTrips.length > 0) {
-      // Find next available
-      let attemptNumber = nextTripNumber;
-      for (let i = 0; i < 100; i++) {
-        attemptNumber++;
-        if (attemptNumber > 99999) attemptNumber = 10000;
-        
-        const testNumber = String(attemptNumber).padStart(5, '0');
-        const testResponse = await ApiService.get(`/trips/?trip_number=${testNumber}`);
-        const testConflicts = testResponse.data.results || testResponse.data || [];
-        
-        if (testConflicts.length === 0) {
-          tripData.trip_number = testNumber;
-          return;
-        }
-      }
-      throw new Error('Could not find available trip number');
-    } else {
-      tripData.trip_number = tripNumber;
-    }
-    
-  } catch (error) {
-    console.error('Error generating trip number:', error);
-    const fallbackNumber = String((Date.now() % 90000) + 10000);
-    tripData.trip_number = fallbackNumber;
-  }
-};
 
 // Submit the complete trip
 const handleSubmit = async () => {
@@ -444,7 +385,6 @@ const handleSubmit = async () => {
     } else {
       // Create new trip
       const tripApiData = {
-        trip_number: tripData.trip_number,
         type: tripData.type,
         aircraft: tripData.aircraft_id || null,
         patient: tripData.patient_id || null,
@@ -460,6 +400,20 @@ const handleSubmit = async () => {
     }
     
     console.log('Trip created:', createdTrip);
+
+    // Add a comment if this trip was created from a quote
+    if (quoteId.value && !editMode.value) {
+      try {
+        await ApiService.post('/comments/', {
+          content_type: 23, // Trip content type ID
+          object_id: createdTrip.id,
+          text: `Trip created from Quote #${quoteId.value.slice(0, 8)}`
+        });
+        console.log('Added quote conversion comment to trip');
+      } catch (commentError) {
+        console.error('Error adding quote conversion comment to trip:', commentError);
+      }
+    }
 
     // Create trip legs and events
     await createTripLegsAndEvents(createdTrip.id);
@@ -806,7 +760,6 @@ const getStaffIdFromContactId = (contactId: string): string => {
 };
 
 const resetForm = () => {
-  tripData.trip_number = '';
   tripData.type = '';
   tripData.aircraft_id = '';
   tripData.notes = '';
@@ -944,14 +897,11 @@ const handlePrepopulateForm = async (event: any) => {
       tripData.legs = [initialLeg];
     }
     
-    // Generate trip number automatically
-    await generateTripNumber();
   }
 };
 
 onMounted(() => {
   fetchDropdownData();
-  generateTripNumber();
   
   // Add event listener for form pre-population
   if (modalRef.value) {
