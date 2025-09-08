@@ -3,7 +3,7 @@ from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
     Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
-    StaffRoleMembership, TripEvent, Comment
+    StaffRoleMembership, TripEvent, Comment, Contract
 )
 from django.contrib.auth.models import User
 
@@ -1109,3 +1109,119 @@ class StaffReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Staff
         fields = ("id", "contact_id", "contact", "active", "notes", "created_on", "role_memberships")
+
+
+# Contract Serializers
+class ContractReadSerializer(serializers.ModelSerializer):
+    """Full contract details for reading."""
+    trip_id = serializers.PrimaryKeyRelatedField(source="trip", read_only=True)
+    customer_contact_id = serializers.PrimaryKeyRelatedField(source="customer_contact", read_only=True)
+    patient_id = serializers.PrimaryKeyRelatedField(source="patient", read_only=True)
+    
+    # Include related object details for display
+    trip = TripReadSerializer(read_only=True)
+    customer_contact = ContactSerializer(read_only=True)
+    patient = PatientReadSerializer(read_only=True)
+    unsigned_document = DocumentReadSerializer(read_only=True)
+    signed_document = DocumentReadSerializer(read_only=True)
+    
+    # Display fields
+    contract_type_display = serializers.CharField(source='get_contract_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = Contract
+        fields = [
+            'id', 'title', 'contract_type', 'contract_type_display', 'status', 'status_display',
+            'trip_id', 'trip', 'customer_contact_id', 'customer_contact', 'patient_id', 'patient',
+            'docuseal_template_id', 'docuseal_submission_id', 'docuseal_webhook_id',
+            'signer_email', 'signer_name', 'date_sent', 'date_signed', 'date_expired',
+            'unsigned_document', 'signed_document', 'notes', 'docuseal_response_data',
+            'created_on', 'created_by', 'modified_on', 'modified_by'
+        ]
+
+
+class ContractWriteSerializer(serializers.ModelSerializer):
+    """Contract creation and update serializer."""
+    trip_id = serializers.PrimaryKeyRelatedField(
+        source="trip", 
+        queryset=Trip.objects.all()
+    )
+    customer_contact_id = serializers.PrimaryKeyRelatedField(
+        source="customer_contact", 
+        queryset=Contact.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    patient_id = serializers.PrimaryKeyRelatedField(
+        source="patient", 
+        queryset=Patient.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    class Meta:
+        model = Contract
+        fields = [
+            'title', 'contract_type', 'trip_id', 'customer_contact_id', 'patient_id',
+            'signer_email', 'signer_name', 'notes'
+        ]
+    
+    def validate(self, data):
+        """Validate contract data."""
+        # Ensure we have a signer (either customer contact or explicit signer info)
+        if not data.get('signer_email') and not data.get('customer_contact'):
+            raise serializers.ValidationError(
+                "Either signer_email or customer_contact_id is required"
+            )
+        
+        return data
+
+
+class ContractCreateFromTripSerializer(serializers.Serializer):
+    """Serializer for creating multiple contracts from a trip."""
+    trip_id = serializers.PrimaryKeyRelatedField(queryset=Trip.objects.all())
+    contract_types = serializers.MultipleChoiceField(
+        choices=Contract.CONTRACT_TYPES,
+        allow_empty=False
+    )
+    send_immediately = serializers.BooleanField(default=False)
+    custom_signer_email = serializers.EmailField(required=False, allow_null=True)
+    custom_signer_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate contract creation data."""
+        trip = data['trip_id']
+        
+        # Check if trip has a quote
+        if not trip.quote:
+            raise serializers.ValidationError(
+                "Trip must have an associated quote for contract generation"
+            )
+        
+        # Check if quote has a contact, but only if no custom signer is provided
+        custom_signer_email = data.get('custom_signer_email')
+        if not custom_signer_email and not trip.quote.contact:
+            raise serializers.ValidationError(
+                "Trip quote must have a customer contact, or provide custom signer email"
+            )
+        
+        return data
+
+
+class ContractDocuSealActionSerializer(serializers.Serializer):
+    """Serializer for DocuSeal-specific actions."""
+    action = serializers.ChoiceField(choices=[
+        ('send_for_signature', 'Send for Signature'),
+        ('resend', 'Resend'),
+        ('cancel', 'Cancel'),
+        ('archive', 'Archive')
+    ])
+    custom_message = serializers.CharField(required=False, allow_blank=True)
+    
+    
+class DocuSealWebhookSerializer(serializers.Serializer):
+    """Serializer for processing DocuSeal webhook events."""
+    event_type = serializers.CharField()
+    data = serializers.DictField()
+    timestamp = serializers.DateTimeField(required=False)

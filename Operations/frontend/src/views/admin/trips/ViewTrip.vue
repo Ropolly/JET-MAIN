@@ -40,6 +40,11 @@
       <div data-kt-element="documents">
         <TripDocuments v-if="trip?.id" :trip-id="trip.id" />
       </div>
+
+      <!-- Trip Contracts Card -->
+      <div data-kt-element="contracts" class="mt-8">
+        <TripContracts v-if="trip?.id" :trip-id="trip.id" :trip-data="trip" />
+      </div>
     </div>
     <!--end::Content-->
 
@@ -65,6 +70,7 @@ import FlightStatistics from "@/components/trips/view/FlightStatistics.vue";
 import TripItinerary from "@/components/trips/view/TripItinerary.vue";
 import AircraftDetails from "@/components/trips/view/AircraftDetails.vue";
 import TripDocuments from "@/components/trips/view/TripDocuments.vue";
+import TripContracts from "@/components/trips/view/TripContracts.vue";
 import TripComments from "@/components/trips/view/TripComments.vue";
 
 interface Trip {
@@ -105,6 +111,7 @@ export default defineComponent({
     TripItinerary,
     AircraftDetails,
     TripDocuments,
+    TripContracts,
     TripComments,
   },
   setup() {

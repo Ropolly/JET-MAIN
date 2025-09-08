@@ -125,17 +125,39 @@ def get_timezone_info(airport_timezone: str, dt: Optional[datetime] = None) -> d
     
     # Find next DST transition (useful for warnings)
     try:
-        # Get transitions for the current year and next year
-        current_year = localized_dt.year
-        transitions = []
-        for year in [current_year, current_year + 1]:
-            for transition_dt, before_tz, after_tz in tz._utc_transition_times:
-                if transition_dt.year == year and transition_dt > dt:
-                    transitions.append(transition_dt)
-                    break
+        # Use a safer approach to get DST transitions
+        next_transition = None
         
-        tzinfo['dst_transition_next'] = min(transitions) if transitions else None
-    except (AttributeError, IndexError):
+        # Check if timezone has _utc_transition_times and it's iterable
+        if hasattr(tz, '_utc_transition_times') and hasattr(tz._utc_transition_times, '__iter__'):
+            try:
+                # Get transitions for the current year and next year
+                current_year = localized_dt.year
+                transitions = []
+                
+                # Safely iterate through transition times
+                transition_times = tz._utc_transition_times
+                # Handle different pytz versions - some return tuples, some just datetimes
+                for transition_item in transition_times:
+                    if isinstance(transition_item, tuple) and len(transition_item) >= 3:
+                        transition_dt, before_tz, after_tz = transition_item
+                    elif hasattr(transition_item, 'year'):  # It's a datetime
+                        transition_dt = transition_item
+                    else:
+                        continue
+                        
+                    if (hasattr(transition_dt, 'year') and 
+                        transition_dt.year in [current_year, current_year + 1] and 
+                        transition_dt > dt):
+                        transitions.append(transition_dt)
+                        
+                next_transition = min(transitions) if transitions else None
+            except (TypeError, ValueError, AttributeError):
+                pass
+        
+        tzinfo['dst_transition_next'] = next_transition
+    except Exception:
+        # Fallback - don't include DST transition info if we can't determine it safely
         tzinfo['dst_transition_next'] = None
     
     return tzinfo
