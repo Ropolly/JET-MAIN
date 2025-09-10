@@ -405,6 +405,8 @@ class QuoteViewSet(BaseViewSet):
             permission_classes = [permissions.IsAuthenticated, CanDeleteQuote]
         elif self.action == 'create_transaction':
             permission_classes = [permissions.IsAuthenticated, CanWriteTransaction]
+        elif self.action == 'generate_quote_document':
+            permission_classes = [permissions.IsAuthenticated, CanModifyQuote]
         else:
             permission_classes = [permissions.IsAuthenticated]
         return [permission() for permission in permission_classes]
@@ -762,6 +764,64 @@ class QuoteViewSet(BaseViewSet):
         response = HttpResponse(buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="quote_{quote.id.hex[:8]}.pdf"'
         return response
+    
+    @action(detail=True, methods=['post'])
+    def generate_quote_document(self, request, pk=None):
+        """
+        Generate a Quote PDF document using the template and save it to nosign_out directory
+        """
+        import os
+        from datetime import datetime
+        from documents.templates.docs import populate_quote_pdf, QuoteData
+        
+        quote = self.get_object()
+        
+        try:
+            # Prepare data for the quote document
+            quote_data = QuoteData(
+                quote_id=str(quote.id.hex[:8].upper()),
+                inquiry_date=quote.inquiry_date.strftime('%Y-%m-%d') if quote.inquiry_date else '',
+                patient_name=f"{quote.patient.info.first_name} {quote.patient.info.last_name}" if quote.patient and quote.patient.info else '',
+                aircraft_type=dict(quote._meta.get_field('aircraft_type').choices).get(quote.aircraft_type, quote.aircraft_type),
+                pickup_airport=f"{quote.pickup_airport.name} ({quote.pickup_airport.ident})" if quote.pickup_airport else '',
+                dropoff_airport=f"{quote.dropoff_airport.name} ({quote.dropoff_airport.ident})" if quote.dropoff_airport else '',
+                trip_date=quote.created_on.strftime('%Y-%m-%d') if quote.created_on else '',
+                esitmated_flight_time=str(quote.estimated_flight_time) if quote.estimated_flight_time else '',
+                number_of_stops=str(quote.number_of_stops),
+                medical_team=dict(quote._meta.get_field('medical_team').choices).get(quote.medical_team, quote.medical_team),
+                include_grounds='Yes' if quote.includes_grounds else 'No',
+                our_availability='Available',
+                amount=f"${quote.quoted_amount:,.2f}",
+                notes=quote.notes if hasattr(quote, 'notes') else ''
+            )
+            
+            # Define file paths
+            template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/Quote.pdf'
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"quote_{quote.id.hex[:8]}_{timestamp}.pdf"
+            output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+            
+            # Generate the PDF
+            success = populate_quote_pdf(template_path, output_path, quote_data)
+            
+            if success:
+                return Response({
+                    'success': True,
+                    'message': 'Quote document generated successfully',
+                    'filename': output_filename,
+                    'path': output_path
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Failed to generate quote document'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'Error generating quote document: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
@@ -890,7 +950,7 @@ class TripViewSet(BaseViewSet):
             permission_classes = [permissions.IsAuthenticated, CanReadTrip]
         elif self.action == 'create':
             permission_classes = [permissions.IsAuthenticated, CanWriteTrip]
-        elif self.action in ['update', 'partial_update', 'generate_itineraries']:
+        elif self.action in ['update', 'partial_update', 'generate_itineraries', 'generate_handling_requests']:
             permission_classes = [permissions.IsAuthenticated, CanModifyTrip]
         elif self.action == 'destroy':
             permission_classes = [permissions.IsAuthenticated, CanDeleteTrip]
@@ -900,11 +960,254 @@ class TripViewSet(BaseViewSet):
     
     @action(detail=True, methods=['post'])
     def generate_itineraries(self, request, pk=None):
+        """
+        Generate itinerary documents - one per crew line in the trip
+        """
+        import os
+        from datetime import datetime
+        from documents.templates.docs import populate_itinerary_pdf, ItineraryData, CrewInfo, FlightLeg, AirportInfo, TimeInfo
+        
         trip = self.get_object()
-        # Here you would generate the itineraries
-        # This is a placeholder for the actual itinerary generation logic
-        serializer = self.get_serializer(trip)
-        return Response(serializer.data)
+        generated_files = []
+        
+        try:
+            # Get all crew lines for this trip
+            crew_lines = CrewLine.objects.filter(trip_lines__trip=trip).distinct()
+            
+            if not crew_lines.exists():
+                return Response({
+                    'success': False,
+                    'message': 'No crew lines found for this trip'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            for crew_line in crew_lines:
+                # Prepare crew info
+                crew_info = CrewInfo(
+                    pic=f"{crew_line.primary_in_command.first_name} {crew_line.primary_in_command.last_name}" if crew_line.primary_in_command else '',
+                    sic=f"{crew_line.secondary_in_command.first_name} {crew_line.secondary_in_command.last_name}" if crew_line.secondary_in_command else ''
+                )
+                
+                # Add medical crew members
+                medics = list(crew_line.medic_ids.all())
+                if len(medics) > 0:
+                    crew_info.med_1 = f"{medics[0].first_name} {medics[0].last_name}"
+                if len(medics) > 1:
+                    crew_info.med_2 = f"{medics[1].first_name} {medics[1].last_name}"
+                if len(medics) > 2:
+                    crew_info.med_4 = f"{medics[2].first_name} {medics[2].last_name}"
+                
+                # Prepare flight legs
+                flight_legs = []
+                trip_lines = trip.trip_lines.filter(crew_line=crew_line).order_by('departure_time_utc')
+                
+                for i, trip_line in enumerate(trip_lines, 1):
+                    leg = FlightLeg(
+                        leg=str(i),
+                        departure_id=trip_line.origin_airport.ident if trip_line.origin_airport else '',
+                        edt_utc_local=trip_line.departure_time_local.strftime('%H:%M %Z') if trip_line.departure_time_local else '',
+                        arrival_id=trip_line.destination_airport.ident if trip_line.destination_airport else '',
+                        flight_time=str(trip_line.flight_time) if trip_line.flight_time else '',
+                        eta_utc_local=trip_line.arrival_time_local.strftime('%H:%M %Z') if trip_line.arrival_time_local else '',
+                        ground_time=str(trip_line.ground_time) if trip_line.ground_time else '',
+                        pax_leg='Yes' if trip_line.passenger_leg else 'No'
+                    )
+                    flight_legs.append(leg)
+                
+                # Prepare airport info
+                airports = []
+                all_airports = set()
+                for trip_line in trip_lines:
+                    all_airports.add(trip_line.origin_airport)
+                    all_airports.add(trip_line.destination_airport)
+                
+                for airport in all_airports:
+                    if airport:
+                        airport_info = AirportInfo(
+                            icao=airport.icao_code or airport.ident,
+                            airport_city_name=airport.name,
+                            state_country=f"{airport.iso_region}, {airport.iso_country}",
+                            time_zone=getattr(airport, 'timezone', ''),
+                            fbo_handler='',  # Will be populated from FBO data if available
+                            freq='',
+                            phone_fax='',
+                            fuel=''
+                        )
+                        airports.append(airport_info)
+                
+                # Prepare timing info
+                times = TimeInfo(
+                    showtime='',
+                    origin_edt=trip.estimated_departure_time.strftime('%H:%M %Z') if trip.estimated_departure_time else '',
+                    total_flight_time='',
+                    total_duty_time='',
+                    pre_flight_duty_time=str(trip.pre_flight_duty_time) if trip.pre_flight_duty_time else '',
+                    post_flight_duty_time=str(trip.post_flight_duty_time) if trip.post_flight_duty_time else ''
+                )
+                
+                # Prepare passenger list
+                passengers = []
+                for passenger in trip.passengers.all():
+                    if passenger.info:
+                        passengers.append(f"{passenger.info.first_name} {passenger.info.last_name}")
+                
+                # Create itinerary data
+                itinerary_data = ItineraryData(
+                    trip_number=trip.trip_number,
+                    tail_number=trip.aircraft.tail_number if trip.aircraft else '',
+                    trip_date=trip.created_on.strftime('%Y-%m-%d') if trip.created_on else '',
+                    trip_type=trip.type,
+                    patient_name=f"{trip.patient.info.first_name} {trip.patient.info.last_name}" if trip.patient and trip.patient.info else '',
+                    bed_at_origin=False,  # This would need to be determined from trip data
+                    bed_at_dest=False,    # This would need to be determined from trip data
+                    special_instructions=trip.notes or '',
+                    passengers=passengers,
+                    crew=crew_info,
+                    flight_legs=flight_legs,
+                    airports=airports,
+                    times=times
+                )
+                
+                # Define file paths
+                template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/itin.pdf'
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_filename = f"itin_{trip.trip_number}_crew_{crew_line.id.hex[:8]}_{timestamp}.pdf"
+                output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+                
+                # Generate the PDF
+                success = populate_itinerary_pdf(template_path, output_path, itinerary_data)
+                
+                if success:
+                    generated_files.append({
+                        'crew_line_id': str(crew_line.id),
+                        'filename': output_filename,
+                        'path': output_path
+                    })
+                else:
+                    return Response({
+                        'success': False,
+                        'message': f'Failed to generate itinerary for crew line {crew_line.id}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            return Response({
+                'success': True,
+                'message': f'Generated {len(generated_files)} itinerary documents',
+                'files': generated_files
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'Error generating itinerary documents: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def generate_handling_requests(self, request, pk=None):
+        """
+        Generate handling request documents - one per trip leg with FBO info from arriving airport
+        """
+        import os
+        from datetime import datetime
+        from documents.templates.docs import populate_handling_request_pdf, HandlingRequestData, PassengerInfo
+        
+        trip = self.get_object()
+        generated_files = []
+        
+        try:
+            # Get all trip lines for this trip
+            trip_lines = trip.trip_lines.all().order_by('departure_time_utc')
+            
+            if not trip_lines.exists():
+                return Response({
+                    'success': False,
+                    'message': 'No trip lines found for this trip'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            for trip_line in trip_lines:
+                # Prepare aircraft data
+                aircraft = trip.aircraft
+                handling_data = HandlingRequestData(
+                    company='JET ICU MEDICAL TRANSPORT',
+                    make=aircraft.make if aircraft else '',
+                    model=aircraft.model if aircraft else '',
+                    tail_number=aircraft.tail_number if aircraft else '',
+                    serial_number=getattr(aircraft, 'serial_number', '') if aircraft else '',
+                    mgtow=getattr(aircraft, 'mgtow', '') if aircraft else '',
+                    mission='Medical Transport',
+                    depart_origin=f"{trip_line.origin_airport.name} ({trip_line.origin_airport.ident})" if trip_line.origin_airport else '',
+                    arrive_dest=f"{trip_line.destination_airport.name} ({trip_line.destination_airport.ident})" if trip_line.destination_airport else '',
+                    depart_dest='',  # This would be filled for return legs
+                    arrive_origin=''  # This would be filled for return legs
+                )
+                
+                # Prepare passenger information
+                passengers = []
+                for passenger in trip.passengers.all():
+                    if passenger.info:
+                        passenger_info = PassengerInfo(
+                            name=f"{passenger.info.first_name} {passenger.info.last_name}",
+                            title='',
+                            nationality=passenger.nationality or '',
+                            date_of_birth=passenger.date_of_birth.strftime('%Y-%m-%d') if passenger.date_of_birth else '',
+                            passport_number=passenger.passport_number or '',
+                            passport_expiration=passenger.passport_expiration_date.strftime('%Y-%m-%d') if passenger.passport_expiration_date else '',
+                            contact_number=passenger.contact_number or ''
+                        )
+                        passengers.append(passenger_info)
+                
+                # Add patient if exists and not already in passengers
+                if trip.patient and trip.patient.info:
+                    patient_already_added = any(
+                        p.name == f"{trip.patient.info.first_name} {trip.patient.info.last_name}" 
+                        for p in passengers
+                    )
+                    if not patient_already_added:
+                        patient_info = PassengerInfo(
+                            name=f"{trip.patient.info.first_name} {trip.patient.info.last_name}",
+                            title='Patient',
+                            nationality=getattr(trip.patient, 'nationality', ''),
+                            date_of_birth=trip.patient.info.date_of_birth.strftime('%Y-%m-%d') if hasattr(trip.patient.info, 'date_of_birth') and trip.patient.info.date_of_birth else '',
+                            passport_number='',
+                            passport_expiration='',
+                            contact_number=''
+                        )
+                        passengers.append(patient_info)
+                
+                handling_data.passengers = passengers
+                
+                # Define file paths
+                template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/handling_request.pdf'
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_filename = f"handling_{trip.trip_number}_leg_{trip_line.id.hex[:8]}_{timestamp}.pdf"
+                output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+                
+                # Generate the PDF
+                success = populate_handling_request_pdf(template_path, output_path, handling_data)
+                
+                if success:
+                    generated_files.append({
+                        'trip_line_id': str(trip_line.id),
+                        'arrival_airport': trip_line.destination_airport.name if trip_line.destination_airport else '',
+                        'arrival_fbo': trip_line.arrival_fbo.name if trip_line.arrival_fbo else 'N/A',
+                        'filename': output_filename,
+                        'path': output_path
+                    })
+                else:
+                    return Response({
+                        'success': False,
+                        'message': f'Failed to generate handling request for trip line {trip_line.id}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            return Response({
+                'success': True,
+                'message': f'Generated {len(generated_files)} handling request documents',
+                'files': generated_files
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'Error generating handling request documents: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'])
     def trip_lines(self, request, pk=None):
