@@ -243,6 +243,7 @@ class Transaction(BaseModel):
     ], default="created")
     payment_date = models.DateTimeField(default=timezone.now)
     email = models.EmailField()
+    authorize_net_trans_id = models.CharField(max_length=50, blank=True, null=True, help_text="Authorize.Net Transaction ID")
     
     def __str__(self):
         return f"Transaction {self.key} - {self.amount} - {self.payment_status}"
@@ -340,6 +341,27 @@ class Quote(BaseModel):
     consent_for_transport = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="consent_quotes", db_column="consent_for_transport_id")
     patient_service_agreement = models.ForeignKey(Agreement, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_quotes", db_column="patient_service_agreement_id")
     transactions = models.ManyToManyField(Transaction, related_name="quotes", blank=True)
+    
+    def get_total_paid(self):
+        """Calculate total amount paid from completed transactions."""
+        from django.db import models
+        return self.transactions.filter(payment_status='completed').aggregate(
+            total=models.Sum('amount'))['total'] or 0
+    
+    def get_remaining_balance(self):
+        """Calculate remaining balance after payments."""
+        return self.quoted_amount - self.get_total_paid()
+    
+    def update_payment_status(self):
+        """Update payment status based on total payments received."""
+        total_paid = self.get_total_paid()
+        if total_paid == 0:
+            self.payment_status = 'pending'
+        elif total_paid >= self.quoted_amount:
+            self.payment_status = 'paid'
+        else:
+            self.payment_status = 'partial'
+        self.save()
     
     def __str__(self):
         return f"Quote {self.id} - {self.quoted_amount} - {self.status}"

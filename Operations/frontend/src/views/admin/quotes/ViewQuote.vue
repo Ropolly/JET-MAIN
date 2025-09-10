@@ -289,6 +289,60 @@
             </div>                
             <!--end::Labels-->   
             
+            <!-- Payment Section -->
+            <div v-if="showPaymentSection()" class="mb-8">
+              <div class="d-flex flex-column gap-3">
+                <!-- Payment Status and Balance -->
+                <div class="card card-flush border-2" :class="getPaymentCardClass()">
+                  <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                      <h6 class="fw-bold text-gray-700 mb-0">PAYMENT STATUS</h6>
+                      <span :class="PaymentService.getPaymentStatusClass(quote?.payment_status || 'pending')" class="fs-8 fw-bold">
+                        {{ getPaymentStatusText() }}
+                      </span>
+                    </div>
+                    
+                    <div class="row g-3">
+                      <div class="col-6">
+                        <div class="text-gray-800 fw-bold fs-7">{{ PaymentService.formatAmount(quote?.total_paid || 0) }}</div>
+                        <div class="text-gray-400 fs-8">Total Paid</div>
+                      </div>
+                      <div class="col-6">
+                        <div class="text-primary fw-bold fs-7">{{ PaymentService.formatAmount(quote?.remaining_balance || quote?.quoted_amount || 0) }}</div>
+                        <div class="text-gray-400 fs-8">Remaining</div>
+                      </div>
+                    </div>
+                    
+                    <!-- Recent Transactions -->
+                    <div v-if="quote?.transactions && quote.transactions.length > 0" class="mt-4">
+                      <div class="fw-semibold text-gray-600 fs-8 mb-2">Recent Payments:</div>
+                      <div class="d-flex flex-column gap-1">
+                        <div v-for="transaction in getRecentTransactions()" :key="transaction.id" class="d-flex justify-content-between align-items-center">
+                          <div class="d-flex align-items-center">
+                            <i :class="getTransactionIcon(transaction.payment_method)" class="fs-6 text-success me-2"></i>
+                            <span class="text-gray-700 fs-8">{{ PaymentService.formatAmount(transaction.amount) }}</span>
+                          </div>
+                          <div class="text-gray-400 fs-8">{{ formatTransactionDate(transaction.created_on) }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Payment Button -->
+                <button 
+                  v-if="canReceivePayment()"
+                  @click="openPaymentModal"
+                  type="button" 
+                  class="btn btn-primary w-100"
+                  :class="{ 'btn-success': quote?.payment_status === 'partial' }"
+                >
+                  <i class="fas fa-credit-card fs-4 me-2"></i>
+                  {{ getPaymentButtonText() }}
+                </button>
+              </div>
+            </div>
+            
             <!--begin::Title-->
             <h6 class="mb-8 fw-bolder text-gray-600 text-hover-primary">QUOTE DETAILS</h6>
             <!--end::Title-->   
@@ -407,6 +461,14 @@
   <!-- Include the Create Trip Modal -->
   <CreateTripMultiStepModal @tripCreated="onTripCreated" />
   
+  <!-- Payment Modal -->
+  <PaymentModal 
+    :quote="quote" 
+    :customer-info="getCustomerPaymentInfo()"
+    @payment-success="onPaymentSuccess"
+    @payment-error="onPaymentError"
+  />
+  
   <!-- Email Quote Modal -->
   <div 
     class="modal fade" 
@@ -512,6 +574,8 @@ import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 import { Modal } from "bootstrap";
 import CreateTripMultiStepModal from "@/components/modals/CreateTripMultiStepModal.vue";
 import UpdatesTimeline from "@/components/UpdatesTimeline.vue";
+import PaymentModal from "@/components/modals/PaymentModal.vue";
+import PaymentService from "@/core/services/PaymentService";
 import JwtService from "@/core/services/JwtService";
 
 const route = useRoute();
@@ -1302,6 +1366,114 @@ const deleteQuote = () => {
       }
     }
   });
+};
+
+// Payment-related methods
+const showPaymentSection = (): boolean => {
+  return quote.value && ['pending', 'active', 'completed'].includes(quote.value.status) && quote.value.payment_status !== 'paid';
+};
+
+const canReceivePayment = (): boolean => {
+  return quote.value && 
+         ['pending', 'active', 'completed'].includes(quote.value.status) && 
+         ['pending', 'partial'].includes(quote.value.payment_status || 'pending') &&
+         (quote.value.remaining_balance || quote.value.quoted_amount || 0) > 0;
+};
+
+const getPaymentStatusText = (): string => {
+  const status = quote.value?.payment_status || 'pending';
+  switch (status.toLowerCase()) {
+    case 'paid': return 'PAID IN FULL';
+    case 'partial': return 'PARTIALLY PAID';
+    case 'pending': return 'PAYMENT PENDING';
+    default: return status.toUpperCase();
+  }
+};
+
+const getPaymentCardClass = (): string => {
+  const status = quote.value?.payment_status || 'pending';
+  switch (status.toLowerCase()) {
+    case 'paid': return 'border-success';
+    case 'partial': return 'border-warning';
+    case 'pending': return 'border-danger';
+    default: return 'border-secondary';
+  }
+};
+
+const getPaymentButtonText = (): string => {
+  const status = quote.value?.payment_status || 'pending';
+  switch (status.toLowerCase()) {
+    case 'partial': return 'Receive Payment';
+    case 'pending': return 'Receive Payment';
+    default: return 'Receive Payment';
+  }
+};
+
+const getRecentTransactions = () => {
+  if (!quote.value?.transactions) return [];
+  return quote.value.transactions
+    .slice(-3) // Show last 3 transactions
+    .reverse(); // Most recent first
+};
+
+const getTransactionIcon = (paymentMethod: string): string => {
+  switch (paymentMethod?.toLowerCase()) {
+    case 'credit_card': return 'fas fa-credit-card';
+    case 'ach': return 'fas fa-university';
+    case 'cash': return 'fas fa-money-bill-wave';
+    case 'check': return 'fas fa-money-check';
+    default: return 'fas fa-dollar-sign';
+  }
+};
+
+const formatTransactionDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const getCustomerPaymentInfo = () => {
+  if (!quote.value?.contact) return null;
+  
+  const contact = quote.value.contact;
+  return {
+    first_name: contact.first_name || '',
+    last_name: contact.last_name || '',
+    email: contact.email || '',
+    phone: contact.phone || '',
+    address_line1: contact.address || '',
+    city: contact.city || '',
+    state: contact.state || '',
+    zip: contact.zip_code || ''
+  };
+};
+
+const openPaymentModal = () => {
+  const modalElement = document.getElementById('paymentModal');
+  if (modalElement) {
+    const modal = new Modal(modalElement);
+    modal.show();
+  }
+};
+
+const onPaymentSuccess = async (response: any) => {
+  console.log('Payment successful:', response);
+  
+  // Refresh the quote to show updated payment information
+  await fetchQuote();
+  
+  // Refresh timeline to show payment activity
+  if (updatesTimelineRef.value) {
+    setTimeout(() => {
+      updatesTimelineRef.value.refresh();
+    }, 500);
+  }
+};
+
+const onPaymentError = (error: string) => {
+  console.error('Payment failed:', error);
+  // Error handling is done in the PaymentModal component
 };
 
 onMounted(() => {
