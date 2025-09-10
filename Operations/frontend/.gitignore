@@ -16,6 +16,12 @@ dist-ssr
 coverage
 *.local
 
+# SSL certificates
+certs/
+*.pem
+*.key
+*.crt
+
 /cypress/videos/
 /cypress/screenshots/
 

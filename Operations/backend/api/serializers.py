@@ -837,7 +837,27 @@ class TripWriteSerializer(serializers.ModelSerializer):
             'passenger_ids', 'status'
         ]
 
-# 6) Quotes
+# 6) Transactions
+class TransactionPublicReadSerializer(serializers.ModelSerializer):
+    """Minimal safe fields for public access by key"""
+    class Meta:
+        model = Transaction
+        fields = ['id', 'amount', 'status', 'created_on']
+
+class TransactionReadSerializer(serializers.ModelSerializer):
+    """Full details for staff access"""
+    class Meta:
+        model = Transaction
+        fields = ['id', 'key', 'amount', 'payment_method', 'payment_status', 'payment_date', 
+                 'email', 'authorize_net_trans_id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+
+class TransactionProcessWriteSerializer(serializers.ModelSerializer):
+    """For processing payments with gateway inputs"""
+    class Meta:
+        model = Transaction
+        fields = ['amount', 'status', 'payment_method', 'gateway_response']
+
+# 7) Quotes
 class QuoteReadSerializer(serializers.ModelSerializer):
     contact = ContactSerializer(read_only=True)
     pickup_airport = AirportSerializer(read_only=True)
@@ -846,8 +866,10 @@ class QuoteReadSerializer(serializers.ModelSerializer):
     payment_agreement = AgreementSerializer(read_only=True)
     consent_for_transport = AgreementSerializer(read_only=True)
     patient_service_agreement = AgreementSerializer(read_only=True)
-    transactions = serializers.SerializerMethodField()
+    transactions = TransactionReadSerializer(many=True, read_only=True)
     trips = serializers.SerializerMethodField()
+    total_paid = serializers.SerializerMethodField()
+    remaining_balance = serializers.SerializerMethodField()
     
     class Meta:
         model = Quote
@@ -857,7 +879,7 @@ class QuoteReadSerializer(serializers.ModelSerializer):
             'transactions', 'trips', 'status', 'payment_status', 'quote_pdf_status', 'aircraft_type', 'medical_team',
             'estimated_flight_time', 'includes_grounds', 'number_of_stops',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'cruise_line', 'cruise_ship',
-            'quote_pdf_email', 'created_on'
+            'quote_pdf_email', 'created_on', 'total_paid', 'remaining_balance'
         ]
     
     def get_patient(self, obj):
@@ -877,12 +899,13 @@ class QuoteReadSerializer(serializers.ModelSerializer):
             return patient_data
         return None
     
-    def get_transactions(self, obj):
-        return [{
-            'id': t.id,
-            'amount': t.amount,
-            'status': t.status
-        } for t in obj.transactions.all()]
+    def get_total_paid(self, obj):
+        """Get total amount paid from completed transactions."""
+        return obj.get_total_paid()
+    
+    def get_remaining_balance(self, obj):
+        """Get remaining balance after payments."""
+        return obj.get_remaining_balance()
     
     def get_trips(self, obj):
         # Return minimal trip info to avoid circular references
@@ -958,26 +981,7 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
         model = Document
         fields = ['id', 'filename', 'content', 'flag']
 
-# 8) Transactions
-class TransactionPublicReadSerializer(serializers.ModelSerializer):
-    """Minimal safe fields for public access by key"""
-    class Meta:
-        model = Transaction
-        fields = ['id', 'amount', 'status', 'created_on']
-
-class TransactionReadSerializer(serializers.ModelSerializer):
-    """Full details for staff access"""
-    class Meta:
-        model = Transaction
-        fields = '__all__'
-
-class TransactionProcessWriteSerializer(serializers.ModelSerializer):
-    """For processing payments with gateway inputs"""
-    class Meta:
-        model = Transaction
-        fields = ['amount', 'status', 'payment_method', 'gateway_response']
-
-# 9) Patient (updated to follow pattern)
+# 8) Patient (updated to follow pattern)
 class PatientReadSerializer(serializers.ModelSerializer):
     info = ContactSerializer(read_only=True)
     trips = serializers.SerializerMethodField()
@@ -1188,23 +1192,36 @@ class ContractCreateFromTripSerializer(serializers.Serializer):
     send_immediately = serializers.BooleanField(default=False)
     custom_signer_email = serializers.EmailField(required=False, allow_null=True)
     custom_signer_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    # Optional pricing fields for payment agreements without quotes
+    manual_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    manual_price_description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     
     def validate(self, data):
         """Validate contract creation data."""
         trip = data['trip_id']
-        
-        # Check if trip has a quote
-        if not trip.quote:
-            raise serializers.ValidationError(
-                "Trip must have an associated quote for contract generation"
-            )
-        
-        # Check if quote has a contact, but only if no custom signer is provided
+        contract_types = data['contract_types']
         custom_signer_email = data.get('custom_signer_email')
-        if not custom_signer_email and not trip.quote.contact:
+        manual_price = data.get('manual_price')
+        
+        # Check if we have any way to identify a signer
+        has_quote_contact = trip.quote and hasattr(trip.quote, 'contact') and trip.quote.contact
+        has_patient_contact = trip.patient and trip.patient.info and trip.patient.info.email
+        has_custom_signer = custom_signer_email
+        
+        if not (has_quote_contact or has_patient_contact or has_custom_signer):
             raise serializers.ValidationError(
-                "Trip quote must have a customer contact, or provide custom signer email"
+                "No signer information available. Trip must have a quote with customer contact, "
+                "or patient with contact info, or provide custom_signer_email."
             )
+        
+        # Special validation for payment agreements
+        if 'payment_agreement' in contract_types:
+            has_quote_pricing = trip.quote and trip.quote.quoted_amount
+            if not has_quote_pricing and not manual_price:
+                raise serializers.ValidationError(
+                    "Payment agreement requires pricing information. "
+                    "Either trip must have a quote with quoted_amount or provide manual_price."
+                )
         
         return data
 
