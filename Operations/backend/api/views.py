@@ -772,6 +772,7 @@ class QuoteViewSet(BaseViewSet):
         """
         import os
         from datetime import datetime
+        from django.conf import settings
         from documents.templates.docs import populate_quote_pdf, QuoteData
         
         quote = self.get_object()
@@ -796,20 +797,39 @@ class QuoteViewSet(BaseViewSet):
             )
             
             # Define file paths
-            template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/Quote.pdf'
+            template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'Quote.pdf')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             output_filename = f"quote_{quote.id.hex[:8]}_{timestamp}.pdf"
-            output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+            output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
             
             # Generate the PDF
             success = populate_quote_pdf(template_path, output_path, quote_data)
             
             if success:
+                # Create Document record for tracking
+                from .models import Document
+                document = Document.objects.create(
+                    filename=output_filename,
+                    file_path=output_path,
+                    document_type='quote',
+                    created_by=request.user if request.user.is_authenticated else None
+                )
+                
+                # Link document to trip that references this quote
+                try:
+                    trip = Trip.objects.get(quote_id=quote.id)
+                    document.trip = trip
+                    document.save()
+                except Trip.DoesNotExist:
+                    # No trip associated with this quote yet
+                    pass
+                
                 return Response({
                     'success': True,
                     'message': 'Quote document generated successfully',
                     'filename': output_filename,
-                    'path': output_path
+                    'path': output_path,
+                    'document_id': str(document.id)
                 }, status=status.HTTP_201_CREATED)
             else:
                 return Response({
@@ -965,6 +985,7 @@ class TripViewSet(BaseViewSet):
         """
         import os
         from datetime import datetime
+        from django.conf import settings
         from documents.templates.docs import populate_itinerary_pdf, ItineraryData, CrewInfo, FlightLeg, AirportInfo, TimeInfo
         
         trip = self.get_object()
@@ -1068,19 +1089,30 @@ class TripViewSet(BaseViewSet):
                 )
                 
                 # Define file paths
-                template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/itin.pdf'
+                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'itin.pdf')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"itin_{trip.trip_number}_crew_{crew_line.id.hex[:8]}_{timestamp}.pdf"
-                output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+                output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
                 
                 # Generate the PDF
                 success = populate_itinerary_pdf(template_path, output_path, itinerary_data)
                 
                 if success:
+                    # Create Document record for tracking
+                    from .models import Document
+                    document = Document.objects.create(
+                        filename=output_filename,
+                        file_path=output_path,
+                        document_type='customer_itinerary',
+                        trip=trip,
+                        created_by=request.user if request.user.is_authenticated else None
+                    )
+                    
                     generated_files.append({
                         'crew_line_id': str(crew_line.id),
                         'filename': output_filename,
-                        'path': output_path
+                        'path': output_path,
+                        'document_id': str(document.id)
                     })
                 else:
                     return Response({
@@ -1107,6 +1139,7 @@ class TripViewSet(BaseViewSet):
         """
         import os
         from datetime import datetime
+        from django.conf import settings
         from documents.templates.docs import populate_handling_request_pdf, HandlingRequestData, PassengerInfo
         
         trip = self.get_object()
@@ -1175,21 +1208,32 @@ class TripViewSet(BaseViewSet):
                 handling_data.passengers = passengers
                 
                 # Define file paths
-                template_path = '/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_pdf/handling_request.pdf'
+                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'handling_request.pdf')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"handling_{trip.trip_number}_leg_{trip_line.id.hex[:8]}_{timestamp}.pdf"
-                output_path = f'/home/ropolly/projects/work/jetmain/Operations/backend/documents/templates/nosign_out/{output_filename}'
+                output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
                 
                 # Generate the PDF
                 success = populate_handling_request_pdf(template_path, output_path, handling_data)
                 
                 if success:
+                    # Create Document record for tracking
+                    from .models import Document
+                    document = Document.objects.create(
+                        filename=output_filename,
+                        file_path=output_path,
+                        document_type='handling_request',
+                        trip=trip,
+                        created_by=request.user if request.user.is_authenticated else None
+                    )
+                    
                     generated_files.append({
                         'trip_line_id': str(trip_line.id),
                         'arrival_airport': trip_line.destination_airport.name if trip_line.destination_airport else '',
                         'arrival_fbo': trip_line.arrival_fbo.name if trip_line.arrival_fbo else 'N/A',
                         'filename': output_filename,
-                        'path': output_path
+                        'path': output_path,
+                        'document_id': str(document.id)
                     })
                 else:
                     return Response({
@@ -1235,11 +1279,13 @@ class TripViewSet(BaseViewSet):
     @action(detail=True, methods=['post'])
     def generate_documents(self, request, pk=None):
         """
-        Generate documents for a trip.
+        Generate PDF documents for a trip using PDF templates.
         Accepts optional 'document_type' in request body to generate specific document.
         If no document_type provided, generates all applicable documents.
         """
-        from utils.docgen.trip_document_generator import TripDocumentGenerator
+        import os
+        from datetime import datetime
+        from documents.templates.docs import populate_quote_pdf, QuoteData, populate_itinerary_pdf, ItineraryData, CrewInfo, FlightLeg, AirportInfo, TimeInfo, populate_handling_request_pdf, HandlingRequestData, PassengerInfo
         from .serializers import DocumentSerializer, DocumentCreateSerializer
         
         trip = self.get_object()
@@ -1251,27 +1297,49 @@ class TripViewSet(BaseViewSet):
         document_type = serializer.validated_data.get('document_type')
         
         try:
-            generator = TripDocumentGenerator(str(trip.id), user=request.user)
+            generated_documents = []
+            
+            # Define base paths
+            template_base_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf')
+            output_base_path = os.path.join(settings.BASE_DIR, 'documents', 'generated')
+            
+            # Ensure output directory exists
+            os.makedirs(output_base_path, exist_ok=True)
+            
+            # Available document generators
+            document_generators = {
+                'gendec': self._generate_gendec_pdf,
+                'quote': self._generate_quote_pdf,
+                'customer_itinerary': self._generate_itinerary_pdf,
+                'internal_itinerary': self._generate_itinerary_pdf,
+                'handling_request': self._generate_handling_request_pdf,
+            }
             
             if document_type:
                 # Generate specific document type
-                doc = generator.generate_document(document_type)
-                if doc:
-                    return Response({
-                        'message': f'Document {document_type} generated successfully',
-                        'documents': DocumentSerializer([doc], many=True).data
-                    }, status=status.HTTP_201_CREATED)
+                if document_type in document_generators:
+                    doc = document_generators[document_type](trip, template_base_path, output_base_path)
+                    if doc:
+                        generated_documents.append(doc)
                 else:
                     return Response({
-                        'error': f'Document type {document_type} not applicable for this trip'
+                        'error': f'Document type {document_type} not supported'
                     }, status=status.HTTP_400_BAD_REQUEST)
             else:
                 # Generate all applicable documents
-                docs = generator.generate_all_documents()
-                return Response({
-                    'message': f'{len(docs)} documents generated successfully',
-                    'documents': DocumentSerializer(docs, many=True).data
-                }, status=status.HTTP_201_CREATED)
+                for doc_type in ['quote', 'customer_itinerary', 'handling_request']:
+                    try:
+                        doc = document_generators[doc_type](trip, template_base_path, output_base_path)
+                        if doc:
+                            generated_documents.append(doc)
+                    except Exception as e:
+                        print(f"Error generating {doc_type}: {e}")
+                        continue
+            
+            return Response({
+                'message': f'{len(generated_documents)} documents generated successfully',
+                'documents': DocumentSerializer(generated_documents, many=True).data
+            }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
             return Response({

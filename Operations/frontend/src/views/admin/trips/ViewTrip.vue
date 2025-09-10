@@ -38,7 +38,7 @@
 
       <!-- Trip Documents Card -->
       <div data-kt-element="documents">
-        <TripDocuments v-if="trip?.id" :trip-id="trip.id" />
+        <TripDocuments v-if="trip?.id" :trip-id="trip.id" :trip="trip" />
       </div>
 
       <!-- Trip Contracts Card -->

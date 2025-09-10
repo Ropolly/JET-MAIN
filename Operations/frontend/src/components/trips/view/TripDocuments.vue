@@ -167,6 +167,7 @@ interface Document {
 
 interface Props {
   tripId: string;
+  trip?: any; // Trip object with quote information
 }
 
 const props = defineProps<Props>();
@@ -176,14 +177,9 @@ const isLoading = ref(false);
 const isGenerating = ref(false);
 
 const documentTypes = [
-  { value: 'gendec', label: 'General Declaration' },
-  { value: 'quote', label: 'Quote Form' },
-  { value: 'customer_itinerary', label: 'Customer Itinerary' },
-  { value: 'internal_itinerary', label: 'Internal Itinerary' },
-  { value: 'payment_agreement', label: 'Payment Agreement' },
-  { value: 'consent_transport', label: 'Consent for Transport' },
-  { value: 'psa', label: 'Patient Service Agreement' },
-  { value: 'handling_request', label: 'Handling Request' }
+  { value: 'quote', label: 'Quote Form', endpoint: 'generate_quote_document' },
+  { value: 'customer_itinerary', label: 'Customer Itinerary', endpoint: 'generate_itineraries' },
+  { value: 'handling_request', label: 'Handling Request', endpoint: 'generate_handling_requests' }
 ];
 
 const availableDocTypes = computed(() => {
@@ -254,9 +250,25 @@ const loadDocuments = async () => {
 const generateDocument = async (documentType: string) => {
   isGenerating.value = true;
   try {
-    await ApiService.post(`trips/${props.tripId}/generate_documents/`, {
-      document_type: documentType
-    });
+    const docTypeConfig = documentTypes.find(dt => dt.value === documentType);
+    if (!docTypeConfig) {
+      throw new Error(`Unknown document type: ${documentType}`);
+    }
+
+    let endpoint = '';
+    
+    // Determine the correct endpoint based on document type
+    if (documentType === 'quote' && props.trip?.quote?.id) {
+      // For quotes, use the quote endpoint
+      endpoint = `quotes/${props.trip.quote.id}/${docTypeConfig.endpoint}/`;
+    } else if (documentType === 'customer_itinerary' || documentType === 'handling_request') {
+      // For trip-based documents, use the trip endpoint
+      endpoint = `trips/${props.tripId}/${docTypeConfig.endpoint}/`;
+    } else {
+      throw new Error(`Cannot generate ${documentType}: ${documentType === 'quote' ? 'No quote found for this trip' : 'Invalid document type'}`);
+    }
+
+    await ApiService.post(endpoint);
     
     await loadDocuments();
     
@@ -267,12 +279,12 @@ const generateDocument = async (documentType: string) => {
       timer: 2000,
       showConfirmButton: false
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating document:', error);
     Swal.fire({
       icon: 'error',
       title: 'Error',
-      text: 'Failed to generate document'
+      text: error.message || 'Failed to generate document'
     });
   } finally {
     isGenerating.value = false;
@@ -282,14 +294,40 @@ const generateDocument = async (documentType: string) => {
 const generateAllDocuments = async () => {
   isGenerating.value = true;
   try {
-    await ApiService.post(`trips/${props.tripId}/generate_documents/`);
+    const promises = [];
+    let generatedCount = 0;
+
+    // Generate quote document if trip has a quote
+    if (props.trip?.quote?.id) {
+      promises.push(
+        ApiService.post(`quotes/${props.trip.quote.id}/generate_quote_document/`)
+          .then(() => generatedCount++)
+          .catch(err => console.error('Error generating quote:', err))
+      );
+    }
+
+    // Generate trip-based documents
+    promises.push(
+      ApiService.post(`trips/${props.tripId}/generate_itineraries/`)
+        .then(() => generatedCount++)
+        .catch(err => console.error('Error generating itineraries:', err))
+    );
+
+    promises.push(
+      ApiService.post(`trips/${props.tripId}/generate_handling_requests/`)
+        .then(() => generatedCount++)
+        .catch(err => console.error('Error generating handling requests:', err))
+    );
+
+    // Wait for all document generation calls to complete
+    await Promise.all(promises);
     
     await loadDocuments();
     
     Swal.fire({
       icon: 'success',
       title: 'Success',
-      text: 'All documents generated successfully',
+      text: `${generatedCount} documents generated successfully`,
       timer: 2000,
       showConfirmButton: false
     });
