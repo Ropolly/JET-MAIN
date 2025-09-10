@@ -13,6 +13,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -140,6 +144,18 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
+    'https://localhost:5173',
+    'https://localhost:5174',
+    'https://localhost:5175',
+    'https://localhost:5176',
+    'https://localhost:5177',
+    'https://localhost:5178',
+    'https://127.0.0.1:5173',
+    'https://127.0.0.1:5174',
+    'https://127.0.0.1:5175',
+    'https://127.0.0.1:5176',
+    'https://127.0.0.1:5177',
+    'https://127.0.0.1:5178',
 ]
 
 # REST Framework settings
@@ -173,6 +189,10 @@ DOCUSEAL_API_KEY = os.environ.get('DOCUSEAL_API_KEY', 'iMDk8MquWy9jnnMudnde52Efz
 DOCUSEAL_BASE_URL = os.environ.get('DOCUSEAL_BASE_URL', 'https://api.docuseal.com')
 DOCUSEAL_WEBHOOK_SECRET = os.environ.get('DOCUSEAL_WEBHOOK_SECRET', None)
 DOCUSEAL_JET_ICU_SIGNER_EMAIL = os.environ.get('DOCUSEAL_JET_ICU_SIGNER_EMAIL', 'contracts@jeticu.com')
+
+# Authorize.Net Integration Settings
+AUTHORIZE_NET_LOGIN_ID = os.environ.get('AUTHORIZE_NET_LOGIN_ID')
+AUTHORIZE_NET_TRANSACTION_KEY = os.environ.get('AUTHORIZE_NET_TRANSACTION_KEY')
 
 # DocuSeal Contract Settings
 DOCUSEAL_CONTRACT_SETTINGS = {

@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+from django.conf import settings
 
 
 def process_card_transaction(amount, card_number, expiration_date, card_code, ref_id=None, bill_to=None, ship_to=None, customer_ip='127.0.0.1'):
@@ -20,9 +21,9 @@ def process_card_transaction(amount, card_number, expiration_date, card_code, re
     Returns:
         dict: Response from Authorize.Net with added authorize_net_response_code
     """
-    # Get Authorize.Net API credentials from environment variables
-    api_login_id = os.getenv('AUTHORIZE_NET_LOGIN_ID')
-    transaction_key = os.getenv('AUTHORIZE_NET_TRANSACTION_KEY')
+    # Get Authorize.Net API credentials from Django settings
+    api_login_id = settings.AUTHORIZE_NET_LOGIN_ID
+    transaction_key = settings.AUTHORIZE_NET_TRANSACTION_KEY
     
     if not api_login_id or not transaction_key:
         return {
@@ -38,7 +39,7 @@ def process_card_transaction(amount, card_number, expiration_date, card_code, re
                 "name": api_login_id,
                 "transactionKey": transaction_key
             },
-            "refId": ref_id or '123456',
+            "refId": ref_id.replace('quote_', '').replace('-', '')[:8].upper() if ref_id and 'quote_' in ref_id else (ref_id[:8] if ref_id else '12345678'),
             "transactionRequest": {
                 "transactionType": "authCaptureTransaction",
                 "amount": amount,
@@ -49,7 +50,7 @@ def process_card_transaction(amount, card_number, expiration_date, card_code, re
                         "cardCode": card_code
                     }
                 },
-                "billTo": bill_to or {},
+                "billTo": {k: v for k, v in (bill_to or {}).items() if k in ['firstName', 'lastName', 'company', 'address', 'city', 'state', 'zip', 'country']},
                 "shipTo": ship_to or {},
                 "customerIP": customer_ip
             }
@@ -121,9 +122,9 @@ def process_ach_transaction(amount, account_type, routing_number, account_number
     Returns:
         dict: Response from Authorize.Net with added authorize_net_response_code
     """
-    # Get Authorize.Net API credentials from environment variables
-    api_login_id = os.getenv('AUTHORIZE_NET_LOGIN_ID')
-    transaction_key = os.getenv('AUTHORIZE_NET_TRANSACTION_KEY')
+    # Get Authorize.Net API credentials from Django settings
+    api_login_id = settings.AUTHORIZE_NET_LOGIN_ID
+    transaction_key = settings.AUTHORIZE_NET_TRANSACTION_KEY
     
     if not api_login_id or not transaction_key:
         return {
@@ -139,7 +140,7 @@ def process_ach_transaction(amount, account_type, routing_number, account_number
                 "name": api_login_id,
                 "transactionKey": transaction_key
             },
-            "refId": ref_id or '123456',
+            "refId": ref_id.replace('quote_', '').replace('-', '')[:8].upper() if ref_id and 'quote_' in ref_id else (ref_id[:8] if ref_id else '12345678'),
             "transactionRequest": {
                 "transactionType": "authCaptureTransaction",
                 "amount": amount,
@@ -153,7 +154,7 @@ def process_ach_transaction(amount, account_type, routing_number, account_number
                         "bankName": bank_name
                     }
                 },
-                "billTo": bill_to or {},
+                "billTo": {k: v for k, v in (bill_to or {}).items() if k in ['firstName', 'lastName', 'company', 'address', 'city', 'state', 'zip', 'country']},
                 "shipTo": ship_to or {},
                 "customerIP": customer_ip
             }

@@ -6,6 +6,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from .processor import process_card_transaction, process_ach_transaction
+from api.models import Transaction, Quote
+from api.signals import set_current_user
+from api.utils import track_creation, track_modification
 
 
 @api_view(['POST'])
@@ -14,6 +17,9 @@ def send_card_transaction(request):
     """
     Process card transaction through Authorize.Net
     """
+    # Set current user for modification tracking
+    set_current_user(request.user)
+    
     transaction_data = request.data
     
     # Call the processing function
@@ -28,6 +34,72 @@ def send_card_transaction(request):
         customer_ip=request.META.get('REMOTE_ADDR', '127.0.0.1')
     )
     
+    # Check if payment was successful (response code 1)
+    transaction_response = result.get('transactionResponse', {})
+    messages = transaction_response.get('messages', [])
+    message = messages[0] if messages else {}
+    
+    if message.get('code') == '1':  # Approved
+        # Extract transaction details
+        trans_id = transaction_response.get('transId', '')
+        amount = transaction_data.get('amount', '0')
+        customer_email = transaction_data.get('billTo', {}).get('email', '')
+        
+        # Create transaction record
+        transaction = Transaction.objects.create(
+            amount=amount,
+            payment_method='credit_card',
+            payment_status='completed',
+            email=customer_email,
+            authorize_net_trans_id=trans_id
+        )
+        
+        # Track transaction creation
+        track_creation(transaction, request.user)
+        
+        # Link to quote if quote_id provided
+        quote_id = transaction_data.get('quote_id')
+        if quote_id:
+            try:
+                quote = Quote.objects.get(id=quote_id)
+                
+                # Track the quote modification before changes
+                old_payment_status = quote.payment_status
+                old_total_paid = quote.get_total_paid()
+                
+                # Add transaction to quote
+                quote.transactions.add(transaction)
+                quote.update_payment_status()
+                
+                # Track the payment received
+                track_modification(
+                    quote, 
+                    'payment_received', 
+                    f'${old_total_paid or 0}', 
+                    f'${quote.get_total_paid()}',
+                    request.user
+                )
+                
+                # Track payment status change if it changed
+                if old_payment_status != quote.payment_status:
+                    track_modification(
+                        quote,
+                        'payment_status',
+                        old_payment_status,
+                        quote.payment_status,
+                        request.user
+                    )
+                
+                result['quote_updated'] = True
+                result['new_payment_status'] = quote.payment_status
+                result['remaining_balance'] = str(quote.get_remaining_balance())
+            except Quote.DoesNotExist:
+                pass
+        
+        # Add our custom fields to response
+        result['transaction_created'] = True
+        result['transaction_id'] = str(transaction.id)
+    
     return Response(result, status=status.HTTP_200_OK)
 
 
@@ -37,6 +109,9 @@ def send_ach_transaction(request):
     """
     Process ACH transaction through Authorize.Net
     """
+    # Set current user for modification tracking
+    set_current_user(request.user)
+    
     transaction_data = request.data
     
     # Call the processing function
@@ -53,6 +128,72 @@ def send_ach_transaction(request):
         ship_to=transaction_data.get('shipTo'),
         customer_ip=request.META.get('REMOTE_ADDR', '127.0.0.1')
     )
+    
+    # Check if payment was successful (response code 1)
+    transaction_response = result.get('transactionResponse', {})
+    messages = transaction_response.get('messages', [])
+    message = messages[0] if messages else {}
+    
+    if message.get('code') == '1':  # Approved
+        # Extract transaction details
+        trans_id = transaction_response.get('transId', '')
+        amount = transaction_data.get('amount', '0')
+        customer_email = transaction_data.get('billTo', {}).get('email', '')
+        
+        # Create transaction record
+        transaction = Transaction.objects.create(
+            amount=amount,
+            payment_method='ACH',
+            payment_status='completed',
+            email=customer_email,
+            authorize_net_trans_id=trans_id
+        )
+        
+        # Track transaction creation
+        track_creation(transaction, request.user)
+        
+        # Link to quote if quote_id provided
+        quote_id = transaction_data.get('quote_id')
+        if quote_id:
+            try:
+                quote = Quote.objects.get(id=quote_id)
+                
+                # Track the quote modification before changes
+                old_payment_status = quote.payment_status
+                old_total_paid = quote.get_total_paid()
+                
+                # Add transaction to quote
+                quote.transactions.add(transaction)
+                quote.update_payment_status()
+                
+                # Track the payment received
+                track_modification(
+                    quote, 
+                    'payment_received', 
+                    f'${old_total_paid or 0}', 
+                    f'${quote.get_total_paid()}',
+                    request.user
+                )
+                
+                # Track payment status change if it changed
+                if old_payment_status != quote.payment_status:
+                    track_modification(
+                        quote,
+                        'payment_status',
+                        old_payment_status,
+                        quote.payment_status,
+                        request.user
+                    )
+                
+                result['quote_updated'] = True
+                result['new_payment_status'] = quote.payment_status
+                result['remaining_balance'] = str(quote.get_remaining_balance())
+            except Quote.DoesNotExist:
+                pass
+        
+        # Add our custom fields to response
+        result['transaction_created'] = True
+        result['transaction_id'] = str(transaction.id)
     
     return Response(result, status=status.HTTP_200_OK)
 

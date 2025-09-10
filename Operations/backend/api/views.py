@@ -1940,6 +1940,33 @@ class ContractViewSet(BaseViewSet):
     ordering_fields = ['created_on', 'date_sent', 'date_signed', 'status']
     filterset_fields = ['contract_type', 'status', 'trip']
     
+    def get_queryset(self):
+        """Override to add custom filtering for trip parameter."""
+        queryset = super().get_queryset()
+        
+        # Handle both DRF Request objects and regular Django requests
+        if hasattr(self.request, 'query_params'):
+            params = self.request.query_params
+        else:
+            params = self.request.GET
+        
+        # Filter by trip if provided
+        trip_id = params.get('trip', None)
+        if trip_id:
+            queryset = queryset.filter(trip_id=trip_id)
+            
+        # Filter by contract type if provided
+        contract_type = params.get('contract_type', None)
+        if contract_type:
+            queryset = queryset.filter(contract_type=contract_type)
+            
+        # Filter by status if provided
+        status_filter = params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+            
+        return queryset
+    
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
         if self.action in ['list', 'retrieve']:
@@ -1961,6 +1988,8 @@ class ContractViewSet(BaseViewSet):
         send_immediately = serializer.validated_data.get('send_immediately', False)
         custom_signer_email = serializer.validated_data.get('custom_signer_email')
         custom_signer_name = serializer.validated_data.get('custom_signer_name')
+        manual_price = serializer.validated_data.get('manual_price')
+        manual_price_description = serializer.validated_data.get('manual_price_description')
         
         try:
             # Get customer contact from quote
@@ -1971,17 +2000,29 @@ class ContractViewSet(BaseViewSet):
             logger.info(f"Trip {trip.trip_number}: quote={bool(trip.quote)}, customer_contact={bool(customer_contact)}")
             patient = trip.patient
             
-            # Determine signer details
+            # Determine signer details with fallback logic
             if custom_signer_email:
                 signer_email = custom_signer_email
                 signer_name = custom_signer_name or ''
             elif customer_contact:
+                # Primary: Use quote's customer contact
                 signer_email = customer_contact.email
                 signer_name = f"{customer_contact.first_name} {customer_contact.last_name}".strip()
+            elif patient and patient.info:
+                # Fallback: Use patient contact info
+                signer_email = patient.info.email
+                signer_name = f"{patient.info.first_name} {patient.info.last_name}".strip()
+                logger.info(f"Using patient as signer for trip {trip.trip_number}")
             else:
-                return Response({
-                    'error': 'No signer information available'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                # Check if payment agreement is requested without pricing info
+                if 'payment_agreement' in contract_types and not trip.quote:
+                    return Response({
+                        'error': 'Payment agreement requires a quote with pricing information, or provide custom_signer_email and manual pricing'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response({
+                        'error': 'No signer information available. Please provide custom_signer_email or ensure trip has a quote with customer contact or patient with contact info.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             contracts_created = []
             docuseal_service = DocuSealService()
@@ -2009,7 +2050,7 @@ class ContractViewSet(BaseViewSet):
                 if send_immediately:
                     try:
                         logger.info(f"Attempting to send contract {contract.id} for signature")
-                        result = self._send_contract_for_signature(contract, docuseal_service)
+                        result = self._send_contract_for_signature(contract, docuseal_service, manual_price, manual_price_description)
                         logger.info(f"Successfully sent contract {contract.id}: {result}")
                     except Exception as e:
                         logger.error(f"Failed to send contract {contract.id}: {str(e)}", exc_info=True)
@@ -2100,7 +2141,7 @@ class ContractViewSet(BaseViewSet):
                 'error': f'Action failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    def _send_contract_for_signature(self, contract, docuseal_service):
+    def _send_contract_for_signature(self, contract, docuseal_service, manual_price=None, manual_price_description=None):
         """Helper method to send contract for signature."""
         from django.conf import settings
         
@@ -2124,11 +2165,15 @@ class ContractViewSet(BaseViewSet):
         # Get trip lines data - pass as objects for easier access
         trip_lines_data = list(contract.trip.trip_lines.all().order_by('departure_time_utc'))
         
-        # Get quote data if available
+        # Get quote data if available, otherwise use manual pricing
         quote_data = None
         if contract.trip.quote:
             quote_data = {
                 'quoted_amount': str(contract.trip.quote.quoted_amount)
+            }
+        elif manual_price is not None:
+            quote_data = {
+                'quoted_amount': str(manual_price)
             }
         
         # Get contact data
