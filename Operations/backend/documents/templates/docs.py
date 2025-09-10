@@ -159,7 +159,7 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
                         field_name = annotation.T[1:-1]  # Remove parentheses
                         if field_name in clean_mapping:
                             # Set the field value
-                            annotation.update(PdfDict(V=f'({clean_mapping[field_name]})'))
+                            annotation.update(PdfDict(V=clean_mapping[field_name]))
                             # Also set appearance value
                             annotation.update(PdfDict(AP=''))
         
