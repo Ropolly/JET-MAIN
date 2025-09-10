@@ -123,10 +123,10 @@ class DocumentGenerator:
         # Aircraft information
         aircraft_info = {
             'tail_number': aircraft.tail_number if aircraft else "N/A",
-            'type': aircraft.type if aircraft else "N/A",
-            'manufacturer': aircraft.manufacturer if aircraft else "N/A",
+            'type': f"{aircraft.make} {aircraft.model}".strip() if aircraft else "N/A",
+            'manufacturer': aircraft.make if aircraft else "N/A",
             'model': aircraft.model if aircraft else "N/A",
-            'year': str(aircraft.year) if aircraft and aircraft.year else "N/A"
+            'year': "N/A"  # Year not available in Aircraft model
         }
         
         # Crew information
@@ -174,16 +174,16 @@ class DocumentGenerator:
             
             # Airport information
             'origin_airport_name': origin.name if origin else "N/A",
-            'origin_airport_code': origin.iata_code if origin else "N/A",
+            'origin_airport_code': origin.iata_code or origin.ident if origin else "N/A",
             'origin_airport_icao': origin.icao_code if origin else "N/A",
-            'origin_city': origin.city if origin else "N/A",
-            'origin_country': origin.country if origin else "N/A",
+            'origin_city': origin.municipality if origin else "N/A",
+            'origin_country': origin.iso_country if origin else "N/A",
             
             'destination_airport_name': destination.name if destination else "N/A",
-            'destination_airport_code': destination.iata_code if destination else "N/A",
+            'destination_airport_code': destination.iata_code or destination.ident if destination else "N/A",
             'destination_airport_icao': destination.icao_code if destination else "N/A",
-            'destination_city': destination.city if destination else "N/A",
-            'destination_country': destination.country if destination else "N/A",
+            'destination_city': destination.municipality if destination else "N/A",
+            'destination_country': destination.iso_country if destination else "N/A",
             
             # Aircraft and crew
             'aircraft': aircraft_info,
