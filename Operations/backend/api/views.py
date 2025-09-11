@@ -1073,14 +1073,14 @@ class TripViewSet(BaseViewSet):
                 
                 # Create itinerary data
                 itinerary_data = ItineraryData(
-                    trip_number=trip.trip_number,
+                    trip_number=trip.trip_number or '',
                     tail_number=trip.aircraft.tail_number if trip.aircraft else '',
-                    trip_date=trip.created_on.strftime('%Y-%m-%d') if trip.created_on else '',
-                    trip_type=trip.type,
+                    trip_date=trip.trip_lines.first().departure_time_local.strftime('%Y-%m-%d') if trip.trip_lines.exists() and trip.trip_lines.first().departure_time_local else '',
+                    trip_type=trip.type.title() if trip.type else 'Charter',
                     patient_name=f"{trip.patient.info.first_name} {trip.patient.info.last_name}" if trip.patient and trip.patient.info else '',
-                    bed_at_origin=False,  # This would need to be determined from trip data
-                    bed_at_dest=False,    # This would need to be determined from trip data
-                    special_instructions=trip.notes or '',
+                    bed_at_origin=trip.patient.bed_at_origin if trip.patient else False,
+                    bed_at_dest=trip.patient.bed_at_destination if trip.patient else False,
+                    special_instructions=trip.patient.special_instructions if trip.patient else trip.notes or '',
                     passengers=passengers,
                     crew=crew_info,
                     flight_legs=flight_legs,
@@ -1159,17 +1159,17 @@ class TripViewSet(BaseViewSet):
                 # Prepare aircraft data
                 aircraft = trip.aircraft
                 handling_data = HandlingRequestData(
-                    company='JET ICU MEDICAL TRANSPORT',
+                    company='JET Aviation Operations',
                     make=aircraft.make if aircraft else '',
                     model=aircraft.model if aircraft else '',
                     tail_number=aircraft.tail_number if aircraft else '',
-                    serial_number=getattr(aircraft, 'serial_number', '') if aircraft else '',
-                    mgtow=getattr(aircraft, 'mgtow', '') if aircraft else '',
-                    mission='Medical Transport',
-                    depart_origin=f"{trip_line.origin_airport.name} ({trip_line.origin_airport.ident})" if trip_line.origin_airport else '',
-                    arrive_dest=f"{trip_line.destination_airport.name} ({trip_line.destination_airport.ident})" if trip_line.destination_airport else '',
-                    depart_dest='',  # This would be filled for return legs
-                    arrive_origin=''  # This would be filled for return legs
+                    serial_number=getattr(aircraft, 'serial_number', '') or '',
+                    mgtow=str(getattr(aircraft, 'mgtow', '')) or '',
+                    mission=trip.type.title() if trip.type else 'Charter',
+                    depart_origin=trip_line.departure_time_local.strftime('%H:%M') if trip_line.departure_time_local else '',
+                    arrive_dest=trip_line.arrival_time_local.strftime('%H:%M') if trip_line.arrival_time_local else '',
+                    depart_dest='',  # For return legs - would need return trip line data
+                    arrive_origin=''  # For return legs - would need return trip line data
                 )
                 
                 # Prepare passenger information
@@ -1179,11 +1179,11 @@ class TripViewSet(BaseViewSet):
                         passenger_info = PassengerInfo(
                             name=f"{passenger.info.first_name} {passenger.info.last_name}",
                             title='',
-                            nationality=passenger.nationality or '',
-                            date_of_birth=passenger.date_of_birth.strftime('%Y-%m-%d') if passenger.date_of_birth else '',
-                            passport_number=passenger.passport_number or '',
-                            passport_expiration=passenger.passport_expiration_date.strftime('%Y-%m-%d') if passenger.passport_expiration_date else '',
-                            contact_number=passenger.contact_number or ''
+                            nationality=getattr(passenger.info, 'nationality', '') or '',
+                            date_of_birth=passenger.info.date_of_birth.strftime('%Y-%m-%d') if passenger.info.date_of_birth else '',
+                            passport_number=getattr(passenger.info, 'passport_number', '') or '',
+                            passport_expiration='',  # Would need passport expiration field
+                            contact_number=passenger.info.phone or ''
                         )
                         passengers.append(passenger_info)
                 

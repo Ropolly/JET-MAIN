@@ -228,6 +228,7 @@ def populate_quote_pdf(input_pdf_path: str, output_pdf_path: str, data: QuoteDat
 def populate_handling_request_pdf(input_pdf_path: str, output_pdf_path: str, data: HandlingRequestData) -> bool:
     """Populate handling_request.pdf with data from HandlingRequestData instance"""
     # Map data to actual PDF field names from handling_request.pdf
+    # Note: depart/arrive fields should contain TIMES not ICAO codes
     field_mapping = {
         'company': data.company,
         'make': data.make,
@@ -236,10 +237,10 @@ def populate_handling_request_pdf(input_pdf_path: str, output_pdf_path: str, dat
         'serial_number': data.serial_number,
         'mgtow': data.mgtow,
         'mission': data.mission,
-        'depart_origin': data.depart_origin,
-        'arrive_dest': data.arrive_dest,
-        'depart_dest': data.depart_dest,
-        'arrive_origin': data.arrive_origin
+        'depart_origin': data.depart_origin,  # Should be departure TIME from origin
+        'arrive_dest': data.arrive_dest,      # Should be arrival TIME at destination
+        'depart_dest': data.depart_dest,      # Should be departure TIME from destination (return leg)
+        'arrive_origin': data.arrive_origin   # Should be arrival TIME back at origin (return leg)
     }
     
     # Add passenger information (up to 8 passengers)
@@ -271,27 +272,14 @@ def populate_handling_request_pdf(input_pdf_path: str, output_pdf_path: str, dat
 
 
 def populate_itinerary_pdf(input_pdf_path: str, output_pdf_path: str, data: ItineraryData) -> bool:
-    """
-    Populate the itin.pdf (itinerary) with provided data using actual PDF field names.
-    
-    Args:
-        input_pdf_path: Path to the input PDF template
-        output_pdf_path: Path where the filled PDF will be saved
-        data: ItineraryData instance containing all the data to populate
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    # Map basic itinerary data to actual PDF field names
+    """Populate itin.pdf with data from ItineraryData instance"""
+    # Map data to actual PDF field names from itin.pdf
+    # NOTE: trip_number, tail_number, trip_date, trip_type fields do NOT exist in this PDF template
     field_mapping = {
-        'trip_number': data.trip_number,
-        'tail_number': data.tail_number,
-        'trip_date': data.trip_date,
-        'trip_type': data.trip_type,
         'patient_name': data.patient_name,
         'bed_at_origin': 'Yes' if data.bed_at_origin else 'No',
         'bed_at_dest': 'Yes' if data.bed_at_dest else 'No',
-        'special_instructions': data.special_instructions
+        'special_instructions': data.special_instructions,
     }
     
     # Add passenger information (up to 5 passengers)
