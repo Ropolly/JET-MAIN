@@ -37,6 +37,7 @@ def send_email(subject: str, targets: List[str], body: str, is_html: bool = Fals
             server.quit()
 
 
+# TODO add support for preview and text below button
 def fill_template(text: str, link_address: str, link_label="Click Here!"):
     with open(EMAIL_TEMPLATE_PATH, "r") as file:
         content = file.read()
