@@ -28,6 +28,7 @@ router.register(r"staff-role-memberships", views.StaffRoleMembershipViewSet, bas
 router.register(r"trip-events", views.TripEventViewSet, basename="trip-event")
 router.register(r'comments', views.CommentViewSet, basename='comment')
 router.register(r'contracts', views.ContractViewSet, basename='contract')
+router.register(r'lost-reasons', views.LostReasonViewSet, basename='lost-reason')
 
 urlpatterns = [
     path('', include(router.urls)),

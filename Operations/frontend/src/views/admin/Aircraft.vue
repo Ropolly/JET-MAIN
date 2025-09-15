@@ -134,6 +134,18 @@
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
+              <a 
+                :href="`https://www.flightaware.com/live/flight/${plane.tail_number}`"
+                target="_blank"
+                class="menu-link px-3"
+              >
+                <KTIcon icon-name="airplane" icon-class="fs-6 me-2" />
+                View Live
+              </a>
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
+            <div class="menu-item px-3">
               <a @click="handleMaintenanceLog(plane)" class="menu-link px-3"
                 >Maintenance Log</a
               >

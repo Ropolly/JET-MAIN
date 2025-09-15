@@ -532,7 +532,9 @@ const handleSubmit = async (e: Event) => {
       email_chain: [],
       // Add duty time fields
       pre_flight_duty_time: hoursToIsoDuration(formData.pre_flight_duty_hours),
-      post_flight_duty_time: hoursToIsoDuration(formData.post_flight_duty_hours)
+      post_flight_duty_time: hoursToIsoDuration(formData.post_flight_duty_hours),
+      // Include notes if provided
+      notes: formData.notes || ''
     };
     
     // If this trip is converted from a quote, include the quote reference

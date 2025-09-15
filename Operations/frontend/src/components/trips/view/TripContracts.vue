@@ -214,11 +214,23 @@ const getStatusBadgeClass = (status: string) => {
 };
 
 const getContractLink = (contract: Contract) => {
-  // Try to get embed_src from the first submitter in the response data
+  // Try to get embed_src from submitters, prioritizing JET ICU submitter
   if (contract.docuseal_response_data?.submitters && contract.docuseal_response_data.submitters.length > 0) {
-    const firstSubmitter = contract.docuseal_response_data.submitters[0];
-    if (firstSubmitter.embed_src) {
-      return firstSubmitter.embed_src;
+    const submitters = contract.docuseal_response_data.submitters;
+    
+    // First, try to find JET ICU submitter (contracts@jeticu.com)
+    const jetIcuSubmitter = submitters.find(submitter => 
+      submitter.email === 'contracts@jeticu.com'
+    );
+    
+    if (jetIcuSubmitter?.embed_src) {
+      return jetIcuSubmitter.embed_src;
+    }
+    
+    // Fallback to first submitter with embed_src
+    const firstSubmitterWithLink = submitters.find(submitter => submitter.embed_src);
+    if (firstSubmitterWithLink?.embed_src) {
+      return firstSubmitterWithLink.embed_src;
     }
   }
   
