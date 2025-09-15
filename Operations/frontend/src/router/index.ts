@@ -427,6 +427,36 @@ const routes: Array<RouteRecordRaw> = [
         },
       },
       {
+        path: "/admin/users/:id",
+        name: "admin-user-view",
+        component: () => import("@/views/admin/users/ViewUser.vue"),
+        meta: {
+          pageTitle: "User Details",
+          breadcrumbs: ["Administration", "Users", "View"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/users/:id/edit",
+        name: "admin-user-edit",
+        component: () => import("@/views/admin/users/EditUser.vue"),
+        meta: {
+          pageTitle: "Edit User",
+          breadcrumbs: ["Administration", "Users", "Edit"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/users/:id/roles",
+        name: "admin-user-manage-roles",
+        component: () => import("@/views/admin/users/ManageUserRoles.vue"),
+        meta: {
+          pageTitle: "Manage User Roles",
+          breadcrumbs: ["Administration", "Users", "Manage Roles"],
+          middleware: "auth",
+        },
+      },
+      {
         path: "/admin/roles",
         name: "admin-roles",
         component: () => import("@/views/admin/Roles.vue"),

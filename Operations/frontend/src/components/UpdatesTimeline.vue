@@ -120,6 +120,7 @@ interface Modification {
   after?: string;
   time: string;
   user_username?: string;
+  user_name?: string;
 }
 
 interface TimelineItem {
@@ -190,7 +191,7 @@ const timelineItems = computed<TimelineItem[]>(() => {
       id: mod.id,
       type,
       timestamp: mod.time,
-      user: mod.user_username || 'System',
+      user: mod.user_name || mod.user_username || 'System',
       data: mod
     });
   });

@@ -29,9 +29,26 @@ def get_skip_signal_tracking():
 def get_model_fields(instance):
     """Get all fields from a model instance, excluding system fields"""
     excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
-    return {field.name: getattr(instance, field.name) 
-            for field in instance._meta.fields 
-            if not field.is_relation and field.name not in excluded_fields}
+    fields = {}
+    
+    for field in instance._meta.fields:
+        if field.name in excluded_fields:
+            continue
+            
+        if field.is_relation:
+            # Handle foreign key fields
+            if hasattr(field, 'related_model'):
+                value = getattr(instance, field.name)
+                if value is not None:
+                    # Store the string representation of the related object
+                    fields[field.name] = str(value)
+                else:
+                    fields[field.name] = None
+        else:
+            # Handle regular fields
+            fields[field.name] = getattr(instance, field.name)
+    
+    return fields
 
 @receiver(pre_save)
 def track_model_changes(sender, instance, **kwargs):

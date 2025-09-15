@@ -287,6 +287,17 @@ class Patient(BaseModel):
     def __str__(self):
         return f"Patient: {self.info}"
 
+# LostReason model for tracking why quotes are lost
+class LostReason(BaseModel):
+    reason = models.CharField(max_length=30, unique=True)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return self.reason
+    
+    class Meta:
+        ordering = ['reason']
+
 # Quote model
 class Quote(BaseModel):
     quoted_amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -316,11 +327,12 @@ class Quote(BaseModel):
     ])
 
     patient = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotes", db_column="patient_id")
+    lost_reason = models.ForeignKey(LostReason, on_delete=models.SET_NULL, null=True, blank=True, related_name="lost_quotes", db_column="lost_reason_id")
     status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),
         ("active", "Active"),
         ("completed", "Completed"),
-        ("cancelled", "Cancelled")
+        ("lost", "Lost")
     ], default="pending", db_index=True)
     payment_status = models.CharField(max_length=20, choices=[
         ("pending", "Pending"),

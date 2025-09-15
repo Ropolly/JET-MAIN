@@ -42,7 +42,7 @@ def get_fuel_prices(request, airport_code):
 from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract, LostReason
 )
 from .utils import track_creation, track_deletion
 from .contact_service import ContactCreationService, ContactCreationSerializer
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
     ContactSerializer, CommentSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
-    AgreementSerializer, DocumentSerializer,
+    AgreementSerializer, DocumentSerializer, LostReasonSerializer,
     # Standardized CRUD serializers
     UserProfileReadSerializer, UserProfileWriteSerializer,
     PassengerReadSerializer, PassengerWriteSerializer,
@@ -1612,6 +1612,25 @@ class StaffRoleViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         track_deletion(instance, self.request.user)
         instance.delete()
+
+class LostReasonViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = LostReason.objects.filter(is_active=True).order_by("reason")
+    serializer_class = LostReasonSerializer
+    
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        track_creation(instance, self.request.user)
+    
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+        # Updates are automatically tracked by signals
+        
+    def perform_destroy(self, instance):
+        # Soft delete - just mark as inactive
+        instance.is_active = False
+        instance.save()
+        track_deletion(instance, self.request.user)
 
 
 class StaffRoleMembershipViewSet(viewsets.ModelViewSet):

@@ -70,7 +70,7 @@
               <a href="#" @click="handleView(user)" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
                 {{ getUserName(user) }}
               </a>
-              <span class="text-muted fs-7">{{ user.username }}</span>
+              <span class="text-muted fs-7">{{ user.user.username }}</span>
             </div>
           </div>
         </template>
@@ -98,7 +98,7 @@
 
         <template v-slot:last_login="{ row: user }">
           <span class="text-dark fw-semibold">
-            {{ formatDate(user.last_login) }}
+            {{ getLastLogin(user) }}
           </span>
         </template>
 
@@ -148,7 +148,7 @@
             <!--begin::Menu item-->
             <div class="menu-item px-3">
               <a @click="handleToggleActive(user)" class="menu-link px-3">
-                {{ user.is_active ? 'Deactivate' : 'Activate' }}
+                {{ user.status === 'active' ? 'Deactivate' : 'Activate' }}
               </a>
             </div>
             <!--end::Menu item-->
@@ -168,6 +168,13 @@
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+
+  <!-- Create User Modal -->
+  <CreateUserModal 
+    :show="showCreateModal"
+    @close="handleCloseCreateModal"
+    @user-created="handleUserCreated"
+  />
 </template>
 
 <script lang="ts">
@@ -180,29 +187,52 @@ import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
 import { useToolbarStore } from "@/stores/toolbar";
+import CreateUserModal from "@/components/modals/CreateUserModal.vue";
 
-interface User {
-  id: number;
-  username: string;
-  email: string;
+interface UserProfile {
+  id: string;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    is_staff: boolean;
+  };
   first_name: string;
   last_name: string;
-  is_active: boolean;
-  is_staff: boolean;
-  is_superuser: boolean;
-  date_joined: string;
-  last_login: string | null;
+  email: string;
+  phone?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  zip?: string;
+  roles: Array<{
+    id: string;
+    name: string;
+    code: string;
+    description?: string;
+  }>;
+  departments: Array<{
+    id: string;
+    name: string;
+    code: string;
+  }>;
+  flags?: any;
+  status: string;
+  created_on: string;
 }
 
 export default defineComponent({
   name: "users-management",
   components: {
     KTDatatable,
+    CreateUserModal,
   },
   setup() {
     const router = useRouter();
     const toolbarStore = useToolbarStore();
-    const users = ref<User[]>([]);
+    const users = ref<UserProfile[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
 
@@ -238,8 +268,8 @@ export default defineComponent({
       },
     ]);
 
-    const initData = ref<Array<User>>([]);
-    const selectedIds = ref<Array<number>>([]);
+    const initData = ref<Array<UserProfile>>([]);
+    const selectedIds = ref<Array<string>>([]);
     const search = ref<string>("");
 
     // Methods
@@ -258,48 +288,35 @@ export default defineComponent({
       }
     };
 
+    const showCreateModal = ref(false);
+
     const handleCreate = () => {
-      Swal.fire({
-        title: "Add User",
-        text: "User creation form would open here",
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      showCreateModal.value = true;
     };
 
-    const handleEdit = (user: User) => {
-      Swal.fire({
-        title: "Edit User",
-        text: `Edit form for ${getUserName(user)} would open here`,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+    const handleUserCreated = (newUser: UserProfile) => {
+      // Add the new user to the list
+      users.value.unshift(newUser);
+      initData.value.unshift(newUser);
     };
 
-    const handleView = (user: User) => {
-      Swal.fire({
-        title: "User Details",
-        html: `
-          <div class="text-start">
-            <p><strong>Name:</strong> ${getUserName(user)}</p>
-            <p><strong>Username:</strong> ${user.username}</p>
-            <p><strong>Email:</strong> ${user.email || 'Not set'}</p>
-            <p><strong>Role:</strong> ${getUserRole(user)}</p>
-            <p><strong>Status:</strong> ${getUserStatus(user)}</p>
-            <p><strong>Joined:</strong> ${formatDate(user.date_joined)}</p>
-            <p><strong>Last Login:</strong> ${formatDate(user.last_login)}</p>
-          </div>
-        `,
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+    const handleCloseCreateModal = () => {
+      showCreateModal.value = false;
     };
 
-    const handleManageRoles = (user: User) => {
+    const handleEdit = (user: UserProfile) => {
+      router.push(`/admin/users/${user.id}/edit`);
+    };
+
+    const handleView = (user: UserProfile) => {
+      router.push(`/admin/users/${user.id}`);
+    };
+
+    const handleManageRoles = (user: UserProfile) => {
       router.push(`/admin/users/${user.id}/roles`);
     };
 
-    const handleResetPassword = (user: User) => {
+    const handleResetPassword = (user: UserProfile) => {
       Swal.fire({
         title: "Reset Password",
         text: `Send password reset email to ${getUserName(user)}?`,
@@ -314,8 +331,9 @@ export default defineComponent({
       });
     };
 
-    const handleToggleActive = async (user: User) => {
-      const action = user.is_active ? 'deactivate' : 'activate';
+    const handleToggleActive = async (user: UserProfile) => {
+      const isActive = user.status === 'active';
+      const action = isActive ? 'deactivate' : 'activate';
       const result = await Swal.fire({
         title: `${action.charAt(0).toUpperCase() + action.slice(1)} User`,
         text: `Are you sure you want to ${action} ${getUserName(user)}?`,
@@ -327,7 +345,7 @@ export default defineComponent({
       
       if (result.isConfirmed) {
         try {
-          await ApiService.patch(`/users/${user.id}/`, { is_active: !user.is_active });
+          await ApiService.patch(`/users/${user.id}/`, { status: isActive ? 'inactive' : 'active' });
           await fetchUsers(); // Refresh the list
           Swal.fire("Updated!", `User has been ${action}d.`, "success");
         } catch (error: any) {
@@ -337,7 +355,7 @@ export default defineComponent({
       }
     };
 
-    const handleDelete = async (user: User) => {
+    const handleDelete = async (user: UserProfile) => {
       const result = await Swal.fire({
         title: "Delete User",
         text: `Are you sure you want to delete ${getUserName(user)}? This action cannot be undone.`,
@@ -359,31 +377,40 @@ export default defineComponent({
       }
     };
 
-    const getUserName = (user: User): string => {
+    const getUserName = (user: UserProfile): string => {
       const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
-      return fullName || user.username;
+      return fullName || user.user.username;
     };
 
-    const getUserRole = (user: User): string => {
-      if (user.is_superuser) return 'Super Admin';
-      if (user.is_staff) return 'Staff';
+    const getUserRole = (user: UserProfile): string => {
+      if (user.roles && user.roles.length > 0) {
+        // Return the first role name, or combine multiple roles
+        return user.roles.map(role => role.name).join(', ');
+      }
+      if (user.user.is_staff) return 'Staff';
       return 'User';
     };
 
-    const getUserPermissions = (user: User): string => {
-      const permissions = [];
-      if (user.is_superuser) permissions.push('All permissions');
-      else if (user.is_staff) permissions.push('Staff access');
-      else permissions.push('Basic access');
-      return permissions.join(', ');
+    const getUserPermissions = (user: UserProfile): string => {
+      if (user.roles && user.roles.length > 0) {
+        return `${user.roles.length} role(s) assigned`;
+      }
+      if (user.user.is_staff) return 'Staff access';
+      return 'Basic access';
     };
 
-    const getUserStatus = (user: User): string => {
-      return user.is_active ? 'Active' : 'Inactive';
+    const getUserStatus = (user: UserProfile): string => {
+      return user.status === 'active' ? 'Active' : 'Inactive';
     };
 
-    const getStatusColor = (user: User): string => {
-      return user.is_active ? 'success' : 'danger';
+    const getStatusColor = (user: UserProfile): string => {
+      return user.status === 'active' ? 'success' : 'danger';
+    };
+
+    const getLastLogin = (user: UserProfile): string => {
+      // For now, we'll show 'N/A' since last_login is not in UserProfile
+      // This would need to be added to the backend serializer if needed
+      return 'N/A';
     };
 
     const formatDate = (dateString: string | null): string => {
@@ -404,7 +431,7 @@ export default defineComponent({
       selectedIds.value.length = 0;
     };
 
-    const deleteUser = (id: number) => {
+    const deleteUser = (id: string) => {
       for (let i = 0; i < users.value.length; i++) {
         if (users.value[i].id === id) {
           users.value.splice(i, 1);
@@ -419,7 +446,7 @@ export default defineComponent({
       }
     };
 
-    const onItemSelect = (selectedItems: Array<number>) => {
+    const onItemSelect = (selectedItems: Array<string>) => {
       selectedIds.value = selectedItems;
     };
 
@@ -492,7 +519,10 @@ export default defineComponent({
       deleteFewUsers,
       deleteUser,
       onItemsPerPageChange,
+      showCreateModal,
       handleCreate,
+      handleUserCreated,
+      handleCloseCreateModal,
       handleEdit,
       handleView,
       handleManageRoles,
@@ -504,6 +534,7 @@ export default defineComponent({
       getUserPermissions,
       getUserStatus,
       getStatusColor,
+      getLastLogin,
       formatDate,
     };
   },

@@ -3,7 +3,7 @@ from .models import (
     Modification, Permission, Role, Department, UserProfile, Contact, 
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
     Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
-    StaffRoleMembership, TripEvent, Comment, Contract
+    StaffRoleMembership, TripEvent, Comment, Contract, LostReason
 )
 from django.contrib.auth.models import User
 
@@ -16,10 +16,24 @@ class UserSerializer(serializers.ModelSerializer):
 # Base serializers
 class ModificationSerializer(serializers.ModelSerializer):
     user_username = serializers.CharField(source='user.username', read_only=True)
+    user_name = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Modification
-        fields = ['id', 'model', 'content_type', 'object_id', 'field', 'before', 'after', 'time', 'user', 'user_username']
+        fields = ['id', 'model', 'content_type', 'object_id', 'field', 'before', 'after', 'time', 'user', 'user_username', 'user_name']
+    
+    def get_user_name(self, obj):
+        if obj.user:
+            # Try using first_name and last_name from User model
+            if obj.user.first_name and obj.user.last_name:
+                return f"{obj.user.first_name} {obj.user.last_name}".strip()
+            elif obj.user.first_name:
+                return obj.user.first_name
+            elif obj.user.last_name:
+                return obj.user.last_name
+            # Fall back to username
+            return obj.user.username
+        return None
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -195,6 +209,12 @@ class AgreementSerializer(serializers.ModelSerializer):
         model = Agreement
         fields = ['id', 'destination_email', 'document_unsigned', 'document_signed', 
                  'status', 'created_on', 'created_by', 'modified_on', 'modified_by']
+
+# LostReason serializer
+class LostReasonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LostReason
+        fields = ['id', 'reason', 'is_active', 'created_on', 'created_by', 'modified_on', 'modified_by']
 
 # ========== STANDARDIZED CRUD SERIALIZERS ==========
 
@@ -792,7 +812,7 @@ class TripReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
-            'trip_lines', 'passengers_data', 'events', 'status', 'created_on'
+            'trip_lines', 'passengers_data', 'events', 'notes', 'status', 'created_on'
         ]
     
     def get_quote(self, obj):
@@ -834,7 +854,7 @@ class TripWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
-            'passenger_ids', 'status'
+            'passenger_ids', 'notes', 'status'
         ]
 
 # 6) Transactions
@@ -863,6 +883,7 @@ class QuoteReadSerializer(serializers.ModelSerializer):
     pickup_airport = AirportSerializer(read_only=True)
     dropoff_airport = AirportSerializer(read_only=True)
     patient = serializers.SerializerMethodField()
+    lost_reason = LostReasonSerializer(read_only=True)
     payment_agreement = AgreementSerializer(read_only=True)
     consent_for_transport = AgreementSerializer(read_only=True)
     patient_service_agreement = AgreementSerializer(read_only=True)
@@ -875,7 +896,7 @@ class QuoteReadSerializer(serializers.ModelSerializer):
         model = Quote
         fields = [
             'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
-            'patient', 'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
+            'patient', 'lost_reason', 'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
             'transactions', 'trips', 'status', 'payment_status', 'quote_pdf_status', 'aircraft_type', 'medical_team',
             'estimated_flight_time', 'includes_grounds', 'number_of_stops',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'cruise_line', 'cruise_ship',
@@ -929,6 +950,9 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     patient = serializers.PrimaryKeyRelatedField(
         queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
     )
+    lost_reason = serializers.PrimaryKeyRelatedField(
+        queryset=LostReason.objects.all(), write_only=True, required=False, allow_null=True
+    )
     payment_agreement = serializers.PrimaryKeyRelatedField(
         queryset=Agreement.objects.all(), write_only=True, required=False, allow_null=True
     )
@@ -946,7 +970,7 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
         model = Quote
         fields = [
             'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
-            'patient', 'aircraft_type', 'medical_team', 'estimated_flight_time',
+            'patient', 'lost_reason', 'aircraft_type', 'medical_team', 'estimated_flight_time',
             'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
             'payment_agreement', 'consent_for_transport', 'patient_service_agreement', 
