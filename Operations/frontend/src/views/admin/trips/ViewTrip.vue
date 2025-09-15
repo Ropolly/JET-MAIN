@@ -28,7 +28,7 @@
     <!--begin::Content-->
     <div class="flex-lg-row-fluid me-lg-5 order-2 order-lg-1 mb-10 mb-lg-0">
       <!-- Trip Summary Card -->
-      <FlightStatistics :trip="trip" :loading="loading" />
+      <FlightStatistics :trip="trip" :loading="loading" @patientAdded="fetchTrip" @status-updated="handleStatusUpdated" />
 
       <!-- Aircraft Details Card -->
       <AircraftDetails :trip="trip" :loading="loading" />
@@ -54,6 +54,9 @@
     >
       <!-- Trip Comments Card -->
       <TripComments v-if="trip?.id" :trip-id="trip.id" :trip-data="trip" />
+      
+      <!-- Trip Notes Card -->
+      <TripNotes v-if="trip?.id" :trip-id="trip.id" :trip-data="trip" :loading="loading" @notes-updated="handleNotesUpdated" />
     </div>
     <!--end::Sidebar-->
   </div>
@@ -72,6 +75,7 @@ import AircraftDetails from "@/components/trips/view/AircraftDetails.vue";
 import TripDocuments from "@/components/trips/view/TripDocuments.vue";
 import TripContracts from "@/components/trips/view/TripContracts.vue";
 import TripComments from "@/components/trips/view/TripComments.vue";
+import TripNotes from "@/components/trips/view/TripNotes.vue";
 
 interface Trip {
   id: string;
@@ -113,6 +117,7 @@ export default defineComponent({
     TripDocuments,
     TripContracts,
     TripComments,
+    TripNotes,
   },
   setup() {
     const route = useRoute();
@@ -183,14 +188,6 @@ export default defineComponent({
       }
     };
 
-    const handleGenerateDocuments = () => {
-      // Scroll to documents section
-      const documentsSection = document.querySelector('[data-kt-element="documents"]');
-      if (documentsSection) {
-        documentsSection.scrollIntoView({ behavior: 'smooth' });
-      }
-    };
-
     const setupToolbarActions = () => {
       const actions = [];
       
@@ -201,12 +198,6 @@ export default defineComponent({
           label: 'Edit Trip',
           icon: 'pencil',
           handler: handleEditTrip
-        },
-        {
-          id: 'generate-documents',
-          label: 'Generate Documents',
-          icon: 'file-plus',
-          handler: handleGenerateDocuments
         },
         { divider: true },
         {
@@ -267,6 +258,20 @@ export default defineComponent({
       });
     };
 
+    const handleNotesUpdated = (updatedNotes: string) => {
+      // Update the trip data with the new notes
+      if (trip.value) {
+        trip.value.notes = updatedNotes;
+      }
+    };
+
+    const handleStatusUpdated = (updatedStatus: string) => {
+      // Update the trip data with the new status
+      if (trip.value) {
+        trip.value.status = updatedStatus;
+      }
+    };
+
     onMounted(() => {
       fetchTrip();
       setupToolbarActions();
@@ -280,6 +285,8 @@ export default defineComponent({
       viewQuote,
       handleDeleteTrip,
       setupToolbarActions,
+      handleNotesUpdated,
+      handleStatusUpdated,
     };
   },
 });

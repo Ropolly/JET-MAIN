@@ -24,6 +24,22 @@
     </button>
   </div>
 
+  <!-- Lost Quote Alert -->
+  <div v-if="quote && quote.status === 'lost' && quote.lost_reason" class="alert alert-danger d-flex align-items-center justify-content-between mb-5">
+    <div class="d-flex align-items-center">
+      <KTIcon icon-name="cross-circle" icon-class="fs-2x text-danger me-4" />
+      <div>
+        <div class="fw-bold fs-6">This quote was marked as lost</div>
+        <div class="text-gray-700 fs-7">
+          Lost Reason: 
+          <span class="badge badge-light-danger fs-8 ms-1">
+            {{ quote.lost_reason.reason }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card">     
     <!--begin::Body-->
     <div class="card-body p-lg-20">
@@ -268,7 +284,7 @@
                   <option value="pending">Pending</option>
                   <option value="active">Active</option>
                   <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
+                  <option value="lost">Lost</option>
                 </select>
                 <span v-else class="badge badge-light-secondary">Draft</span>
                 
@@ -461,6 +477,15 @@
   <!-- Include the Create Trip Modal -->
   <CreateTripMultiStepModal @tripCreated="onTripCreated" />
   
+  <!-- Lost Reason Modal -->
+  <LostReasonModal 
+    v-if="quote?.id"
+    ref="lostReasonModalRef"
+    :quote-id="quote.id"
+    @confirmed="onLostReasonConfirmed"
+    @cancelled="onLostReasonCancelled"
+  />
+  
   <!-- Payment Modal -->
   <PaymentModal 
     :quote="quote" 
@@ -575,6 +600,7 @@ import { Modal } from "bootstrap";
 import CreateTripMultiStepModal from "@/components/modals/CreateTripMultiStepModal.vue";
 import UpdatesTimeline from "@/components/UpdatesTimeline.vue";
 import PaymentModal from "@/components/modals/PaymentModal.vue";
+import LostReasonModal from "@/components/modals/LostReasonModal.vue";
 import PaymentService from "@/core/services/PaymentService";
 import JwtService from "@/core/services/JwtService";
 
@@ -587,9 +613,10 @@ const tripLoading = ref(false);
 const error = ref<string | null>(null);
 const { setToolbarActions } = useToolbar();
 
-// Email modal refs and form data
+// Modal refs and form data
 const emailModalRef = ref<HTMLElement | null>(null);
 const updatesTimelineRef = ref<any>(null);
+const lostReasonModalRef = ref<any>(null);
 const isEmailSending = ref(false);
 const emailForm = ref({
   email: '',
@@ -785,7 +812,7 @@ const getStatusColor = (status: string): string => {
   switch (status?.toLowerCase()) {
     case 'active': case 'completed': return 'success';
     case 'pending': return 'warning';
-    case 'cancelled': return 'danger';
+    case 'lost': return 'danger';
     case 'sent': return 'primary';
     case 'draft': return 'secondary';
     default: return 'info';
@@ -1021,52 +1048,20 @@ const viewPatient = () => {
 const updateQuoteStatus = async (newStatus: string) => {
   if (!quote.value || quote.value.status === newStatus) return;
   
-  // If changing to cancelled, prompt for cancellation reason
-  if (newStatus === 'cancelled') {
-    const result = await Swal.fire({
-      title: 'Quote Cancellation',
-      text: 'Please enter a reason for cancellation:',
-      input: 'textarea',
-      inputPlaceholder: 'Enter cancellation reason...',
-      inputAttributes: {
-        'aria-label': 'Cancellation reason',
-        'style': 'min-height: 100px;'
-      },
-      showCancelButton: true,
-      confirmButtonText: 'Cancel Quote',
-      cancelButtonText: 'Keep Current Status',
-      confirmButtonColor: '#dc3545',
-      inputValidator: (value) => {
-        if (!value || value.trim().length === 0) {
-          return 'Please enter a reason for cancellation';
-        }
-        if (value.trim().length < 10) {
-          return 'Please provide a more detailed reason (at least 10 characters)';
-        }
-      }
+  // If changing to lost, show the lost reason modal
+  if (newStatus === 'lost') {
+    // Reset dropdown to current status while modal is shown
+    const currentStatus = quote.value.status;
+    quote.value.status = '';
+    nextTick(() => {
+      quote.value.status = currentStatus;
     });
-
-    if (!result.isConfirmed) {
-      // User cancelled, force reactive update to reset dropdown
-      const currentStatus = quote.value.status;
-      quote.value.status = '';
-      nextTick(() => {
-        quote.value.status = currentStatus;
-      });
-      return;
+    
+    // Show the lost reason modal
+    if (lostReasonModalRef.value) {
+      lostReasonModalRef.value.show();
     }
-
-    // Save the cancellation reason as a comment
-    try {
-      await ApiService.post('/comments/', {
-        content_type: getContentTypeId('quote'),
-        object_id: quote.value.id,
-        text: `Quote cancelled: ${result.value.trim()}`
-      });
-    } catch (error) {
-      console.error('Error saving cancellation comment:', error);
-      // Continue with status update even if comment fails
-    }
+    return;
   }
   
   try {
@@ -1474,6 +1469,82 @@ const onPaymentSuccess = async (response: any) => {
 const onPaymentError = (error: string) => {
   console.error('Payment failed:', error);
   // Error handling is done in the PaymentModal component
+};
+
+// Lost reason modal handlers
+const onLostReasonConfirmed = async (reasonId: string, comment: string) => {
+  if (!quote.value) return;
+  
+  try {
+    // Update quote with lost reason and status
+    await ApiService.patch(`/quotes/${quote.value.id}/`, { 
+      status: 'lost',
+      lost_reason: reasonId
+    });
+    
+    // Update local quote object
+    quote.value.status = 'lost';
+    
+    // If there's a comment, save it
+    if (comment.trim()) {
+      try {
+        await ApiService.post('/comments/', {
+          content_type: getContentTypeId('quote'),
+          object_id: quote.value.id,
+          text: `Quote marked as lost: ${comment.trim()}`
+        });
+        
+        // Refresh the updates timeline to show the new comment
+        if (updatesTimelineRef.value) {
+          setTimeout(() => {
+            updatesTimelineRef.value.refresh();
+          }, 500);
+        }
+      } catch (commentError) {
+        console.error('Error saving lost reason comment:', commentError);
+        // Continue even if comment fails
+      }
+    }
+    
+    // Show success notification
+    Swal.fire({
+      title: "Quote Marked as Lost!",
+      text: "Quote status has been updated",
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+    
+    // Refresh toolbar actions in case they depend on status
+    setupToolbarActions();
+    
+  } catch (error: any) {
+    console.error('Error updating quote status:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to update quote status. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+    
+    // Reset dropdown back to current status
+    const currentStatus = quote.value.status;
+    quote.value.status = '';
+    nextTick(() => {
+      if (quote.value) quote.value.status = currentStatus;
+    });
+  }
+};
+
+const onLostReasonCancelled = () => {
+  // Reset dropdown to current status when modal is cancelled
+  if (quote.value) {
+    const currentStatus = quote.value.status;
+    quote.value.status = '';
+    nextTick(() => {
+      if (quote.value) quote.value.status = currentStatus;
+    });
+  }
 };
 
 onMounted(() => {
