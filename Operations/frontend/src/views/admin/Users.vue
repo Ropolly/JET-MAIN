@@ -146,6 +146,13 @@
             </div>
             <!--end::Menu item-->
             <!--begin::Menu item-->
+            <div v-if="!user.user.is_active" class="menu-item px-3">
+              <a @click="handleResendActivationEmail(user)" class="menu-link px-3"
+                >Resend Activation Email</a
+              >
+            </div>
+            <!--end::Menu item-->
+            <!--begin::Menu item-->
             <div class="menu-item px-3">
               <a @click="handleToggleActive(user)" class="menu-link px-3">
                 {{ user.status === 'active' ? 'Deactivate' : 'Activate' }}
@@ -169,8 +176,8 @@
   </div>
   <!--end::Card-->
 
-  <!-- Create User Modal -->
-  <CreateUserModal 
+  <!-- Create User Wizard Modal -->
+  <CreateUserWizardModal
     :show="showCreateModal"
     @close="handleCloseCreateModal"
     @user-created="handleUserCreated"
@@ -187,7 +194,7 @@ import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
 import { useToolbarStore } from "@/stores/toolbar";
-import CreateUserModal from "@/components/modals/CreateUserModal.vue";
+import CreateUserWizardModal from "@/components/modals/CreateUserWizardModal.vue";
 
 interface UserProfile {
   id: string;
@@ -227,7 +234,7 @@ export default defineComponent({
   name: "users-management",
   components: {
     KTDatatable,
-    CreateUserModal,
+    CreateUserWizardModal,
   },
   setup() {
     const router = useRouter();
@@ -295,9 +302,8 @@ export default defineComponent({
     };
 
     const handleUserCreated = (newUser: UserProfile) => {
-      // Add the new user to the list
-      users.value.unshift(newUser);
-      initData.value.unshift(newUser);
+      // Refresh the entire user list to ensure we have the latest data
+      fetchUsers();
     };
 
     const handleCloseCreateModal = () => {
@@ -373,6 +379,33 @@ export default defineComponent({
         } catch (error: any) {
           console.error('Error deleting user:', error);
           Swal.fire("Error!", "Failed to delete user. Please try again.", "error");
+        }
+      }
+    };
+
+    const handleResendActivationEmail = async (user: UserProfile) => {
+      const result = await Swal.fire({
+        title: "Resend Activation Email",
+        text: `Send a new activation email to ${getUserName(user)} (${user.email})?`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Yes, send email",
+        cancelButtonText: "Cancel"
+      });
+
+      if (result.isConfirmed) {
+        try {
+          const response = await ApiService.post('/auth/resend-activation-email/', {
+            user_id: user.id
+          });
+          Swal.fire("Email Sent!", response.data.message, "success");
+        } catch (error: any) {
+          console.error('Error resending activation email:', error);
+          let errorMessage = "Failed to resend activation email. Please try again.";
+          if (error.response?.data?.error) {
+            errorMessage = error.response.data.error;
+          }
+          Swal.fire("Error!", errorMessage, "error");
         }
       }
     };
@@ -527,6 +560,7 @@ export default defineComponent({
       handleView,
       handleManageRoles,
       handleResetPassword,
+      handleResendActivationEmail,
       handleToggleActive,
       handleDelete,
       getUserName,

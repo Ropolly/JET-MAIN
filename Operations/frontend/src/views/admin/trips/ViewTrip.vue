@@ -36,6 +36,7 @@
       <!-- Combined Itinerary & Timeline Card -->
       <TripItinerary :trip="trip" :loading="loading" />
 
+
       <!-- Trip Documents Card -->
       <div data-kt-element="documents">
         <TripDocuments v-if="trip?.id" :trip-id="trip.id" :trip="trip" />

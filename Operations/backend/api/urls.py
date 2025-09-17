@@ -42,4 +42,15 @@ urlpatterns = [
     path('timezone/validate-flight-times/', views.validate_flight_times, name='validate-flight-times'),
     # DocuSeal webhook endpoint
     path('docuseal/webhook/', views.docuseal_webhook, name='docuseal-webhook'),
+    # User activation token endpoints
+    path('auth/create-user-with-token/', views.create_user_with_token, name='create-user-with-token'),
+    path('auth/resend-activation-email/', views.resend_activation_email, name='resend-activation-email'),
+    path('auth/verify-token/', views.verify_token, name='verify-token'),
+    path('auth/set-password/', views.set_password, name='set-password'),
+    path('auth/forgot-password/', views.forgot_password, name='forgot-password'),
+    # MFA SMS endpoints
+    path('auth/send-sms-code/', views.send_sms_code, name='send-sms-code'),
+    path('auth/verify-sms-code/', views.verify_sms_code, name='verify-sms-code'),
+    path('auth/setup-phone/', views.setup_phone, name='setup-phone'),
+    path('auth/login-with-mfa/', views.login_with_mfa, name='login-with-mfa'),
 ]

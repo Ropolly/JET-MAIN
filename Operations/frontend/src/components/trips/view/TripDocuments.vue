@@ -3,21 +3,44 @@
     <div class="card-header">
       <h3 class="card-title">Trip Documents</h3>
       <div class="card-toolbar">
-        <button
-          type="button"
-          class="btn btn-sm btn-light-primary"
-          @click="generateAllDocuments"
-          :disabled="isGenerating"
-        >
-          <span v-if="!isGenerating">
-            <i class="fas fa-file-plus fs-4 me-2"></i>
-            Generate All Documents
-          </span>
-          <span v-else>
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-            Generating...
-          </span>
-        </button>
+        <div class="dropdown">
+          <button
+            class="btn btn-sm btn-light-primary dropdown-toggle"
+            type="button"
+            data-bs-toggle="dropdown"
+            :disabled="isGenerating"
+          >
+            <span v-if="!isGenerating">
+              <i class="fas fa-cogs fs-4 me-2"></i>
+              Actions
+            </span>
+            <span v-else>
+              <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+              Processing...
+            </span>
+          </button>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="#" @click.prevent="generateAllDocuments">
+                <i class="fas fa-file-plus me-2"></i>
+                Generate All Documents
+              </a>
+            </li>
+            <div v-if="trip?.type === 'medical' && trip?.patient" class="dropdown-divider"></div>
+            <li v-if="trip?.type === 'medical' && trip?.patient">
+              <a class="dropdown-item" href="#" @click.prevent="triggerInsuranceCardUpload">
+                <i class="fas fa-id-card me-2"></i>
+                Upload Insurance Card
+              </a>
+            </li>
+            <li v-if="trip?.type === 'medical' && trip?.patient">
+              <a class="dropdown-item" href="#" @click.prevent="triggerMedicalLetterUpload">
+                <i class="fas fa-file-medical me-2"></i>
+                Upload Medical Letter
+              </a>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
     <div class="card-body">
@@ -146,6 +169,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Hidden file inputs for patient document uploads -->
+    <input
+      type="file"
+      ref="insuranceCardInput"
+      @change="handleInsuranceCardUpload"
+      class="d-none"
+      accept=".pdf,.jpg,.jpeg,.png"
+    />
+    <input
+      type="file"
+      ref="medicalLetterInput"
+      @change="handleMedicalLetterUpload"
+      class="d-none"
+      accept=".pdf,.jpg,.jpeg,.png"
+    />
   </div>
 </template>
 
@@ -174,12 +213,20 @@ const props = defineProps<Props>();
 
 const documents = ref<Document[]>([]);
 const isLoading = ref(false);
-const isGenerating = ref(false);
+
+// Patient document upload refs
+const insuranceCardInput = ref<HTMLInputElement>();
+const medicalLetterInput = ref<HTMLInputElement>();
+const isUploadingInsuranceCard = ref(false);
+const isUploadingMedicalLetter = ref(false);
+const isGeneratingDocs = ref(false);
 
 const documentTypes = [
   { value: 'quote', label: 'Quote Form', endpoint: 'generate_quote_document' },
   { value: 'customer_itinerary', label: 'Customer Itinerary', endpoint: 'generate_itineraries' },
-  { value: 'handling_request', label: 'Handling Request', endpoint: 'generate_handling_requests' }
+  { value: 'handling_request', label: 'Handling Request', endpoint: 'generate_handling_requests' },
+  { value: 'gendec', label: 'General Declaration', endpoint: 'generate_documents' },
+  { value: 'internal_itinerary', label: 'Internal Itinerary', endpoint: 'generate_documents' }
 ];
 
 const availableDocTypes = computed(() => {
@@ -248,7 +295,7 @@ const loadDocuments = async () => {
 };
 
 const generateDocument = async (documentType: string) => {
-  isGenerating.value = true;
+  isGeneratingDocs.value = true;
   try {
     const docTypeConfig = documentTypes.find(dt => dt.value === documentType);
     if (!docTypeConfig) {
@@ -256,19 +303,24 @@ const generateDocument = async (documentType: string) => {
     }
 
     let endpoint = '';
+    let requestData = {};
     
     // Determine the correct endpoint based on document type
     if (documentType === 'quote' && props.trip?.quote?.id) {
       // For quotes, use the quote endpoint
       endpoint = `quotes/${props.trip.quote.id}/${docTypeConfig.endpoint}/`;
     } else if (documentType === 'customer_itinerary' || documentType === 'handling_request') {
-      // For trip-based documents, use the trip endpoint
+      // For legacy trip-based documents, use the specific endpoints
       endpoint = `trips/${props.tripId}/${docTypeConfig.endpoint}/`;
+    } else if (documentType === 'gendec' || documentType === 'internal_itinerary') {
+      // For new document types, use the generate_documents endpoint
+      endpoint = `trips/${props.tripId}/generate_documents/`;
+      requestData = { document_type: documentType };
     } else {
       throw new Error(`Cannot generate ${documentType}: ${documentType === 'quote' ? 'No quote found for this trip' : 'Invalid document type'}`);
     }
 
-    await ApiService.post(endpoint);
+    await ApiService.post(endpoint, requestData);
     
     await loadDocuments();
     
@@ -287,12 +339,58 @@ const generateDocument = async (documentType: string) => {
       text: error.message || 'Failed to generate document'
     });
   } finally {
-    isGenerating.value = false;
+    isGeneratingDocs.value = false;
   }
 };
 
+// Update the isGenerating computed to include upload states
+const isGenerating = computed(() => {
+  return isUploadingInsuranceCard.value || isUploadingMedicalLetter.value || isGeneratingDocs.value;
+});
+
 const generateAllDocuments = async () => {
-  isGenerating.value = true;
+  // Prevent multiple simultaneous generations
+  if (isGenerating.value) {
+    return;
+  }
+
+  isGeneratingDocs.value = true;
+  try {
+    // Use the comprehensive generate_documents endpoint for all documents
+    // This single endpoint generates all applicable documents atomically
+    const response = await ApiService.post(`trips/${props.tripId}/generate_documents/`);
+    
+    await loadDocuments();
+    
+    const documentCount = response.data?.documents?.length || 0;
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'Success',
+      text: `${documentCount} documents generated successfully`,
+      timer: 2000,
+      showConfirmButton: false
+    });
+  } catch (error: any) {
+    console.error('Error generating documents:', error);
+    
+    // Fallback to individual document generation if the new endpoint fails
+    if (error.response?.status === 404 || error.response?.status === 405) {
+      await generateAllDocumentsLegacy();
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.response?.data?.error || error.message || 'Failed to generate documents'
+      });
+    }
+  } finally {
+    isGeneratingDocs.value = false;
+  }
+};
+
+// Legacy fallback method for individual document generation
+const generateAllDocumentsLegacy = async () => {
   try {
     const promises = [];
     let generatedCount = 0;
@@ -332,14 +430,12 @@ const generateAllDocuments = async () => {
       showConfirmButton: false
     });
   } catch (error) {
-    console.error('Error generating documents:', error);
+    console.error('Error generating documents (legacy):', error);
     Swal.fire({
       icon: 'error',
       title: 'Error',
       text: 'Failed to generate documents'
     });
-  } finally {
-    isGenerating.value = false;
   }
 };
 
@@ -419,6 +515,108 @@ const deleteDocument = async (doc: Document) => {
         text: 'Failed to delete document'
       });
     }
+  }
+};
+
+// Patient document upload trigger methods
+const triggerInsuranceCardUpload = () => {
+  if (insuranceCardInput.value) {
+    insuranceCardInput.value.click();
+  }
+};
+
+const triggerMedicalLetterUpload = () => {
+  if (medicalLetterInput.value) {
+    medicalLetterInput.value.click();
+  }
+};
+
+// Patient document upload handlers
+const handleInsuranceCardUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+
+  if (!file || !props.trip?.patient) return;
+
+  try {
+    isUploadingInsuranceCard.value = true;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', 'insurance_card');
+    formData.append('trip_id', props.tripId);
+
+    await ApiService.upload(`/patients/${props.trip.patient.id}/upload_document/`, formData);
+
+    Swal.fire({
+      title: "Success!",
+      text: "Insurance card uploaded successfully.",
+      icon: "success",
+      confirmButtonText: "OK"
+    });
+
+    // Refresh documents to include the new upload
+    await loadDocuments();
+
+    // Clear the file input
+    if (insuranceCardInput.value) {
+      insuranceCardInput.value.value = '';
+    }
+
+  } catch (error: any) {
+    console.error('Error uploading insurance card:', error);
+    Swal.fire({
+      title: "Error",
+      text: error.response?.data?.error || "Failed to upload insurance card. Please try again.",
+      icon: "error",
+      confirmButtonText: "OK"
+    });
+  } finally {
+    isUploadingInsuranceCard.value = false;
+  }
+};
+
+const handleMedicalLetterUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+
+  if (!file || !props.trip?.patient) return;
+
+  try {
+    isUploadingMedicalLetter.value = true;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', 'letter_of_medical_necessity');
+    formData.append('trip_id', props.tripId);
+
+    await ApiService.upload(`/patients/${props.trip.patient.id}/upload_document/`, formData);
+
+    Swal.fire({
+      title: "Success!",
+      text: "Letter of medical necessity uploaded successfully.",
+      icon: "success",
+      confirmButtonText: "OK"
+    });
+
+    // Refresh documents to include the new upload
+    await loadDocuments();
+
+    // Clear the file input
+    if (medicalLetterInput.value) {
+      medicalLetterInput.value.value = '';
+    }
+
+  } catch (error: any) {
+    console.error('Error uploading medical letter:', error);
+    Swal.fire({
+      title: "Error",
+      text: error.response?.data?.error || "Failed to upload letter of medical necessity. Please try again.",
+      icon: "error",
+      confirmButtonText: "OK"
+    });
+  } finally {
+    isUploadingMedicalLetter.value = false;
   }
 };
 

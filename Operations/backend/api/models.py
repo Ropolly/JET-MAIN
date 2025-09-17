@@ -82,9 +82,43 @@ class UserProfile(BaseModel):
     roles = models.ManyToManyField(Role, related_name="users")
     departments = models.ManyToManyField(Department, related_name="department_users")
     flags = models.JSONField(default=list, blank=True)
-    
+
+    # MFA related fields
+    mfa_enabled = models.BooleanField(default=False)
+    phone_verified = models.BooleanField(default=False)
+
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+
+# User Activation Token model for email-based user creation and password reset
+class UserActivationToken(BaseModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activation_tokens")
+    token = models.CharField(max_length=255, unique=True)
+    email = models.EmailField()
+    token_type = models.CharField(max_length=20, choices=[
+        ('activation', 'Account Activation'),
+        ('password_reset', 'Password Reset')
+    ], default='activation')
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['email', 'token_type']),
+            models.Index(fields=['expires_at', 'is_used']),
+        ]
+
+    def __str__(self):
+        return f"{self.token_type} token for {self.email}"
+
+    def is_valid(self):
+        """Check if token is still valid (not used and not expired)"""
+        from django.utils import timezone
+        return not self.is_used and self.expires_at > timezone.now()
+
 
 # Contact model
 class Contact(BaseModel):
@@ -194,6 +228,8 @@ class Document(models.Model):
         ('consent_transport', 'Consent for Transport'),
         ('psa', 'Patient Service Agreement'),
         ('handling_request', 'Handling Request'),
+        ('letter_of_medical_necessity', 'Letter of Medical Necessity'),
+        ('insurance_card', 'Insurance Card'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -283,6 +319,7 @@ class Patient(BaseModel):
         ("cancelled", "Cancelled")
     ], default="pending", db_index=True)
     letter_of_medical_necessity = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients", db_column="letter_of_medical_necessity_id")
+    insurance_card = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="insurance_card_patients", db_column="insurance_card_id")
     
     def __str__(self):
         return f"Patient: {self.info}"
@@ -614,3 +651,31 @@ class Contract(BaseModel):
     
     def is_signed(self):
         return self.status in ['signed', 'completed']
+
+
+# SMS Verification Code model for MFA
+class SMSVerificationCode(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone_number = models.CharField(max_length=20)
+    code = models.CharField(max_length=10)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    verified = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['phone_number', 'verified']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f"SMS Code for {self.phone_number} - {self.code}"
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def can_attempt(self):
+        return self.attempts < 5 and not self.verified and not self.is_expired()
