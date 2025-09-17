@@ -550,18 +550,13 @@
               ></textarea>
             </div>
             
-            <!-- Include PDF -->
-            <div class="fv-row mb-7">
-              <div class="form-check">
-                <input
-                  v-model="emailForm.includePdf"
-                  class="form-check-input"
-                  type="checkbox"
-                  id="includePdf"
-                />
-                <label class="form-check-label fw-semibold text-gray-700" for="includePdf">
-                  Include PDF attachment
-                </label>
+            <!-- Info about automatic PDF generation -->
+            <div class="alert alert-light-info d-flex align-items-center p-5 mb-7">
+              <div class="d-flex align-items-center">
+                <KTIcon icon-name="information-2" icon-class="fs-3 text-info me-4" />
+                <div class="fs-7 text-info">
+                  A PDF quote will be automatically generated and included with a "Download Quote PDF" button that works without requiring login.
+                </div>
               </div>
             </div>
           </form>
@@ -621,8 +616,7 @@ const isEmailSending = ref(false);
 const emailForm = ref({
   email: '',
   subject: '',
-  message: '',
-  includePdf: true
+  message: ''
 });
 
 const fetchQuote = async () => {
@@ -1252,8 +1246,7 @@ const emailQuote = () => {
   // Pre-fill form data
   emailForm.value.email = quote.value?.contact?.email || '';
   emailForm.value.subject = `Quote #${quote.value?.id?.slice(0, 8)} from JET ICU Medical Transport`;
-  emailForm.value.message = `Dear ${quote.value?.contact?.first_name || 'Customer'},\n\nPlease find your transportation quote attached.\n\nBest regards,\nJET ICU Medical Transport Team`;
-  emailForm.value.includePdf = true;
+  emailForm.value.message = `Dear ${quote.value?.contact?.first_name || 'Customer'},\n\nPlease find your transportation quote below. You can view the detailed quote by clicking the "View Quote" button in the email.\n\nBest regards,\nJET ICU Medical Transport Team`;
   
   // Open modal
   const modalElement = document.getElementById('kt_modal_email_quote');
@@ -1277,20 +1270,17 @@ const sendEmailQuote = async () => {
   isEmailSending.value = true;
   
   try {
-    // TODO: Replace with actual email API call when backend email service is ready
+    // Prepare email data for backend API
     const emailData = {
-      quote_id: quote.value?.id,
-      to_email: emailForm.value.email,
+      email: emailForm.value.email,
       subject: emailForm.value.subject,
-      message: emailForm.value.message,
-      include_pdf: emailForm.value.includePdf
+      message: emailForm.value.message
     };
-    
-    console.log('Email data prepared for backend API:', emailData);
-    console.log('PDF endpoint available at: /quotes/' + quote.value?.id + '/pdf/');
-    
-    // Simulate API call (replace with: await ApiService.post('/quotes/email/', emailData))
-    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    console.log('Sending email via API:', emailData);
+
+    // Call the actual backend API endpoint
+    const response = await ApiService.post(`/quotes/${quote.value?.id}/email/`, emailData);
     
     // Close modal
     const modalElement = document.getElementById('kt_modal_email_quote');
@@ -1299,25 +1289,31 @@ const sendEmailQuote = async () => {
       modal?.hide();
     }
     
-    // Show success message
+    // Show success message using backend response
     Swal.fire({
       title: 'Email Sent!',
-      text: `Quote has been sent to ${emailForm.value.email}`,
+      text: response.data?.message || `Quote has been sent to ${emailForm.value.email}`,
       icon: 'success',
       confirmButtonText: 'OK'
     });
-    
+
     // Reset form
     emailForm.value.email = '';
     emailForm.value.subject = '';
     emailForm.value.message = '';
     emailForm.value.includePdf = true;
-    
+
   } catch (error) {
     console.error('Error sending email:', error);
+
+    // Extract error message from backend response
+    const errorMessage = error.response?.data?.message ||
+                        error.response?.data?.error ||
+                        'Failed to send email. Please try again.';
+
     Swal.fire({
       title: 'Error!',
-      text: 'Failed to send email. Please try again.',
+      text: errorMessage,
       icon: 'error',
       confirmButtonText: 'OK'
     });

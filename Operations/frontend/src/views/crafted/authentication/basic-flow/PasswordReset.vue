@@ -57,7 +57,7 @@
           </span>
         </button>
 
-        <router-link to="/sign-up" class="btn btn-lg btn-light-primary fw-bold"
+        <router-link to="/sign-in" class="btn btn-lg btn-light-primary fw-bold"
           >Cancel</router-link
         >
       </div>
@@ -68,79 +68,75 @@
   <!--end::Wrapper-->
 </template>
 
-<script lang="ts">
-import { defineComponent, ref } from "vue";
+<script setup lang="ts">
+import { ref } from "vue";
+import { useRouter } from "vue-router";
 import { ErrorMessage, Field, Form as VForm } from "vee-validate";
-import { useAuthStore } from "@/stores/auth";
 import * as Yup from "yup";
 import Swal from "sweetalert2/dist/sweetalert2.js";
+import ApiService from "@/core/services/ApiService";
 
-export default defineComponent({
-  name: "password-reset",
-  components: {
-    Field,
-    VForm,
-    ErrorMessage,
-  },
-  setup() {
-    const store = useAuthStore();
+const router = useRouter();
+const submitButton = ref<HTMLButtonElement | null>(null);
+const isSubmitting = ref(false);
 
-    const submitButton = ref<HTMLButtonElement | null>(null);
+// Create form validation object
+const forgotPassword = Yup.object().shape({
+  email: Yup.string().email().required().label("Email"),
+});
 
-    //Create form validation object
-    const forgotPassword = Yup.object().shape({
-      email: Yup.string().email().required().label("Email"),
+// Form submit function
+const onSubmitForgotPassword = async (values: any) => {
+  if (isSubmitting.value) return;
+
+  isSubmitting.value = true;
+  submitButton.value!.disabled = true;
+  submitButton.value?.setAttribute("data-kt-indicator", "on");
+
+  try {
+    await ApiService.post('/auth/forgot-password/', {
+      email: values.email
     });
 
-    //Form submit function
-    const onSubmitForgotPassword = async (values: any) => {
-      values = values as string;
+    Swal.fire({
+      title: "Password Reset Email Sent",
+      text: "If an account with that email exists, we've sent you a password reset link.",
+      icon: "success",
+      buttonsStyling: false,
+      confirmButtonText: "Ok, got it!",
+      heightAuto: false,
+      customClass: {
+        confirmButton: "btn fw-semibold btn-light-primary",
+      },
+    }).then(() => {
+      // Redirect to sign-in page after user clicks OK
+      router.push('/sign-in');
+    });
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
 
-      // eslint-disable-next-line
-      submitButton.value!.disabled = true;
-      // Activate loading indicator
-      submitButton.value?.setAttribute("data-kt-indicator", "on");
+    let errorMessage = "An error occurred. Please try again.";
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    } else if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    }
 
-      // dummy delay
-      // Send login request
-      await store.forgotPassword(values);
-
-      const error = Object.values(store.errors);
-
-      if (!error) {
-        Swal.fire({
-          text: "You have successfully logged in!",
-          icon: "success",
-          buttonsStyling: false,
-          confirmButtonText: "Ok, got it!",
-          heightAuto: false,
-          customClass: {
-            confirmButton: "btn fw-semibold btn-light-primary",
-          },
-        });
-      } else {
-        Swal.fire({
-          text: error[0] as string,
-          icon: "error",
-          buttonsStyling: false,
-          confirmButtonText: "Try again!",
-          heightAuto: false,
-          customClass: {
-            confirmButton: "btn fw-semibold btn-light-danger",
-          },
-        });
-      }
-
-      submitButton.value?.removeAttribute("data-kt-indicator");
-      // eslint-disable-next-line
-        submitButton.value!.disabled = false;
-    };
-
-    return {
-      onSubmitForgotPassword,
-      forgotPassword,
-      submitButton,
-    };
-  },
-});
+    Swal.fire({
+      title: "Error",
+      text: errorMessage,
+      icon: "error",
+      buttonsStyling: false,
+      confirmButtonText: "Try again!",
+      heightAuto: false,
+      customClass: {
+        confirmButton: "btn fw-semibold btn-light-danger",
+      },
+    });
+  } finally {
+    isSubmitting.value = false;
+    submitButton.value?.removeAttribute("data-kt-indicator");
+    submitButton.value!.disabled = false;
+  }
+};
 </script>

@@ -759,6 +759,15 @@ const validateStep = () => {
   return allLegsValid;
 };
 
+// Initialize chronological order when legs are populated (e.g., in edit mode)
+watch(() => legs, (newLegs) => {
+  // If chronologicalOrder is empty but we have legs, initialize it
+  if (chronologicalOrder.value.length === 0 && newLegs.length > 0) {
+    console.log('Initializing chronological order for', newLegs.length, 'legs');
+    chronologicalOrder.value = newLegs.map(leg => leg.id);
+  }
+}, { immediate: true });
+
 // Watch for changes
 watch(() => [legs, events], () => {
   validateStep();

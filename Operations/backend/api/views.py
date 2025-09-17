@@ -1,13 +1,19 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from django.contrib.auth import authenticate
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Q
 from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
+from django.conf import settings
 import json
+import os
+import uuid
+from datetime import datetime
 from itertools import chain
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -63,10 +69,10 @@ from .serializers import (
     QuoteReadSerializer, QuoteWriteSerializer,
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
-    PatientReadSerializer, PatientWriteSerializer, StaffReadSerializer, StaffWriteSerializer,
+    PatientReadSerializer, PatientWriteSerializer, PatientFileUploadSerializer, StaffReadSerializer, StaffWriteSerializer,
     StaffRoleSerializer,
     StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
-    ContractReadSerializer, ContractWriteSerializer, ContractCreateFromTripSerializer, 
+    ContractReadSerializer, ContractWriteSerializer, ContractCreateFromTripSerializer,
     ContractDocuSealActionSerializer, DocuSealWebhookSerializer,
 )
 from .permissions import (
@@ -362,6 +368,186 @@ class PatientViewSet(BaseViewSet):
         else:
             permission_classes = [permissions.IsAuthenticated]
         return [permission() for permission in permission_classes]
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload_document(self, request, pk=None):
+        """Upload a document (insurance card or letter of medical necessity) for a patient"""
+        patient = self.get_object()
+        serializer = PatientFileUploadSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            file = serializer.validated_data['file']
+            document_type = serializer.validated_data['document_type']
+            trip_id = serializer.validated_data.get('trip_id')
+            
+            # Validate file type
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
+            file_extension = os.path.splitext(file.name)[1].lower()
+            if file_extension not in allowed_extensions:
+                return Response(
+                    {'error': 'Only JPG, PNG, and PDF files are allowed'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file size (10MB limit)
+            if file.size > 10 * 1024 * 1024:
+                return Response(
+                    {'error': 'File size cannot exceed 10MB'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                # Create upload directory if it doesn't exist
+                upload_dir = os.path.join(settings.MEDIA_ROOT, 'patient_documents')
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                # Get or create trip reference if provided
+                trip = None
+                if trip_id:
+                    try:
+                        trip = Trip.objects.get(id=trip_id)
+                    except Trip.DoesNotExist:
+                        return Response(
+                            {'error': 'Trip not found'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+
+                # Generate descriptive filename with unit prefix
+                # Get trip number if available
+                unit_prefix = ""
+                if trip and trip.trip_number:
+                    unit_prefix = f"{trip.trip_number}_"
+
+                # Create descriptive filename
+                if document_type == 'insurance_card':
+                    descriptive_name = f"{unit_prefix}Insurance_Card"
+                elif document_type == 'letter_of_medical_necessity':
+                    descriptive_name = f"{unit_prefix}Letter_of_Medical_Necessity"
+                else:
+                    descriptive_name = f"{unit_prefix}{document_type}"
+
+                # Add timestamp for uniqueness
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{descriptive_name}_{timestamp}{file_extension}"
+                file_path = os.path.join(upload_dir, filename)
+                
+                # Save file
+                with open(file_path, 'wb+') as destination:
+                    for chunk in file.chunks():
+                        destination.write(chunk)
+                
+                
+                # Create document record
+                document = Document.objects.create(
+                    filename=filename,
+                    document_type=document_type,
+                    file_path=f"patient_documents/{filename}",
+                    trip=trip,
+                    patient=patient,
+                    created_by=request.user
+                )
+                
+                # Update patient with document reference
+                if document_type == 'insurance_card':
+                    patient.insurance_card = document
+                    patient.save()
+                elif document_type == 'letter_of_medical_necessity':
+                    patient.letter_of_medical_necessity = document
+                    patient.save()
+                
+                return Response({
+                    'message': 'Document uploaded successfully',
+                    'document_id': document.id,
+                    'file_path': document.file_path
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                return Response(
+                    {'error': f'Failed to upload file: {str(e)}'}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['delete'])
+    def delete_document(self, request, pk=None):
+        """Delete a document for a patient"""
+        patient = self.get_object()
+        document_type = request.query_params.get('document_type')
+        
+        if not document_type:
+            return Response(
+                {'error': 'document_type parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if document_type not in ['insurance_card', 'letter_of_medical_necessity']:
+            return Response(
+                {'error': 'Invalid document_type'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            if document_type == 'insurance_card' and patient.insurance_card:
+                document = patient.insurance_card
+                
+                # Delete physical file
+                if document.file_path:
+                    file_path = os.path.join(settings.MEDIA_ROOT, document.file_path)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                
+                # Remove reference from patient
+                patient.insurance_card = None
+                patient.save()
+                
+                # Delete document record
+                document.delete()
+                
+                return Response({'message': 'Document deleted successfully'})
+            
+            elif document_type == 'letter_of_medical_necessity':
+                # Find letter of medical necessity documents for this patient
+                trip_id = request.query_params.get('trip_id')
+                if trip_id:
+                    documents = Document.objects.filter(
+                        document_type='letter_of_medical_necessity',
+                        trip_id=trip_id
+                    )
+                else:
+                    # If no trip_id provided, we can't identify which document to delete
+                    return Response(
+                        {'error': 'trip_id parameter is required for letter_of_medical_necessity'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                if not documents.exists():
+                    return Response(
+                        {'error': 'Document not found'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                
+                # Delete all matching documents
+                for document in documents:
+                    if document.file_path:
+                        file_path = os.path.join(settings.MEDIA_ROOT, document.file_path)
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    document.delete()
+                
+                return Response({'message': 'Document(s) deleted successfully'})
+            
+            else:
+                return Response(
+                    {'error': 'No document found to delete'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to delete document: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 # Quote ViewSet
 class QuoteViewSet(BaseViewSet):
@@ -843,6 +1029,134 @@ class QuoteViewSet(BaseViewSet):
                 'message': f'Error generating quote document: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'])
+    def email(self, request, pk=None):
+        """
+        Email a quote with automatically generated PDF document and clean email content
+        """
+        from .serializers import EmailQuoteSerializer
+        from utils.smtp.email import send_template
+        from django.conf import settings
+        import logging
+        import os
+        from datetime import datetime
+        from documents.templates.docs import populate_quote_pdf, QuoteData
+
+        logger = logging.getLogger(__name__)
+        quote = self.get_object()
+
+        # Validate request data
+        serializer = EmailQuoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        email = data['email']
+        subject = data['subject']
+        message = data['message']
+
+        try:
+            # Generate quote document first (using existing logic)
+            logger.info(f"Generating quote document for {quote.id}")
+
+            # Prepare data for the quote document
+            quote_data = QuoteData(
+                quote_id=str(quote.id.hex[:8].upper()),
+                inquiry_date=quote.inquiry_date.strftime('%Y-%m-%d') if quote.inquiry_date else '',
+                patient_name=f"{quote.patient.info.first_name} {quote.patient.info.last_name}" if quote.patient and quote.patient.info else '',
+                aircraft_type=str(quote.aircraft_type) if quote.aircraft_type else '',
+                pickup_airport=f"{quote.pickup_airport.name} ({quote.pickup_airport.ident})" if quote.pickup_airport else '',
+                dropoff_airport=f"{quote.dropoff_airport.name} ({quote.dropoff_airport.ident})" if quote.dropoff_airport else '',
+                trip_date=quote.created_on.strftime('%Y-%m-%d') if quote.created_on else '',
+                esitmated_flight_time=str(quote.estimated_flight_time) if quote.estimated_flight_time else '',
+                number_of_stops=str(quote.number_of_stops),
+                medical_team=quote.medical_team if quote.medical_team else '',
+                include_grounds='Yes' if quote.includes_grounds else 'No',
+                our_availability='Available',
+                amount=f"${quote.quoted_amount:,.2f}" if quote.quoted_amount else '',
+                notes=f"Quote generated on {datetime.now().strftime('%Y-%m-%d')}"
+            )
+
+            # Generate PDF and save as document
+            template_base_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf')
+            output_base_path = os.path.join(settings.BASE_DIR, 'documents', 'generated')
+            os.makedirs(output_base_path, exist_ok=True)
+
+            # Create unique filename
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"quote_{quote.id.hex[:8]}_{timestamp}.pdf"
+            input_path = os.path.join(template_base_path, 'Quote.pdf')
+            output_path = os.path.join(output_base_path, output_filename)
+
+            # Generate the PDF
+            if populate_quote_pdf(input_path, output_path, quote_data):
+                # Create Document record
+                document = Document.objects.create(
+                    filename=output_filename,
+                    file_path=output_path,
+                    document_type='quote',
+                    created_by=request.user
+                )
+
+                # Get public download URL for document access (no authentication required)
+                backend_url = getattr(settings, 'BACKEND_URL', 'http://localhost:8001')
+                document_url = f"{backend_url}/api/documents/{document.id}/public_download/"
+
+                # Build clean email content (without quote details)
+                email_content = f"""
+                {message}
+
+                Please click the button below to view your quote document.
+
+                Best regards,
+                JET ICU Medical Transport Team
+                Phone: (352) 796-2540
+                Email: info@jeticu.com
+                """
+
+                # Send email with "Download Quote PDF" button
+                success = send_template(
+                    subject=subject,
+                    targets=[email],
+                    title=email_content,
+                    link=document_url,
+                    link_text="Download Quote PDF"
+                )
+
+                if success:
+                    # Update quote with sent email info
+                    quote.quote_pdf_email = email
+                    quote.save()
+
+                    logger.info(f"Quote #{str(quote.id)[:8]} with document emailed successfully to {email}")
+
+                    return Response({
+                        'success': True,
+                        'message': f'Quote with PDF document emailed successfully to {email}',
+                        'document_id': str(document.id),
+                        'document_url': document_url
+                    })
+                else:
+                    logger.error(f"Failed to send quote #{str(quote.id)[:8]} to {email}")
+                    return Response({
+                        'success': False,
+                        'message': 'Failed to send email. Please check your email configuration.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            else:
+                logger.error(f"Failed to generate quote document for {quote.id}")
+                return Response({
+                    'success': False,
+                    'message': 'Failed to generate quote document'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            logger.error(f"Error emailing quote #{str(quote.id)[:8]}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error sending email: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 # Passenger ViewSet
 class PassengerViewSet(BaseViewSet):
     queryset = Passenger.objects.select_related('info', 'passport_document')
@@ -1285,6 +1599,7 @@ class TripViewSet(BaseViewSet):
         """
         import os
         from datetime import datetime
+        from django.conf import settings
         from documents.templates.docs import populate_quote_pdf, QuoteData, populate_itinerary_pdf, ItineraryData, CrewInfo, FlightLeg, AirportInfo, TimeInfo, populate_handling_request_pdf, HandlingRequestData, PassengerInfo
         from .serializers import DocumentSerializer, DocumentCreateSerializer
         
@@ -1310,8 +1625,8 @@ class TripViewSet(BaseViewSet):
             document_generators = {
                 'gendec': self._generate_gendec_pdf,
                 'quote': self._generate_quote_pdf,
-                'customer_itinerary': self._generate_itinerary_pdf,
-                'internal_itinerary': self._generate_itinerary_pdf,
+                'customer_itinerary': lambda trip, template_path, output_path: self._generate_itinerary_pdf(trip, template_path, output_path, 'customer_itinerary'),
+                'internal_itinerary': lambda trip, template_path, output_path: self._generate_itinerary_pdf(trip, template_path, output_path, 'internal_itinerary'),
                 'handling_request': self._generate_handling_request_pdf,
             }
             
@@ -1327,7 +1642,7 @@ class TripViewSet(BaseViewSet):
                     }, status=status.HTTP_400_BAD_REQUEST)
             else:
                 # Generate all applicable documents
-                for doc_type in ['quote', 'customer_itinerary', 'handling_request']:
+                for doc_type in ['quote', 'customer_itinerary', 'handling_request', 'gendec', 'internal_itinerary']:
                     try:
                         doc = document_generators[doc_type](trip, template_base_path, output_base_path)
                         if doc:
@@ -1345,6 +1660,218 @@ class TripViewSet(BaseViewSet):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _generate_quote_pdf(self, trip, template_base_path, output_base_path):
+        """Generate quote PDF document"""
+        try:
+            import os
+            from datetime import datetime
+            import uuid
+            
+            # Create filename
+            timestamp = datetime.now().strftime('%Y%m%d')
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"{trip.trip_number}-quote-{timestamp}-{unique_id}.pdf"
+            
+            # Input and output paths
+            input_path = os.path.join(template_base_path, 'Quote.pdf')
+            output_path = os.path.join(output_base_path, filename)
+            
+            if not os.path.exists(input_path):
+                print(f"Quote template not found: {input_path}")
+                return None
+            
+            # Prepare quote data
+            from documents.templates.docs import QuoteData, populate_quote_pdf
+            
+            quote_data = QuoteData(
+                quote_id=str(trip.quote.id) if trip.quote else '',
+                inquiry_date=trip.quote.created_on.strftime('%Y-%m-%d') if trip.quote else '',
+                patient_name=f"{trip.patient.info.first_name} {trip.patient.info.last_name}" if trip.patient and trip.patient.info else '',
+                aircraft_type=trip.aircraft.make + ' ' + trip.aircraft.model if trip.aircraft else '',
+                pickup_airport=trip.trip_lines.first().origin_airport.name if trip.trip_lines.exists() else '',
+                dropoff_airport=trip.trip_lines.last().destination_airport.name if trip.trip_lines.exists() else '',
+                trip_date=trip.trip_lines.first().departure_time_local.strftime('%Y-%m-%d') if trip.trip_lines.exists() and trip.trip_lines.first().departure_time_local else '',
+                esitmated_flight_time=str(trip.quote.estimated_flight_time) if trip.quote and trip.quote.estimated_flight_time else '',
+                medical_team=trip.quote.medical_team if trip.quote else '',
+                amount=str(trip.quote.quoted_amount) if trip.quote and trip.quote.quoted_amount else '',
+                notes=trip.notes or ''
+            )
+            
+            # Generate PDF
+            success = populate_quote_pdf(input_path, output_path, quote_data)
+            
+            if success:
+                # Create document record
+                document = Document.objects.create(
+                    trip=trip,
+                    document_type='quote',
+                    filename=filename,
+                    file_path=output_path,
+                    created_by=self.request.user if hasattr(self.request, 'user') else None
+                )
+                return document
+            return None
+            
+        except Exception as e:
+            print(f"Error generating quote PDF: {e}")
+            return None
+    
+    def _generate_itinerary_pdf(self, trip, template_base_path, output_base_path, doc_type='customer_itinerary'):
+        """Generate itinerary PDF document"""
+        try:
+            import os
+            from datetime import datetime
+            import uuid
+            
+            # Create filename
+            timestamp = datetime.now().strftime('%Y%m%d')
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"{trip.trip_number}-{doc_type.replace('_', '_')}-{timestamp}-{unique_id}.pdf"
+            
+            # Input and output paths
+            input_path = os.path.join(template_base_path, 'itin.pdf')
+            output_path = os.path.join(output_base_path, filename)
+            
+            if not os.path.exists(input_path):
+                print(f"Itinerary template not found: {input_path}")
+                return None
+            
+            # Prepare itinerary data
+            from documents.templates.docs import ItineraryData, CrewInfo, FlightLeg, AirportInfo, TimeInfo, populate_itinerary_pdf
+            
+            # Create crew info
+            crew_lines = CrewLine.objects.filter(trip_lines__trip=trip).distinct()
+            crew_info = CrewInfo()
+            if crew_lines.exists():
+                crew_line = crew_lines.first()
+                if crew_line.primary_in_command:
+                    crew_info.pic = f"{crew_line.primary_in_command.first_name} {crew_line.primary_in_command.last_name}"
+                if crew_line.secondary_in_command:
+                    crew_info.sic = f"{crew_line.secondary_in_command.first_name} {crew_line.secondary_in_command.last_name}"
+            
+            # Create flight legs
+            flight_legs = []
+            for i, trip_line in enumerate(trip.trip_lines.all(), 1):
+                leg = FlightLeg(
+                    leg=str(i),
+                    departure_id=trip_line.origin_airport.ident if trip_line.origin_airport else '',
+                    arrival_id=trip_line.destination_airport.ident if trip_line.destination_airport else '',
+                    flight_time=str(trip_line.flight_time) if trip_line.flight_time else '',
+                    pax_leg='Yes' if trip_line.passenger_leg else 'No'
+                )
+                flight_legs.append(leg)
+            
+            # Prepare passenger list
+            passengers = []
+            for passenger in trip.passengers.all():
+                if passenger.info:
+                    passengers.append(f"{passenger.info.first_name} {passenger.info.last_name}")
+            
+            itinerary_data = ItineraryData(
+                trip_number=trip.trip_number or '',
+                patient_name=f"{trip.patient.info.first_name} {trip.patient.info.last_name}" if trip.patient and trip.patient.info else '',
+                passengers=passengers,
+                crew=crew_info,
+                flight_legs=flight_legs
+            )
+            
+            # Generate PDF
+            success = populate_itinerary_pdf(input_path, output_path, itinerary_data)
+            
+            if success:
+                # Create document record
+                document = Document.objects.create(
+                    trip=trip,
+                    document_type=doc_type,
+                    filename=filename,
+                    file_path=output_path,
+                    created_by=self.request.user if hasattr(self.request, 'user') else None
+                )
+                return document
+            return None
+            
+        except Exception as e:
+            print(f"Error generating itinerary PDF: {e}")
+            return None
+    
+    def _generate_handling_request_pdf(self, trip, template_base_path, output_base_path):
+        """Generate handling request PDF document"""
+        try:
+            import os
+            from datetime import datetime
+            import uuid
+            
+            # Create filename
+            timestamp = datetime.now().strftime('%Y%m%d')
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"{trip.trip_number}-handling_request-{timestamp}-{unique_id}.pdf"
+            
+            # Input and output paths
+            input_path = os.path.join(template_base_path, 'handling_request.pdf')
+            output_path = os.path.join(output_base_path, filename)
+            
+            if not os.path.exists(input_path):
+                print(f"Handling request template not found: {input_path}")
+                return None
+            
+            # Prepare handling request data
+            from documents.templates.docs import HandlingRequestData, PassengerInfo, populate_handling_request_pdf
+            
+            # Prepare passenger info
+            passengers = []
+            for passenger in trip.passengers.all():
+                if passenger.info:
+                    pax_info = PassengerInfo(
+                        name=f"{passenger.info.first_name} {passenger.info.last_name}",
+                        nationality=passenger.info.nationality or '',
+                        date_of_birth=passenger.info.date_of_birth.strftime('%Y-%m-%d') if passenger.info.date_of_birth else '',
+                        passport_number=passenger.info.passport_number or '',
+                        passport_expiration=passenger.info.passport_expiration_date.strftime('%Y-%m-%d') if passenger.info.passport_expiration_date else '',
+                        contact_number=passenger.info.phone or ''
+                    )
+                    passengers.append(pax_info)
+            
+            handling_data = HandlingRequestData(
+                company=trip.aircraft.company if trip.aircraft else 'JET ICU Medical Transport',
+                make=trip.aircraft.make if trip.aircraft else '',
+                model=trip.aircraft.model if trip.aircraft else '',
+                tail_number=trip.aircraft.tail_number if trip.aircraft else '',
+                serial_number=trip.aircraft.serial_number if trip.aircraft else '',
+                mgtow=str(trip.aircraft.mgtow) if trip.aircraft and trip.aircraft.mgtow else '',
+                passengers=passengers
+            )
+            
+            # Generate PDF
+            success = populate_handling_request_pdf(input_path, output_path, handling_data)
+            
+            if success:
+                # Create document record
+                document = Document.objects.create(
+                    trip=trip,
+                    document_type='handling_request',
+                    filename=filename,
+                    file_path=output_path,
+                    created_by=self.request.user if hasattr(self.request, 'user') else None
+                )
+                return document
+            return None
+            
+        except Exception as e:
+            print(f"Error generating handling request PDF: {e}")
+            return None
+    
+    def _generate_gendec_pdf(self, trip, template_base_path, output_base_path):
+        """Generate general declaration document - placeholder for now"""
+        try:
+            # For now, return None since there's no gendec PDF template
+            # The system seems to be generating DOCX files via a different system
+            print("gendec generation not implemented for PDF system - using DOCX templating system")
+            return None
+            
+        except Exception as e:
+            print(f"Error generating gendec PDF: {e}")
+            return None
     
     @action(detail=True, methods=['get'])
     def documents(self, request, pk=None):
@@ -1388,6 +1915,44 @@ class DocumentViewSet(BaseViewSet):
         elif document.content:
             # Fallback to binary content if stored in database
             response = HttpResponse(document.content, content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{document.filename}"'
+            return response
+        else:
+            return Response(
+                {'error': 'Document file not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['get'], permission_classes=[])
+    def public_download(self, request, pk=None):
+        """
+        Public download endpoint for documents that doesn't require authentication.
+        Used for email links to quote PDFs and other documents.
+        """
+        from django.http import FileResponse, HttpResponse
+        from pathlib import Path
+
+        document = self.get_object()
+
+        # Only allow public download for certain document types (like quotes)
+        allowed_types = ['quote', 'customer_itinerary', 'gendec', 'handling_request']
+        if document.document_type not in allowed_types:
+            return Response(
+                {'error': 'This document type is not available for public download'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if document.file_path and Path(document.file_path).exists():
+            file_path = Path(document.file_path)
+            response = FileResponse(
+                open(file_path, 'rb'),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{document.filename}"'
+            return response
+        elif document.content:
+            # Fallback to binary content if stored in database
+            response = HttpResponse(document.content, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{document.filename}"'
             return response
         else:
@@ -2497,4 +3062,591 @@ def docuseal_webhook(request):
         logger.error(f"DocuSeal webhook processing failed: {str(e)}")
         return Response({
             'error': 'Webhook processing failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# User Activation Token Views
+import secrets
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.contrib.auth.models import User
+from .models import UserActivationToken
+from .serializers import (
+    CreateUserWithTokenSerializer, ResendActivationEmailSerializer, VerifyTokenSerializer, VerifyTokenResponseSerializer,
+    SetPasswordSerializer, ForgotPasswordSerializer, UserActivationTokenSerializer
+)
+from utils.smtp.email import send_template, send_user_activation_email, send_password_reset_email
+
+
+def generate_secure_token():
+    """Generate a cryptographically secure random token."""
+    return secrets.token_urlsafe(32)
+
+
+def create_activation_token(user, email, token_type='activation', hours=24):
+    """Create an activation or reset token for a user."""
+    token = generate_secure_token()
+    expires_at = timezone.now() + timedelta(hours=hours)
+
+    return UserActivationToken.objects.create(
+        user=user,
+        token=token,
+        email=email,
+        token_type=token_type,
+        expires_at=expires_at
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_user_with_token(request):
+    """Create a user and send activation email with token."""
+    serializer = CreateUserWithTokenSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    data = serializer.validated_data
+
+    try:
+        # Check if user with this email already exists
+        if User.objects.filter(email=data['email']).exists():
+            return Response({
+                'error': 'A user with this email already exists.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create inactive user (no password initially)
+        user = User.objects.create_user(
+            username=data['email'],  # Use email as username
+            email=data['email'],
+            is_active=False  # User must activate via email
+        )
+
+        # Create user profile
+        from .models import UserProfile, Role
+        profile = UserProfile.objects.create(
+            user=user,
+            first_name=data['first_name'],
+            last_name=data['last_name'],
+            email=data['email'],
+            status='pending'
+        )
+
+        # Assign roles if provided
+        if data.get('role_ids'):
+            roles = Role.objects.filter(id__in=data['role_ids'])
+            profile.roles.set(roles)
+
+        # If marked as admin, automatically assign Admin role with full permissions
+        if data.get('is_admin', False):
+            admin_role, created = Role.objects.get_or_create(
+                name='Admin',
+                defaults={'description': 'Full system administrator with all permissions'}
+            )
+            profile.roles.add(admin_role)
+
+            # Also mark the Django user as staff for admin interface access
+            user.is_staff = True
+            user.save()
+
+        # Create activation token
+        token_obj = create_activation_token(user, data['email'], 'activation')
+
+        # Send activation email if requested
+        if data.get('send_activation_email', True):
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5179')
+
+            try:
+                email_sent = send_user_activation_email(
+                    email=data['email'],
+                    first_name=data['first_name'],
+                    last_name=data['last_name'],
+                    token=token_obj.token,
+                    frontend_url=frontend_url
+                )
+                if not email_sent:
+                    logger.error(f"Failed to send activation email to {data['email']}")
+            except Exception as e:
+                logger.error(f"SMTP error sending activation email to {data['email']}: {str(e)}")
+                logger.info(f"Activation token for {data['email']}: {token_obj.token}")
+                email_sent = False
+
+        # Prepare success message based on email status
+        if data.get('send_activation_email', True):
+            if 'email_sent' in locals() and email_sent:
+                message = f'User created successfully! Activation email sent to {data["email"]}.'
+            else:
+                message = f'User created successfully! Note: Activation email could not be sent to {data["email"]}. Please contact IT support.'
+        else:
+            message = 'User created successfully!'
+
+        # Serialize the created UserProfile to return full data
+        from .serializers import UserProfileReadSerializer
+        serialized_profile = UserProfileReadSerializer(profile, context={'request': request}).data
+
+        return Response({
+            'message': message,
+            'user_id': user.id,
+            'profile': serialized_profile,
+            'token': token_obj.token if not data.get('send_activation_email', True) or not locals().get('email_sent', False) else None
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        # Clean up if user was created but something failed
+        if 'user' in locals():
+            user.delete()
+
+        return Response({
+            'error': f'Failed to create user: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_token(request):
+    """Verify an activation or reset token."""
+    serializer = VerifyTokenSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    token = serializer.validated_data['token']
+
+    try:
+        token_obj = UserActivationToken.objects.get(token=token)
+
+        if not token_obj.is_valid():
+            if token_obj.is_used:
+                message = 'This token has already been used.'
+            else:
+                message = 'This token has expired.'
+
+            return Response({
+                'valid': False,
+                'message': message
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get user info
+        user_info = {
+            'id': token_obj.user.id,
+            'email': token_obj.email,
+            'first_name': getattr(token_obj.user.profile, 'first_name', ''),
+            'last_name': getattr(token_obj.user.profile, 'last_name', ''),
+        }
+
+        response_serializer = VerifyTokenResponseSerializer({
+            'valid': True,
+            'token_type': token_obj.token_type,
+            'email': token_obj.email,
+            'user_info': user_info,
+            'message': 'Token is valid.'
+        })
+
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    except UserActivationToken.DoesNotExist:
+        return Response({
+            'valid': False,
+            'message': 'Invalid token.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resend_activation_email(request):
+    """Resend activation email for a user."""
+    serializer = ResendActivationEmailSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    data = serializer.validated_data
+
+    try:
+        # Get the user profile
+        from .models import UserProfile
+        profile = UserProfile.objects.get(id=data['user_id'])
+        user = profile.user
+
+        # Check if user is already active
+        if user.is_active:
+            return Response({
+                'error': 'User is already active.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create new activation token (invalidate old ones)
+        UserActivationToken.objects.filter(user=user, token_type='activation').update(is_used=True)
+        token_obj = create_activation_token(user, profile.email, 'activation')
+
+        # Send activation email
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5179')
+
+        try:
+            email_sent = send_user_activation_email(
+                email=profile.email,
+                first_name=profile.first_name,
+                last_name=profile.last_name,
+                token=token_obj.token,
+                frontend_url=frontend_url
+            )
+            if not email_sent:
+                logger.error(f"Failed to send activation email to {profile.email}")
+        except Exception as e:
+            logger.error(f"SMTP error sending activation email to {profile.email}: {str(e)}")
+            logger.info(f"Activation token for {profile.email}: {token_obj.token}")
+            email_sent = False
+
+        # Prepare success message based on email status
+        if 'email_sent' in locals() and email_sent:
+            message = f'Activation email sent to {profile.email}.'
+        else:
+            message = f'Activation token created but email could not be sent to {profile.email}. Please contact IT support.'
+
+        return Response({
+            'message': message,
+            'token': token_obj.token if not email_sent else None
+        }, status=status.HTTP_200_OK)
+
+    except UserProfile.DoesNotExist:
+        return Response({
+            'error': 'User not found.'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error resending activation email: {str(e)}")
+        return Response({
+            'error': f'Failed to resend activation email: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def set_password(request):
+    """Set password using activation or reset token."""
+    serializer = SetPasswordSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    data = serializer.validated_data
+
+    try:
+        token_obj = UserActivationToken.objects.get(token=data['token'])
+
+        if not token_obj.is_valid():
+            return Response({
+                'error': 'Token is invalid or has expired.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user = token_obj.user
+
+        # Set password
+        user.set_password(data['password'])
+        user.is_active = True  # Activate user
+        user.save()
+
+        # Update profile with phone number if provided
+        if data.get('phone'):
+            try:
+                profile = user.profile
+                profile.phone = data['phone']
+                profile.status = 'active'
+                profile.save()
+            except Exception:
+                # Create profile if it doesn't exist
+                UserProfile.objects.create(
+                    user=user,
+                    phone=data['phone'],
+                    status='active'
+                )
+        else:
+            # Just update status if profile exists
+            try:
+                profile = user.profile
+                profile.status = 'active'
+                profile.save()
+            except Exception:
+                pass
+
+        # Mark token as used
+        token_obj.is_used = True
+        token_obj.used_at = timezone.now()
+        token_obj.save()
+
+        return Response({
+            'message': 'Password set successfully. You can now log in.',
+            'user_id': user.id
+        }, status=status.HTTP_200_OK)
+
+    except UserActivationToken.DoesNotExist:
+        return Response({
+            'error': 'Invalid token.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    """Send password reset email."""
+    serializer = ForgotPasswordSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    email = serializer.validated_data['email']
+
+    try:
+        user = User.objects.get(email=email, is_active=True)
+
+        # Create reset token
+        token_obj = create_activation_token(user, email, 'password_reset', hours=2)  # 2 hour expiry
+
+        # Send reset email with error handling
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5179')
+
+        try:
+            email_sent = send_password_reset_email(
+                email=email,
+                token=token_obj.token,
+                frontend_url=frontend_url
+            )
+
+            if not email_sent:
+                logger.error(f"Failed to send password reset email to {email}")
+        except Exception as e:
+            # Log the error but don't fail the request - for security don't reveal SMTP issues
+            logger.error(f"SMTP error sending password reset email to {email}: {str(e)}")
+            # For debugging purposes when SMTP isn't configured, log the token
+            logger.info(f"Password reset token for {email}: {token_obj.token}")
+
+        # Always return success for security - don't reveal whether email actually sent
+        return Response({
+            'message': 'If an account with this email exists, a password reset email has been sent.'
+        }, status=status.HTTP_200_OK)
+
+    except User.DoesNotExist:
+        # Don't reveal whether user exists for security
+        return Response({
+            'message': 'If an account with this email exists, a password reset email has been sent.'
+        }, status=status.HTTP_200_OK)
+
+
+# MFA SMS Verification Endpoints
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_sms_code(request):
+    """
+    Send SMS verification code to phone number
+    """
+    try:
+        from utils.services.twilio_service import twilio_service
+
+        phone_number = request.data.get('phone_number')
+        if not phone_number:
+            return Response({
+                'error': 'Phone number is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get user if authenticated
+        user = request.user if request.user.is_authenticated else None
+
+        result = twilio_service.send_sms_verification_code(phone_number, user)
+
+        if result['success']:
+            return Response({
+                'message': result['message'],
+                'phone_number': result['phone_number'],
+                'expires_at': result['expires_at']
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': result['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Error in send_sms_code: {str(e)}")
+        return Response({
+            'error': 'An error occurred while sending SMS'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_sms_code(request):
+    """
+    Verify SMS code entered by user
+    """
+    try:
+        from utils.services.twilio_service import twilio_service
+
+        phone_number = request.data.get('phone_number')
+        code = request.data.get('code')
+
+        if not phone_number or not code:
+            return Response({
+                'error': 'Phone number and code are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get user if authenticated
+        user = request.user if request.user.is_authenticated else None
+
+        result = twilio_service.verify_sms_code(phone_number, code, user)
+
+        if result['success']:
+            return Response({
+                'message': result['message'],
+                'phone_number': result['phone_number']
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': result['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Error in verify_sms_code: {str(e)}")
+        return Response({
+            'error': 'An error occurred while verifying SMS code'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def setup_phone(request):
+    """
+    Setup and verify phone number for authenticated user
+    """
+    try:
+        from utils.services.twilio_service import twilio_service
+
+        phone_number = request.data.get('phone_number')
+        code = request.data.get('code')
+
+        if not phone_number:
+            return Response({
+                'error': 'Phone number is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # If code is provided, verify it
+        if code:
+            result = twilio_service.verify_sms_code(phone_number, code, request.user)
+
+            if result['success']:
+                # Update user's phone number and mark as verified
+                user_profile = request.user.profile
+                user_profile.phone = result['phone_number']
+                user_profile.phone_verified = True
+                user_profile.save()
+
+                return Response({
+                    'message': 'Phone number verified and saved successfully',
+                    'phone_number': result['phone_number'],
+                    'phone_verified': True
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': result['error']
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Send verification code
+            result = twilio_service.send_sms_verification_code(phone_number, request.user)
+
+            if result['success']:
+                return Response({
+                    'message': result['message'],
+                    'phone_number': result['phone_number'],
+                    'expires_at': result['expires_at']
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': result['error']
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Error in setup_phone: {str(e)}")
+        return Response({
+            'error': 'An error occurred while setting up phone'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_with_mfa(request):
+    """
+    Login with MFA support - handles username/password + SMS verification
+    """
+    try:
+        from utils.services.twilio_service import twilio_service
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        username = request.data.get('username')
+        password = request.data.get('password')
+        phone_number = request.data.get('phone_number')
+        sms_code = request.data.get('sms_code')
+
+        if not username or not password:
+            return Response({
+                'error': 'Username and password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Authenticate user
+        user = authenticate(username=username, password=password)
+        if not user:
+            return Response({
+                'error': 'Invalid credentials'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Check if user has MFA enabled
+        user_profile = getattr(user, 'profile', None)
+        if not user_profile:
+            return Response({
+                'error': 'User profile not found'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # If MFA is enabled and user has verified phone
+        if user_profile.mfa_enabled and user_profile.phone_verified and user_profile.phone:
+            if not sms_code:
+                # Send SMS code and return intermediate response
+                result = twilio_service.send_sms_verification_code(user_profile.phone, user)
+
+                if result['success']:
+                    return Response({
+                        'mfa_required': True,
+                        'phone_number': result['phone_number'],
+                        'message': 'SMS verification code sent'
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        'error': result['error']
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Verify SMS code
+                result = twilio_service.verify_sms_code(user_profile.phone, sms_code, user)
+
+                if not result['success']:
+                    return Response({
+                        'error': result['error']
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+
+        return Response({
+            'access': str(access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user_profile.first_name if user_profile else '',
+                'last_name': user_profile.last_name if user_profile else '',
+                'mfa_enabled': user_profile.mfa_enabled if user_profile else False,
+                'phone_verified': user_profile.phone_verified if user_profile else False
+            }
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error in login_with_mfa: {str(e)}")
+        return Response({
+            'error': 'An error occurred during login'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

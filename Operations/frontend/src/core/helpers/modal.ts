@@ -1,5 +1,14 @@
 import { Modal } from "bootstrap";
 
+const showModal = (modalEl: HTMLElement | null): void => {
+  if (!modalEl) {
+    return;
+  }
+
+  const myModal = Modal.getOrCreateInstance(modalEl);
+  myModal?.show();
+};
+
 const hideModal = (modalEl: HTMLElement | null): void => {
   if (!modalEl) {
     return;
@@ -17,4 +26,4 @@ const removeModalBackdrop = (): void => {
   }
 };
 
-export { removeModalBackdrop, hideModal };
+export { showModal, hideModal, removeModalBackdrop };

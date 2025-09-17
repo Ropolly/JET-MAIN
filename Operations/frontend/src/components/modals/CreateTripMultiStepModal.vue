@@ -415,8 +415,16 @@ const handleSubmit = async () => {
       }
     }
 
-    // Create trip legs and events
-    await createTripLegsAndEvents(createdTrip.id);
+    // Handle trip legs and events based on mode
+    if (editMode.value && editTripId.value) {
+      // EDIT MODE: Update existing trip legs and events
+      console.log('Edit mode: updating trip legs and events');
+      await updateTripLegsAndEvents(createdTrip.id);
+    } else {
+      // CREATE MODE: Create new trip legs and events (existing logic unchanged)
+      console.log('Create mode: creating new trip legs and events');
+      await createTripLegsAndEvents(createdTrip.id);
+    }
 
     // Add passengers
     if (tripData.passengers.length > 0) {
@@ -458,6 +466,64 @@ const handleSubmit = async () => {
   } finally {
     isSubmitting.value = false;
   }
+};
+
+// Delete existing legs and events for edit mode
+const deleteExistingLegsAndEvents = async (tripId: string) => {
+  try {
+    console.log('Deleting existing legs and events for trip:', tripId);
+
+    // Get current trip data to find existing legs and events
+    const tripResponse = await ApiService.get(`/trips/${tripId}/`);
+    const currentTrip = tripResponse.data;
+
+    // Delete existing trip lines
+    if (currentTrip.trip_lines && currentTrip.trip_lines.length > 0) {
+      console.log('Deleting', currentTrip.trip_lines.length, 'existing trip lines');
+      for (const line of currentTrip.trip_lines) {
+        try {
+          await ApiService.delete(`/trip-lines/${line.id}/`);
+          console.log('Deleted trip line:', line.id);
+        } catch (error) {
+          console.error('Error deleting trip line:', line.id, error);
+        }
+      }
+    }
+
+    // Delete existing trip events
+    if (currentTrip.events && currentTrip.events.length > 0) {
+      console.log('Deleting', currentTrip.events.length, 'existing trip events');
+      for (const event of currentTrip.events) {
+        try {
+          await ApiService.delete(`/trip-events/${event.id}/`);
+          console.log('Deleted trip event:', event.id);
+        } catch (error) {
+          console.error('Error deleting trip event:', event.id, error);
+        }
+      }
+    }
+
+    // Note: Crew lines will be cleaned up automatically by the backend
+    // when they are no longer referenced by any trip lines
+
+    console.log('Successfully deleted existing legs and events');
+  } catch (error) {
+    console.error('Error deleting existing legs and events:', error);
+    throw error;
+  }
+};
+
+// Update trip legs and events for edit mode
+const updateTripLegsAndEvents = async (tripId: string) => {
+  console.log('Updating trip legs and events for trip:', tripId);
+
+  // First, delete all existing legs and events
+  await deleteExistingLegsAndEvents(tripId);
+
+  // Then create new ones using existing logic
+  await createTripLegsAndEvents(tripId);
+
+  console.log('Successfully updated trip legs and events');
 };
 
 // Create trip legs and events

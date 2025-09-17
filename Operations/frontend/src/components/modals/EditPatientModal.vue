@@ -173,8 +173,8 @@
             <!--begin::Special Instructions-->
             <div class="fv-row mb-8">
               <label class="fs-6 fw-semibold mb-2">Special Instructions</label>
-              <textarea 
-                class="form-control form-control-solid" 
+              <textarea
+                class="form-control form-control-solid"
                 rows="4"
                 v-model="formData.special_instructions"
                 :disabled="isSubmitting"
@@ -183,6 +183,75 @@
               <div class="form-text">Any special medical or transport instructions</div>
             </div>
             <!--end::Special Instructions-->
+
+            <!--begin::Document Uploads-->
+            <div class="separator separator-dashed my-8"></div>
+            <h5 class="mb-5">Patient Documents</h5>
+
+            <!--begin::Insurance Card-->
+            <div class="fv-row mb-8">
+              <label class="fs-6 fw-semibold mb-2">Insurance Card</label>
+              <div class="d-flex align-items-center gap-3">
+                <input
+                  type="file"
+                  class="form-control form-control-solid flex-grow-1"
+                  ref="insuranceCardInput"
+                  @change="handleInsuranceCardUpload"
+                  :disabled="isUploadingInsuranceCard"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                />
+                <button
+                  v-if="hasInsuranceCard"
+                  type="button"
+                  class="btn btn-sm btn-light-danger"
+                  @click="deleteInsuranceCard"
+                  :disabled="isDeletingInsuranceCard"
+                >
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+              <div class="form-text">Upload insurance card (PDF, JPG, PNG - max 10MB)</div>
+              <div v-if="hasInsuranceCard" class="mt-2">
+                <span class="badge badge-light-success">
+                  <i class="fas fa-check-circle me-1"></i>
+                  Insurance card uploaded
+                </span>
+              </div>
+            </div>
+            <!--end::Insurance Card-->
+
+            <!--begin::Letter of Medical Necessity-->
+            <div class="fv-row mb-8">
+              <label class="fs-6 fw-semibold mb-2">Letter of Medical Necessity</label>
+              <div class="d-flex align-items-center gap-3">
+                <input
+                  type="file"
+                  class="form-control form-control-solid flex-grow-1"
+                  ref="medicalLetterInput"
+                  @change="handleMedicalLetterUpload"
+                  :disabled="isUploadingMedicalLetter"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                />
+                <button
+                  v-if="hasMedicalLetter"
+                  type="button"
+                  class="btn btn-sm btn-light-danger"
+                  @click="deleteMedicalLetter"
+                  :disabled="isDeletingMedicalLetter"
+                >
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+              <div class="form-text">Upload letter of medical necessity (PDF, JPG, PNG - max 10MB)</div>
+              <div v-if="hasMedicalLetter" class="mt-2">
+                <span class="badge badge-light-success">
+                  <i class="fas fa-check-circle me-1"></i>
+                  Medical necessity letter uploaded
+                </span>
+              </div>
+            </div>
+            <!--end::Letter of Medical Necessity-->
+            <!--end::Document Uploads-->
 
             <!--begin::Actions-->
             <div class="d-flex justify-content-end">
@@ -246,6 +315,8 @@ interface Patient {
   status: string;
   bed_at_origin: boolean;
   bed_at_destination: boolean;
+  insurance_card?: any;
+  letter_of_medical_necessity?: any;
 }
 
 interface FormData {
@@ -266,6 +337,14 @@ export default defineComponent({
     const modalRef = ref<HTMLElement>();
     const isSubmitting = ref(false);
     const currentPatient = ref<Patient | null>(null);
+
+    // Document upload refs and states
+    const insuranceCardInput = ref<HTMLInputElement>();
+    const medicalLetterInput = ref<HTMLInputElement>();
+    const isUploadingInsuranceCard = ref(false);
+    const isUploadingMedicalLetter = ref(false);
+    const isDeletingInsuranceCard = ref(false);
+    const isDeletingMedicalLetter = ref(false);
 
     // Form data
     const formData = ref<FormData>({
@@ -291,6 +370,14 @@ export default defineComponent({
 
     const patientDisplayEmail = computed(() => {
       return currentPatient.value?.info?.email || 'No email';
+    });
+
+    const hasInsuranceCard = computed(() => {
+      return currentPatient.value?.insurance_card?.id;
+    });
+
+    const hasMedicalLetter = computed(() => {
+      return currentPatient.value?.letter_of_medical_necessity?.id;
     });
 
     const setPatient = (patient: Patient) => {
@@ -367,15 +454,199 @@ export default defineComponent({
       }
     };
 
+    const handleInsuranceCardUpload = async (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      const file = target.files?.[0];
+
+      if (!file || !currentPatient.value) return;
+
+      try {
+        isUploadingInsuranceCard.value = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('document_type', 'insurance_card');
+
+        await ApiService.upload(`/patients/${currentPatient.value.id}/upload_document/`, formData);
+
+        // Refresh patient data
+        const response = await ApiService.get(`/patients/${currentPatient.value.id}/`);
+        currentPatient.value = response.data;
+
+        Swal.fire({
+          title: "Success!",
+          text: "Insurance card uploaded successfully.",
+          icon: "success",
+          confirmButtonText: "OK"
+        });
+
+        // Clear the file input
+        if (insuranceCardInput.value) {
+          insuranceCardInput.value.value = '';
+        }
+
+      } catch (error: any) {
+        console.error('Error uploading insurance card:', error);
+        Swal.fire({
+          title: "Error",
+          text: error.response?.data?.error || "Failed to upload insurance card. Please try again.",
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+      } finally {
+        isUploadingInsuranceCard.value = false;
+      }
+    };
+
+    const handleMedicalLetterUpload = async (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      const file = target.files?.[0];
+
+      if (!file || !currentPatient.value) return;
+
+      try {
+        isUploadingMedicalLetter.value = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('document_type', 'letter_of_medical_necessity');
+
+        await ApiService.upload(`/patients/${currentPatient.value.id}/upload_document/`, formData);
+
+        // Refresh patient data
+        const response = await ApiService.get(`/patients/${currentPatient.value.id}/`);
+        currentPatient.value = response.data;
+
+        Swal.fire({
+          title: "Success!",
+          text: "Letter of medical necessity uploaded successfully.",
+          icon: "success",
+          confirmButtonText: "OK"
+        });
+
+        // Clear the file input
+        if (medicalLetterInput.value) {
+          medicalLetterInput.value.value = '';
+        }
+
+      } catch (error: any) {
+        console.error('Error uploading medical letter:', error);
+        Swal.fire({
+          title: "Error",
+          text: error.response?.data?.error || "Failed to upload letter of medical necessity. Please try again.",
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+      } finally {
+        isUploadingMedicalLetter.value = false;
+      }
+    };
+
+    const deleteInsuranceCard = async () => {
+      if (!currentPatient.value) return;
+
+      const result = await Swal.fire({
+        title: "Delete Insurance Card?",
+        text: "Are you sure you want to delete the insurance card?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete it!",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#d33"
+      });
+
+      if (result.isConfirmed) {
+        try {
+          isDeletingInsuranceCard.value = true;
+
+          await ApiService.delete(`/patients/${currentPatient.value.id}/delete_document/?document_type=insurance_card`);
+
+          // Refresh patient data
+          const response = await ApiService.get(`/patients/${currentPatient.value.id}/`);
+          currentPatient.value = response.data;
+
+          Swal.fire({
+            title: "Deleted!",
+            text: "Insurance card has been deleted.",
+            icon: "success"
+          });
+
+        } catch (error: any) {
+          console.error('Error deleting insurance card:', error);
+          Swal.fire({
+            title: "Error",
+            text: "Failed to delete insurance card. Please try again.",
+            icon: "error"
+          });
+        } finally {
+          isDeletingInsuranceCard.value = false;
+        }
+      }
+    };
+
+    const deleteMedicalLetter = async () => {
+      if (!currentPatient.value) return;
+
+      const result = await Swal.fire({
+        title: "Delete Medical Letter?",
+        text: "Are you sure you want to delete the letter of medical necessity?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete it!",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#d33"
+      });
+
+      if (result.isConfirmed) {
+        try {
+          isDeletingMedicalLetter.value = true;
+
+          await ApiService.delete(`/patients/${currentPatient.value.id}/delete_document/?document_type=letter_of_medical_necessity`);
+
+          // Refresh patient data
+          const response = await ApiService.get(`/patients/${currentPatient.value.id}/`);
+          currentPatient.value = response.data;
+
+          Swal.fire({
+            title: "Deleted!",
+            text: "Letter of medical necessity has been deleted.",
+            icon: "success"
+          });
+
+        } catch (error: any) {
+          console.error('Error deleting medical letter:', error);
+          Swal.fire({
+            title: "Error",
+            text: "Failed to delete letter of medical necessity. Please try again.",
+            icon: "error"
+          });
+        } finally {
+          isDeletingMedicalLetter.value = false;
+        }
+      }
+    };
+
     return {
       modalRef,
       isSubmitting,
       formData,
       patientDisplayName,
       patientDisplayEmail,
+      hasInsuranceCard,
+      hasMedicalLetter,
+      insuranceCardInput,
+      medicalLetterInput,
+      isUploadingInsuranceCard,
+      isUploadingMedicalLetter,
+      isDeletingInsuranceCard,
+      isDeletingMedicalLetter,
       setPatient,
       resetForm,
       submitForm,
+      handleInsuranceCardUpload,
+      handleMedicalLetterUpload,
+      deleteInsuranceCard,
+      deleteMedicalLetter,
     };
   },
 });

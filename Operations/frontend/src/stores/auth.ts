@@ -9,11 +9,29 @@ export interface User {
   email: string;
   first_name?: string;
   last_name?: string;
+  mfa_enabled?: boolean;
+  phone_verified?: boolean;
+  phone?: string;
 }
 
 export interface LoginCredentials {
   username: string;
   password: string;
+  sms_code?: string;
+}
+
+export interface MfaResponse {
+  mfa_required: boolean;
+  phone_number?: string;
+  message?: string;
+}
+
+export interface SmsCodeResult {
+  success: boolean;
+  message?: string;
+  phone_number?: string;
+  expires_at?: string;
+  error?: string;
 }
 
 export interface RegisterData {
@@ -57,35 +75,47 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
-   * Login with username and password
+   * Login with username and password (with MFA support)
    */
   async function login(credentials: LoginCredentials) {
     try {
       errors.value = {};
-      
-      // Call Django JWT token endpoint
-      const { data } = await ApiService.post("/token/", {
+
+      // Try MFA login first
+      const { data } = await ApiService.post("/auth/login-with-mfa/", {
         username: credentials.username.trim(),
         password: credentials.password.trim(),
+        sms_code: credentials.sms_code,
       });
+
+      // Check if MFA is required
+      if (data.mfa_required) {
+        return {
+          mfa_required: true,
+          phone_number: data.phone_number,
+          message: data.message
+        };
+      }
 
       // Save tokens
       JwtService.saveToken(data.access);
       if (data.refresh) {
         localStorage.setItem("refresh_token", data.refresh);
       }
-      
+
       // Set auth header for future requests
       ApiService.setHeader();
-      
-      // Get user profile
-      await getUserProfile();
-      
+
+      // Set user data
+      if (data.user) {
+        setAuth(data.user);
+      }
+
       return data;
     } catch (error: any) {
-      const message = error.response?.data?.non_field_errors?.[0] || 
+      const message = error.response?.data?.error ||
                      error.response?.data?.detail ||
-                     "Invalid username or password";
+                     "Invalid credentials";
       setError({ general: message });
       throw error;
     }
@@ -262,6 +292,120 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
+  /**
+   * Send SMS verification code
+   */
+  async function sendSmsCode(phoneNumber: string): Promise<SmsCodeResult> {
+    try {
+      const { data } = await ApiService.post("/auth/send-sms-code/", {
+        phone_number: phoneNumber,
+      });
+
+      return {
+        success: true,
+        message: data.message,
+        phone_number: data.phone_number,
+        expires_at: data.expires_at,
+      };
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || "Failed to send SMS code";
+      setError({ sms: errorMessage });
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Verify SMS code
+   */
+  async function verifySmsCode(phoneNumber: string, code: string): Promise<SmsCodeResult> {
+    try {
+      const { data } = await ApiService.post("/auth/verify-sms-code/", {
+        phone_number: phoneNumber,
+        code: code,
+      });
+
+      return {
+        success: true,
+        message: data.message,
+        phone_number: data.phone_number,
+      };
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || "Failed to verify SMS code";
+      setError({ sms: errorMessage });
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Setup phone number for authenticated user
+   */
+  async function setupPhone(phoneNumber: string, code?: string): Promise<SmsCodeResult> {
+    try {
+      const payload: any = { phone_number: phoneNumber };
+      if (code) {
+        payload.code = code;
+      }
+
+      const { data } = await ApiService.post("/auth/setup-phone/", payload);
+
+      // If phone was verified and saved, update user data
+      if (data.phone_verified && user.value) {
+        user.value = {
+          ...user.value,
+          phone: data.phone_number,
+          phone_verified: true,
+        };
+      }
+
+      return {
+        success: true,
+        message: data.message,
+        phone_number: data.phone_number,
+        expires_at: data.expires_at,
+      };
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || "Failed to setup phone";
+      setError({ phone: errorMessage });
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Enable or disable MFA for current user
+   */
+  async function updateMfaSettings(enabled: boolean) {
+    try {
+      if (!user.value?.id) {
+        throw new Error("User not authenticated");
+      }
+
+      // Update user profile with MFA setting
+      const { data } = await ApiService.put(`/users/${user.value.id}/`, {
+        mfa_enabled: enabled,
+      });
+
+      // Update local user data
+      if (user.value) {
+        user.value = { ...user.value, mfa_enabled: enabled };
+      }
+
+      return data;
+    } catch (error: any) {
+      const message = error.response?.data?.detail || "Failed to update MFA settings";
+      setError({ mfa: message });
+      throw error;
+    }
+  }
+
   return {
     errors,
     user,
@@ -278,5 +422,10 @@ export const useAuthStore = defineStore("auth", () => {
     changePassword,
     forgotPassword,
     refreshToken,
+    // MFA methods
+    sendSmsCode,
+    verifySmsCode,
+    setupPhone,
+    updateMfaSettings,
   };
 });

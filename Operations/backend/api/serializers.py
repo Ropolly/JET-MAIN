@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from .models import (
-    Modification, Permission, Role, Department, UserProfile, Contact, 
+    Modification, Permission, Role, Department, UserProfile, Contact,
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
     Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
-    StaffRoleMembership, TripEvent, Comment, Contract, LostReason
+    StaffRoleMembership, TripEvent, Comment, Contract, LostReason,
+    UserActivationToken
 )
 from django.contrib.auth.models import User
 
@@ -977,6 +978,14 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
             'transaction_ids', 'status', 'payment_status'
         ]
 
+
+class EmailQuoteSerializer(serializers.Serializer):
+    """Serializer for emailing quotes with automatically generated PDF document."""
+    email = serializers.EmailField()
+    subject = serializers.CharField(max_length=200)
+    message = serializers.CharField()
+
+
 # 7) Documents
 class DocumentReadSerializer(serializers.ModelSerializer):
     content_type = serializers.SerializerMethodField()
@@ -1005,11 +1014,40 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
         model = Document
         fields = ['id', 'filename', 'content', 'flag']
 
+class PatientFileUploadSerializer(serializers.Serializer):
+    file = serializers.FileField(write_only=True)
+    document_type = serializers.ChoiceField(
+        choices=[
+            ('letter_of_medical_necessity', 'Letter of Medical Necessity'),
+            ('insurance_card', 'Insurance Card'),
+        ],
+        write_only=True
+    )
+    trip_id = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+    
+    def validate_file(self, value):
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'application/pdf']
+        if value.content_type not in allowed_types:
+            raise serializers.ValidationError(
+                'File type not supported. Please upload JPG, PNG, or PDF files only.'
+            )
+        
+        # Validate file size (10MB max)
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError(
+                'File size too large. Maximum size is 10MB.'
+            )
+        
+        return value
+
 # 8) Patient (updated to follow pattern)
 class PatientReadSerializer(serializers.ModelSerializer):
     info = ContactSerializer(read_only=True)
     trips = serializers.SerializerMethodField()
     quotes = serializers.SerializerMethodField()
+    letter_of_medical_necessity = DocumentReadSerializer(read_only=True)
+    insurance_card = DocumentReadSerializer(read_only=True)
     
     def get_trips(self, obj):
         trips = obj.trips.all()
@@ -1032,6 +1070,8 @@ class PatientReadSerializer(serializers.ModelSerializer):
             'status', 
             'bed_at_origin', 
             'bed_at_destination', 
+            'letter_of_medical_necessity',
+            'insurance_card',
             'created_on',
             'trips',
             'quotes'
@@ -1053,7 +1093,9 @@ class PatientWriteSerializer(serializers.ModelSerializer):
             'special_instructions', 
             'status', 
             'bed_at_origin', 
-            'bed_at_destination'
+            'bed_at_destination',
+            'letter_of_medical_necessity',
+            'insurance_card'
         ]
     
     def create(self, validated_data):
@@ -1266,3 +1308,62 @@ class DocuSealWebhookSerializer(serializers.Serializer):
     event_type = serializers.CharField()
     data = serializers.DictField()
     timestamp = serializers.DateTimeField(required=False)
+
+
+# User Activation Token Serializers
+class UserActivationTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserActivationToken
+        fields = ['id', 'token', 'email', 'token_type', 'expires_at', 'is_used', 'used_at', 'created_on']
+        read_only_fields = ['id', 'token', 'created_on', 'is_used', 'used_at']
+
+
+class CreateUserWithTokenSerializer(serializers.Serializer):
+    """Serializer for creating a user with email activation token."""
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    role_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True
+    )
+    is_admin = serializers.BooleanField(default=False)
+    send_activation_email = serializers.BooleanField(default=True)
+
+
+class VerifyTokenSerializer(serializers.Serializer):
+    """Serializer for verifying activation/reset tokens."""
+    token = serializers.CharField(max_length=255)
+
+
+class VerifyTokenResponseSerializer(serializers.Serializer):
+    """Serializer for token verification response."""
+    valid = serializers.BooleanField()
+    token_type = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
+    user_info = serializers.DictField(required=False)
+    message = serializers.CharField(required=False)
+
+
+class ResendActivationEmailSerializer(serializers.Serializer):
+    """Serializer for resending activation email."""
+    user_id = serializers.UUIDField()
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    """Serializer for setting password with token."""
+    token = serializers.CharField(max_length=255)
+    password = serializers.CharField(min_length=8, max_length=128)
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+
+    def validate_password(self, value):
+        """Validate password strength."""
+        if len(value) < 8:
+            raise serializers.ValidationError("Password must be at least 8 characters long.")
+        return value
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Serializer for forgot password request."""
+    email = serializers.EmailField()
