@@ -273,7 +273,6 @@ export default defineComponent({
       }
     };
 
-
     onMounted(() => {
       fetchTrip();
       setupToolbarActions();
