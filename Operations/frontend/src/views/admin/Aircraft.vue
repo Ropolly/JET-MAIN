@@ -113,13 +113,6 @@
           >
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleView(plane)" class="menu-link px-3"
-                >View Details</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
               <a @click="handleEdit(plane)" class="menu-link px-3"
                 >Edit Aircraft</a
               >
@@ -127,28 +120,13 @@
             <!--end::Menu item-->
             <!--begin::Menu item-->
             <div class="menu-item px-3">
-              <a @click="handleViewTrips(plane)" class="menu-link px-3"
-                >View Trips</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a 
+              <a
                 :href="`https://www.flightaware.com/live/flight/${plane.tail_number}`"
                 target="_blank"
                 class="menu-link px-3"
               >
-                <KTIcon icon-name="airplane" icon-class="fs-6 me-2" />
                 View Live
               </a>
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click="handleMaintenanceLog(plane)" class="menu-link px-3"
-                >Maintenance Log</a
-              >
             </div>
             <!--end::Menu item-->
             <div class="separator mt-3 opacity-75"></div>
@@ -167,6 +145,9 @@
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+
+  <!-- Create Aircraft Modal -->
+  <CreateAircraftModal @aircraft-created="onAircraftCreated" />
 </template>
 
 <script lang="ts">
@@ -174,9 +155,11 @@ import { defineComponent, ref, onMounted, onUnmounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
+import CreateAircraftModal from "@/components/modals/CreateAircraftModal.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
 import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
+import { Modal } from "bootstrap";
 import Swal from "sweetalert2";
 import { useToolbarStore } from "@/stores/toolbar";
 
@@ -196,6 +179,7 @@ export default defineComponent({
   name: "aircraft-management",
   components: {
     KTDatatable,
+    CreateAircraftModal,
   },
   setup() {
     const router = useRouter();
@@ -257,20 +241,109 @@ export default defineComponent({
     };
 
     const handleCreate = () => {
-      Swal.fire({
-        title: "Add Aircraft",
-        text: "Aircraft creation form would open here",
-        icon: "info",
-        confirmButtonText: "OK"
-      });
+      const modalElement = document.getElementById('kt_modal_create_aircraft');
+      if (modalElement) {
+        const modal = new Modal(modalElement);
+        modal.show();
+      }
     };
 
     const handleEdit = (plane: Aircraft) => {
+      console.log('Edit clicked for Aircraft:', plane);
+
       Swal.fire({
-        title: "Edit Aircraft",
-        text: `Edit form for ${plane.tail_number} would open here`,
-        icon: "info",
-        confirmButtonText: "OK"
+        title: `Edit Aircraft: ${plane.tail_number}`,
+        html: `
+          <div class="text-start">
+            <div class="row">
+              <div class="col-lg-6">
+                <h6 class="mb-3 fw-bold">Aircraft Information</h6>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Tail Number <span class="text-danger">*</span></label>
+                  <input id="edit-tail-number" class="form-control" value="${plane.tail_number || ''}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Company <span class="text-danger">*</span></label>
+                  <input id="edit-company" class="form-control" value="${plane.company || ''}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Make <span class="text-danger">*</span></label>
+                  <input id="edit-make" class="form-control" value="${plane.make || ''}" required>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <h6 class="mb-3 fw-bold">Specifications</h6>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Model <span class="text-danger">*</span></label>
+                  <input id="edit-model" class="form-control" value="${plane.model || ''}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Serial Number <span class="text-danger">*</span></label>
+                  <input id="edit-serial-number" class="form-control" value="${plane.serial_number || ''}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Maximum Gross Takeoff Weight (lbs) <span class="text-danger">*</span></label>
+                  <input id="edit-mgtow" class="form-control" type="number" step="0.01" value="${plane.mgtow || ''}" required>
+                </div>
+              </div>
+            </div>
+          </div>
+        `,
+        width: '700px',
+        showCancelButton: true,
+        confirmButtonText: 'Save Changes',
+        cancelButtonText: 'Cancel',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        focusConfirm: false,
+        preConfirm: () => {
+          const tailNumber = (document.getElementById('edit-tail-number') as HTMLInputElement)?.value?.trim();
+          const company = (document.getElementById('edit-company') as HTMLInputElement)?.value?.trim();
+          const make = (document.getElementById('edit-make') as HTMLInputElement)?.value?.trim();
+          const model = (document.getElementById('edit-model') as HTMLInputElement)?.value?.trim();
+          const serialNumber = (document.getElementById('edit-serial-number') as HTMLInputElement)?.value?.trim();
+          const mgtow = (document.getElementById('edit-mgtow') as HTMLInputElement)?.value;
+
+          if (!tailNumber || !company || !make || !model || !serialNumber || !mgtow) {
+            Swal.showValidationMessage('Please fill in all required fields');
+            return false;
+          }
+
+          return {
+            tail_number: tailNumber,
+            company: company,
+            make: make,
+            model: model,
+            serial_number: serialNumber,
+            mgtow: parseFloat(mgtow)
+          };
+        }
+      }).then(async (result) => {
+        if (result.isConfirmed && result.value) {
+          console.log('Saving Aircraft with data:', result.value);
+
+          try {
+            await ApiService.put(`/aircraft/${plane.id}/`, result.value);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Success!',
+              text: 'Aircraft updated successfully.',
+              timer: 2000,
+              showConfirmButton: false
+            });
+
+            // Refresh the list
+            await fetchAircraft();
+          } catch (error: any) {
+            console.error('Error updating aircraft:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: error.response?.data?.detail || 'Failed to update aircraft.'
+            });
+          }
+        }
       });
     };
 
@@ -415,6 +488,11 @@ export default defineComponent({
       }, 0);
     };
 
+    const onAircraftCreated = async () => {
+      // Refresh the aircraft list after creating a new one
+      await fetchAircraft();
+    };
+
     onMounted(async () => {
       await fetchAircraft();
       // Ensure menus are properly initialized
@@ -464,6 +542,7 @@ export default defineComponent({
       getAircraftImage,
       formatWeight,
       getStatusColor,
+      onAircraftCreated,
     };
   },
 });

@@ -37,6 +37,69 @@
                   />
                 </div>
 
+                <!-- Airport Search -->
+                <div class="fv-row mb-7">
+                  <label class="fs-6 fw-semibold form-label mt-3">
+                    <span>Airports</span>
+                  </label>
+                  <div class="position-relative">
+                    <input
+                      v-model="airportSearchQuery"
+                      @input="searchAirports"
+                      @focus="showAirportDropdown = true"
+                      type="text"
+                      class="form-control form-control-solid"
+                      placeholder="Search for airports..."
+                    />
+                    <div
+                      v-if="showAirportDropdown && (airportSearchResults.length > 0 || airportSearchQuery.length >= 2)"
+                      class="dropdown-menu show w-100 mt-1"
+                      style="max-height: 200px; overflow-y: auto;"
+                    >
+                      <div v-if="airportSearchLoading" class="dropdown-item text-center">
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        Searching...
+                      </div>
+                      <div v-else-if="airportSearchResults.length === 0 && airportSearchQuery.length >= 2" class="dropdown-item text-muted">
+                        No airports found
+                      </div>
+                      <div
+                        v-else
+                        v-for="airport in airportSearchResults"
+                        :key="airport.id"
+                        @click="addAirport(airport)"
+                        class="dropdown-item cursor-pointer"
+                      >
+                        <strong>{{ airport.ident }}</strong> - {{ airport.name }}
+                        <br>
+                        <small class="text-muted">{{ airport.municipality }}, {{ airport.iso_country }}</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Selected Airports -->
+                  <div v-if="selectedAirports.length > 0" class="mt-3">
+                    <label class="fs-7 fw-semibold text-muted">Selected Airports:</label>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                      <span
+                        v-for="airport in selectedAirports"
+                        :key="airport.id"
+                        class="badge badge-light-primary d-flex align-items-center"
+                      >
+                        {{ airport.ident }} - {{ airport.name }}
+                        <button
+                          @click="removeAirport(airport.id)"
+                          type="button"
+                          class="btn btn-sm btn-icon ms-2"
+                          style="width: 16px; height: 16px;"
+                        >
+                          <i class="ki-duotone ki-cross fs-7"></i>
+                        </button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Email -->
                 <div class="fv-row mb-7">
                   <label class="fs-6 fw-semibold form-label mt-3">
@@ -207,7 +270,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from "vue";
+import { defineComponent, ref, onMounted, onUnmounted } from "vue";
 import ApiService from "@/core/services/ApiService";
 import { Modal } from "bootstrap";
 import Swal from "sweetalert2";
@@ -232,7 +295,16 @@ export default defineComponent({
       zip: "",
       country: "",
       notes: "",
+      airports: [] as string[],
     });
+
+    // Airport search functionality
+    const airportSearchQuery = ref("");
+    const airportSearchResults = ref([]);
+    const airportSearchLoading = ref(false);
+    const showAirportDropdown = ref(false);
+    const selectedAirports = ref([]);
+    let searchTimeout: number | null = null;
 
     const resetForm = () => {
       formData.value = {
@@ -247,8 +319,68 @@ export default defineComponent({
         zip: "",
         country: "",
         notes: "",
+        airports: [],
       };
+      // Reset airport search state
+      airportSearchQuery.value = "";
+      airportSearchResults.value = [];
+      showAirportDropdown.value = false;
+      selectedAirports.value = [];
       loading.value = false;
+    };
+
+    // Airport search methods
+    const searchAirports = async () => {
+      const query = airportSearchQuery.value.trim();
+
+      if (query.length < 2) {
+        airportSearchResults.value = [];
+        return;
+      }
+
+      // Debounce search
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+
+      searchTimeout = window.setTimeout(async () => {
+        try {
+          airportSearchLoading.value = true;
+          const response = await ApiService.get(`/airports/search/?q=${encodeURIComponent(query)}`);
+          // The search endpoint returns data directly, not in a results wrapper
+          airportSearchResults.value = response.data || [];
+        } catch (error) {
+          console.error("Error searching airports:", error);
+          airportSearchResults.value = [];
+        } finally {
+          airportSearchLoading.value = false;
+        }
+      }, 300);
+    };
+
+    const addAirport = (airport) => {
+      // Check if airport is already selected
+      if (!selectedAirports.value.find(a => a.id === airport.id)) {
+        selectedAirports.value.push(airport);
+        formData.value.airports = selectedAirports.value.map(a => a.id);
+      }
+
+      // Clear search
+      airportSearchQuery.value = "";
+      airportSearchResults.value = [];
+      showAirportDropdown.value = false;
+    };
+
+    const removeAirport = (airportId) => {
+      selectedAirports.value = selectedAirports.value.filter(a => a.id !== airportId);
+      formData.value.airports = selectedAirports.value.map(a => a.id);
+    };
+
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.position-relative')) {
+        showAirportDropdown.value = false;
+      }
     };
 
     const handleSubmit = async () => {
@@ -312,6 +444,19 @@ export default defineComponent({
       if (modalRef.value) {
         modal.value = new Modal(modalRef.value);
       }
+
+      // Add click outside listener for airport dropdown
+      document.addEventListener('click', handleClickOutside);
+    });
+
+    onUnmounted(() => {
+      // Cleanup event listener
+      document.removeEventListener('click', handleClickOutside);
+
+      // Clear search timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
     });
 
     return {
@@ -320,6 +465,15 @@ export default defineComponent({
       loading,
       resetForm,
       handleSubmit,
+      // Airport search
+      airportSearchQuery,
+      airportSearchResults,
+      airportSearchLoading,
+      showAirportDropdown,
+      selectedAirports,
+      searchAirports,
+      addAirport,
+      removeAirport,
     };
   },
 });

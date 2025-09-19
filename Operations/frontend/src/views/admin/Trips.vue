@@ -53,8 +53,8 @@
               <span class="ms-1 badge" :class="activeTab === 'all' ? 'badge-secondary' : 'badge-light-secondary'">{{ getAllTripsCount() }}</span>
             </a>
           </li>
-          <li class="nav-item">
-            <a 
+          <li class="nav-item" v-if="getStatusCount('active') > 0">
+            <a
               class="nav-link"
               :class="{ active: activeTab === 'active' }"
               @click.prevent="handleTabChange('active')"
@@ -65,8 +65,8 @@
               <span class="ms-1 badge" :class="activeTab === 'active' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('active') }}</span>
             </a>
           </li>
-          <li class="nav-item">
-            <a 
+          <li class="nav-item" v-if="getStatusCount('pending') > 0">
+            <a
               class="nav-link"
               :class="{ active: activeTab === 'pending' }"
               @click.prevent="handleTabChange('pending')"
@@ -77,8 +77,8 @@
               <span class="ms-1 badge" :class="activeTab === 'pending' ? 'badge-warning' : 'badge-light-secondary'">{{ getStatusCount('pending') }}</span>
             </a>
           </li>
-          <li class="nav-item">
-            <a 
+          <li class="nav-item" v-if="getStatusCount('completed') > 0">
+            <a
               class="nav-link"
               :class="{ active: activeTab === 'completed' }"
               @click.prevent="handleTabChange('completed')"
@@ -89,8 +89,8 @@
               <span class="ms-1 badge" :class="activeTab === 'completed' ? 'badge-primary' : 'badge-light-secondary'">{{ getStatusCount('completed') }}</span>
             </a>
           </li>
-          <li class="nav-item">
-            <a 
+          <li class="nav-item" v-if="getStatusCount('cancelled') > 0">
+            <a
               class="nav-link"
               :class="{ active: activeTab === 'cancelled' }"
               @click.prevent="handleTabChange('cancelled')"
@@ -109,6 +109,10 @@
 
     <!--begin::Card body-->
     <div class="card-body pt-0">
+      <!--begin::Live Flight Alerts-->
+      <LiveFlightAlert :refresh-interval-seconds="60" :show-auto-refresh="true" />
+      <!--end::Live Flight Alerts-->
+
       <!-- Single KTDatatable with filtered data based on active tab -->
       <KTDatatable
         @on-sort="sort"
@@ -241,6 +245,7 @@ import Swal from "sweetalert2";
 import { useRouter } from "vue-router";
 import CreateTripSimpleModal from "@/components/modals/CreateTripSimpleModal.vue";
 import CreateTripMultiStepModal from "@/components/modals/CreateTripMultiStepModal.vue";
+import LiveFlightAlert from "@/components/alerts/LiveFlightAlert.vue";
 import { Modal } from "bootstrap";
 import { useToolbar, createToolbarActions } from "@/core/helpers/toolbar";
 
@@ -297,6 +302,7 @@ export default defineComponent({
     KTDatatable,
     CreateTripSimpleModal,
     CreateTripMultiStepModal,
+    LiveFlightAlert,
   },
   setup() {
     const router = useRouter();
@@ -349,11 +355,9 @@ export default defineComponent({
     const statusCounts = ref<Record<string, number>>({
       all: 0,
       pending: 0,
-      confirmed: 0,
       active: 0,
       completed: 0,
-      cancelled: 0,
-      paid: 0
+      cancelled: 0
     });
 
     // Computed properties
@@ -362,10 +366,15 @@ export default defineComponent({
     });
 
     // Tab count methods
-    const getAllTripsCount = () => statusCounts.value.all;
-    
+    const getAllTripsCount = () => {
+      console.log('getAllTripsCount called, returning:', statusCounts.value.all);
+      return statusCounts.value.all;
+    };
+
     const getStatusCount = (status: string) => {
-      return statusCounts.value[status] || 0;
+      const count = statusCounts.value[status] || 0;
+      console.log(`getStatusCount(${status}) called, returning:`, count);
+      return count;
     };
 
     // Methods
@@ -410,16 +419,20 @@ export default defineComponent({
 
     const fetchStatusCounts = async () => {
       try {
+        console.log('Fetching status counts...');
         // Fetch total count
         const allResponse = await ApiService.get('/trips/?page_size=1');
+        console.log('All trips response:', allResponse.data);
         statusCounts.value.all = allResponse.data.count || 0;
-        
-        // Fetch counts for each status
-        const statuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled', 'paid'];
+
+        // Fetch counts for each valid trip status
+        const statuses = ['pending', 'active', 'completed', 'cancelled'];
         for (const status of statuses) {
           const response = await ApiService.get(`/trips/?status=${status}&page_size=1`);
+          console.log(`Status ${status} response:`, response.data);
           statusCounts.value[status] = response.data.count || 0;
         }
+        console.log('Final statusCounts:', statusCounts.value);
       } catch (err) {
         console.error('Error fetching status counts:', err);
       }
@@ -849,6 +862,9 @@ export default defineComponent({
     };
 
     onMounted(async () => {
+      // First fetch the status counts
+      await fetchStatusCounts();
+      // Then fetch the trips
       await fetchTrips(1, pageSize.value, '', 'all');
       // Initialize menu components
       setTimeout(() => {

@@ -32,9 +32,7 @@
         <template v-slot:actions="{ row: ground }">
           <a href="#" class="btn btn-sm btn-light btn-active-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">Actions <KTIcon icon-name="down" icon-class="fs-5 m-0" /></a>
           <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4" data-kt-menu="true">
-            <div class="menu-item px-3"><a @click="handleView(ground)" class="menu-link px-3">View Details</a></div>
             <div class="menu-item px-3"><a @click="handleEdit(ground)" class="menu-link px-3">Edit Ground Service</a></div>
-            <div class="menu-item px-3"><a @click="handleViewTrips(ground)" class="menu-link px-3">View Trips</a></div>
             <div class="separator mt-3 opacity-75"></div>
             <div class="menu-item px-3"><a @click="handleDelete(ground)" class="menu-link px-3 text-danger">Delete</a></div>
           </div>
@@ -42,6 +40,9 @@
       </KTDatatable>
     </div>
   </div>
+
+  <!-- Create Ground Modal -->
+  <CreateGroundModal @ground-created="onGroundCreated" />
 </template>
 
 <script lang="ts">
@@ -49,30 +50,238 @@ import { defineComponent, ref, onMounted, onUnmounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import ApiService from "@/core/services/ApiService";
 import KTDatatable from "@/components/kt-datatable/KTDataTable.vue";
+import CreateGroundModal from "@/components/modals/CreateGroundModal.vue";
 import type { Sort } from "@/components/kt-datatable/table-partials/models";
 import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
+import { Modal } from "bootstrap";
 import Swal from "sweetalert2";
 import { useToolbarStore } from "@/stores/toolbar";
 
 export default defineComponent({
-  name: "grounds-management", components: { KTDatatable },
+  name: "grounds-management",
+  components: { KTDatatable, CreateGroundModal },
   setup() {
-    const router = useRouter(); const toolbarStore = useToolbarStore(); const grounds = ref([]); const loading = ref(false); const selectedIds = ref([]); const search = ref(""); const initData = ref([]);
-    const headerConfig = ref([{ columnName: "Ground Service", columnLabel: "ground", sortEnabled: true }, { columnName: "Contact", columnLabel: "contact", sortEnabled: false }, { columnName: "Coverage Area", columnLabel: "coverage", sortEnabled: false }, { columnName: "Actions", columnLabel: "actions" }]);
-    const fetchGrounds = async () => { try { loading.value = true; const { data } = await ApiService.get("/grounds/"); grounds.value = data.results || data; initData.value.splice(0, grounds.value.length, ...grounds.value); } catch (error) { console.error("Error fetching grounds:", error); } finally { loading.value = false; } };
-    const handleCreate = () => Swal.fire({ title: "Add Ground Service", text: "Ground service creation form would open here", icon: "info" });
-    const handleEdit = (ground) => Swal.fire({ title: "Edit Ground Service", text: `Edit ${ground.name}`, icon: "info" });
-    const handleView = (ground) => Swal.fire({ title: "Ground Service Details", html: `<div class="text-start"><p><strong>Name:</strong> ${ground.name}</p><p><strong>Type:</strong> ${ground.service_type}</p><p><strong>Contact:</strong> ${ground.contact_info}</p><p><strong>Coverage:</strong> ${ground.coverage_area}</p></div>`, icon: "info" });
-    const handleViewTrips = (ground) => router.push(`/admin/trips?ground=${ground.id}`);
-    const handleDelete = async (ground) => { const result = await Swal.fire({ title: "Delete Ground Service", text: `Delete ${ground.name}?`, icon: "warning", showCancelButton: true, confirmButtonText: "Yes, delete!" }); if (result.isConfirmed) { try { await ApiService.delete(`/grounds/${ground.id}/`); await fetchGrounds(); Swal.fire("Deleted!", "Ground service deleted.", "success"); } catch (error) { Swal.fire("Error!", "Failed to delete ground service.", "error"); } } };
-    const deleteFewGrounds = () => { selectedIds.value.forEach(id => grounds.value = grounds.value.filter(g => g.id !== id)); selectedIds.value = []; };
-    const sort = (sort) => { if (sort.label) arraySort(grounds.value, sort.label, { reverse: sort.order === "asc" }); }; const onItemSelect = (items) => selectedIds.value = items;
-    const searchItems = () => { grounds.value.splice(0, grounds.value.length, ...initData.value); if (search.value) { const results = initData.value.filter(item => Object.values(item).some(val => val?.toString().toLowerCase().includes(search.value.toLowerCase()))); grounds.value.splice(0, grounds.value.length, ...results); } MenuComponent.reinitialization(); };
-    const onItemsPerPageChange = () => setTimeout(() => MenuComponent.reinitialization(), 0);
-    onMounted(async () => { await fetchGrounds(); await nextTick(); setTimeout(() => MenuComponent.reinitialization(), 100); toolbarStore.setActions([{ id: 'add-ground', label: 'Add Ground Service', icon: 'plus', variant: 'primary', handler: handleCreate }]); });
+    const router = useRouter();
+    const toolbarStore = useToolbarStore();
+    const grounds = ref([]);
+    const loading = ref(false);
+    const selectedIds = ref([]);
+    const search = ref("");
+    const initData = ref([]);
+
+    const headerConfig = ref([
+      { columnName: "Ground Service", columnLabel: "ground", sortEnabled: true },
+      { columnName: "Contact", columnLabel: "contact", sortEnabled: false },
+      { columnName: "Coverage Area", columnLabel: "coverage", sortEnabled: false },
+      { columnName: "Actions", columnLabel: "actions" }
+    ]);
+
+    const fetchGrounds = async () => {
+      try {
+        loading.value = true;
+        const { data } = await ApiService.get("/grounds/");
+        grounds.value = data.results || data;
+        initData.value.splice(0, grounds.value.length, ...grounds.value);
+      } catch (error) {
+        console.error("Error fetching grounds:", error);
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const handleCreate = () => {
+      const modalElement = document.getElementById('kt_modal_create_ground');
+      if (modalElement) {
+        const modal = new Modal(modalElement);
+        modal.show();
+      }
+    };
+
+    const handleEdit = (ground) => {
+      console.log('Edit clicked for Ground:', ground);
+
+      Swal.fire({
+        title: `Edit Ground Service: ${ground.name}`,
+        html: `
+          <div class="text-start">
+            <div class="mb-3">
+              <label class="form-label fw-bold">Service Name <span class="text-danger">*</span></label>
+              <input id="edit-name" class="form-control" value="${ground.name || ''}" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Address Line 1</label>
+              <input id="edit-address1" class="form-control" value="${ground.address_line1 || ''}">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Address Line 2</label>
+              <input id="edit-address2" class="form-control" value="${ground.address_line2 || ''}">
+            </div>
+            <div class="row mb-3">
+              <div class="col-4">
+                <label class="form-label fw-bold">City</label>
+                <input id="edit-city" class="form-control" value="${ground.city || ''}">
+              </div>
+              <div class="col-4">
+                <label class="form-label fw-bold">State</label>
+                <input id="edit-state" class="form-control" value="${ground.state || ''}">
+              </div>
+              <div class="col-4">
+                <label class="form-label fw-bold">ZIP</label>
+                <input id="edit-zip" class="form-control" value="${ground.zip || ''}">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Country</label>
+              <input id="edit-country" class="form-control" value="${ground.country || ''}">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Notes</label>
+              <textarea id="edit-notes" class="form-control" rows="3">${ground.notes || ''}</textarea>
+            </div>
+          </div>
+        `,
+        width: '500px',
+        showCancelButton: true,
+        confirmButtonText: 'Save Changes',
+        cancelButtonText: 'Cancel',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        focusConfirm: false,
+        preConfirm: () => {
+          const name = (document.getElementById('edit-name') as HTMLInputElement)?.value?.trim();
+          if (!name) {
+            Swal.showValidationMessage('Service name is required');
+            return false;
+          }
+
+          return {
+            name: name,
+            address_line1: (document.getElementById('edit-address1') as HTMLInputElement)?.value || '',
+            address_line2: (document.getElementById('edit-address2') as HTMLInputElement)?.value || '',
+            city: (document.getElementById('edit-city') as HTMLInputElement)?.value || '',
+            state: (document.getElementById('edit-state') as HTMLInputElement)?.value || '',
+            zip: (document.getElementById('edit-zip') as HTMLInputElement)?.value || '',
+            country: (document.getElementById('edit-country') as HTMLInputElement)?.value || '',
+            notes: (document.getElementById('edit-notes') as HTMLTextAreaElement)?.value || ''
+          };
+        }
+      }).then(async (result) => {
+        if (result.isConfirmed && result.value) {
+          console.log('Saving Ground with data:', result.value);
+
+          try {
+            await ApiService.put(`/grounds/${ground.id}/`, result.value);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Success!',
+              text: 'Ground service updated successfully.',
+              timer: 2000,
+              showConfirmButton: false
+            });
+
+            // Refresh the list
+            await fetchGrounds();
+          } catch (error) {
+            console.error('Error updating ground service:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: 'Failed to update ground service.'
+            });
+          }
+        }
+      });
+    };
+
+    const handleDelete = async (ground) => {
+      const result = await Swal.fire({
+        title: "Delete Ground Service",
+        text: `Delete ${ground.name}?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete!"
+      });
+
+      if (result.isConfirmed) {
+        try {
+          await ApiService.delete(`/grounds/${ground.id}/`);
+          await fetchGrounds();
+          Swal.fire("Deleted!", "Ground service deleted.", "success");
+        } catch (error) {
+          Swal.fire("Error!", "Failed to delete ground service.", "error");
+        }
+      }
+    };
+
+    const deleteFewGrounds = () => {
+      selectedIds.value.forEach(id => grounds.value = grounds.value.filter(g => g.id !== id));
+      selectedIds.value = [];
+    };
+
+    const sort = (sort) => {
+      if (sort.label) {
+        arraySort(grounds.value, sort.label, { reverse: sort.order === "asc" });
+      }
+    };
+
+    const onItemSelect = (items) => selectedIds.value = items;
+
+    const searchItems = () => {
+      grounds.value.splice(0, grounds.value.length, ...initData.value);
+      if (search.value) {
+        const results = initData.value.filter(item =>
+          Object.values(item).some(val =>
+            val?.toString().toLowerCase().includes(search.value.toLowerCase())
+          )
+        );
+        grounds.value.splice(0, grounds.value.length, ...results);
+      }
+      MenuComponent.reinitialization();
+    };
+
+    const onItemsPerPageChange = () => {
+      setTimeout(() => MenuComponent.reinitialization(), 0);
+    };
+
+    const onGroundCreated = () => {
+      // Refresh the grounds list after creating a new one
+      fetchGrounds();
+    };
+
+    onMounted(async () => {
+      await fetchGrounds();
+      await nextTick();
+      setTimeout(() => MenuComponent.reinitialization(), 100);
+
+      toolbarStore.setActions([{
+        id: 'add-ground',
+        label: 'Add Ground Service',
+        icon: 'plus',
+        variant: 'primary',
+        handler: handleCreate
+      }]);
+    });
+
     onUnmounted(() => toolbarStore.clearActions());
-    return { search, searchItems, grounds, headerConfig, loading, sort, onItemSelect, selectedIds, deleteFewGrounds, onItemsPerPageChange, handleCreate, handleEdit, handleView, handleViewTrips, handleDelete };
+
+    return {
+      search,
+      searchItems,
+      grounds,
+      headerConfig,
+      loading,
+      sort,
+      onItemSelect,
+      selectedIds,
+      deleteFewGrounds,
+      onItemsPerPageChange,
+      handleCreate,
+      handleEdit,
+      handleDelete,
+      onGroundCreated
+    };
   },
 });
 </script>
