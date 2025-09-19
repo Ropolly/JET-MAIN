@@ -246,6 +246,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from "vue";
 import { hideModal } from "@/core/helpers/modal";
+import { Modal } from "bootstrap";
 import Swal from "sweetalert2";
 import ApiService from "@/core/services/ApiService";
 
@@ -436,7 +437,6 @@ const handleSubmit = async (e: Event) => {
       const modalElement = modalRef.value;
       if (modalElement) {
         try {
-          const { Modal } = require('bootstrap');
           const modal = Modal.getInstance(modalElement);
           if (modal) {
             modal.hide();
@@ -444,7 +444,10 @@ const handleSubmit = async (e: Event) => {
             // Fallback: manually close modal
             modalElement.classList.remove('show');
             modalElement.style.display = 'none';
+            modalElement.setAttribute('aria-hidden', 'true');
+            modalElement.removeAttribute('aria-modal');
             document.body.classList.remove('modal-open');
+            document.body.style.paddingRight = '';
             const backdrop = document.querySelector('.modal-backdrop');
             if (backdrop) backdrop.remove();
           }
@@ -453,7 +456,12 @@ const handleSubmit = async (e: Event) => {
           // Manual fallback
           modalElement.classList.remove('show');
           modalElement.style.display = 'none';
+          modalElement.setAttribute('aria-hidden', 'true');
+          modalElement.removeAttribute('aria-modal');
           document.body.classList.remove('modal-open');
+          document.body.style.paddingRight = '';
+          const backdrop = document.querySelector('.modal-backdrop');
+          if (backdrop) backdrop.remove();
         }
       }
       

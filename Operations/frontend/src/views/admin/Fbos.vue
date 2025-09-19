@@ -55,7 +55,6 @@
           <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-200px py-4" data-kt-menu="true">
             <div class="menu-item px-3"><a @click="handleView(fbo)" class="menu-link px-3">View Details</a></div>
             <div class="menu-item px-3"><a @click="handleEdit(fbo)" class="menu-link px-3">Edit FBO</a></div>
-            <div class="menu-item px-3"><a @click="handleViewTrips(fbo)" class="menu-link px-3">View Trips</a></div>
             <div class="separator mt-3 opacity-75"></div>
             <div class="menu-item px-3"><a @click="handleDelete(fbo)" class="menu-link px-3 text-danger">Delete</a></div>
           </div>
@@ -146,7 +145,94 @@ export default defineComponent({
       }
     };
 
-    const handleEdit = (fbo) => Swal.fire({ title: "Edit FBO", text: `Edit ${fbo.name}`, icon: "info" });
+    const handleEdit = (fbo) => {
+      console.log('Edit clicked for FBO:', fbo);
+
+      Swal.fire({
+        title: `Edit FBO: ${fbo.name}`,
+        html: `
+          <div class="text-start">
+            <div class="mb-3">
+              <label class="form-label fw-bold">FBO Name <span class="text-danger">*</span></label>
+              <input id="edit-name" class="form-control" value="${fbo.name || ''}" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Email</label>
+              <input id="edit-email" type="email" class="form-control" value="${fbo.email || ''}">
+            </div>
+            <div class="row mb-3">
+              <div class="col-6">
+                <label class="form-label fw-bold">Primary Phone</label>
+                <input id="edit-phone" class="form-control" value="${fbo.phone || ''}">
+              </div>
+              <div class="col-6">
+                <label class="form-label fw-bold">Secondary Phone</label>
+                <input id="edit-phone-secondary" class="form-control" value="${fbo.phone_secondary || ''}">
+              </div>
+            </div>
+            <div class="row mb-3">
+              <div class="col-6">
+                <label class="form-label fw-bold">City</label>
+                <input id="edit-city" class="form-control" value="${fbo.city || ''}">
+              </div>
+              <div class="col-6">
+                <label class="form-label fw-bold">Country</label>
+                <input id="edit-country" class="form-control" value="${fbo.country || ''}">
+              </div>
+            </div>
+          </div>
+        `,
+        width: '500px',
+        showCancelButton: true,
+        confirmButtonText: 'Save Changes',
+        cancelButtonText: 'Cancel',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        focusConfirm: false,
+        preConfirm: () => {
+          const name = (document.getElementById('edit-name') as HTMLInputElement)?.value?.trim();
+          if (!name) {
+            Swal.showValidationMessage('FBO Name is required');
+            return false;
+          }
+
+          return {
+            name: name,
+            email: (document.getElementById('edit-email') as HTMLInputElement)?.value || '',
+            phone: (document.getElementById('edit-phone') as HTMLInputElement)?.value || '',
+            phone_secondary: (document.getElementById('edit-phone-secondary') as HTMLInputElement)?.value || '',
+            city: (document.getElementById('edit-city') as HTMLInputElement)?.value || '',
+            country: (document.getElementById('edit-country') as HTMLInputElement)?.value || ''
+          };
+        }
+      }).then(async (result) => {
+        if (result.isConfirmed && result.value) {
+          console.log('Saving FBO with data:', result.value);
+
+          try {
+            await ApiService.put(`/fbos/${fbo.id}/`, result.value);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Success!',
+              text: 'FBO updated successfully.',
+              timer: 2000,
+              showConfirmButton: false
+            });
+
+            // Refresh the list
+            await fetchFbos(currentPage.value, pageSize.value, search.value);
+          } catch (error) {
+            console.error('Error updating FBO:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: 'Failed to update FBO.'
+            });
+          }
+        }
+      });
+    };
 
     const handleView = (fbo) => {
       const locationText = getLocationText(fbo);
@@ -165,7 +251,6 @@ export default defineComponent({
       });
     };
 
-    const handleViewTrips = (fbo) => router.push(`/admin/trips?fbo=${fbo.id}`);
 
     const navigateToFboDetails = (fboId: string) => {
       router.push(`/admin/fbos/${fboId}`);
@@ -266,7 +351,6 @@ export default defineComponent({
       handleCreate,
       handleEdit,
       handleView,
-      handleViewTrips,
       handleDelete,
       getLocationText,
       navigateToFboDetails,

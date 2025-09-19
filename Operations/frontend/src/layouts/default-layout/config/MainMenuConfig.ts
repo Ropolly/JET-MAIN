@@ -58,12 +58,6 @@ const MainMenuConfig: Array<MenuItem> = [
         bootstrapIcon: "bi-building",
       },
       {
-        heading: "Ground Transportation",
-        route: "/admin/grounds",
-        keenthemesIcon: "truck",
-        bootstrapIcon: "bi-truck",
-      },
-      {
         heading: "Staff",
         route: "/admin/staff",
         keenthemesIcon: "people",
@@ -115,55 +109,11 @@ const MainMenuConfig: Array<MenuItem> = [
             heading: "Permissions",
             route: "/admin/permissions",
           },
-        ],
-      },
-      {
-        sectionTitle: "Financial",
-        route: "/financial",
-        keenthemesIcon: "dollar",
-        bootstrapIcon: "bi-currency-dollar",
-        sub: [
-          {
-            heading: "Transactions",
-            route: "/admin/transactions",
-          },
-          {
-            heading: "Agreements",
-            route: "/admin/agreements",
-          },
-        ],
-      },
-      {
-        sectionTitle: "System",
-        route: "/system",
-        keenthemesIcon: "setting-2",
-        bootstrapIcon: "bi-gear",
-        sub: [
-          {
-            heading: "Documents",
-            route: "/admin/documents",
-          },
-          {
-            heading: "Modifications",
-            route: "/admin/modifications",
-          },
           {
             heading: "Staff Roles",
             route: "/admin/staff-roles",
           },
         ],
-      },
-    ],
-  },
-  {
-    heading: "apps",
-    route: "/apps",
-    pages: [
-      {
-        heading: "calendarApp",
-        route: "/apps/calendar",
-        keenthemesIcon: "calendar-8",
-        bootstrapIcon: "bi-calendar3-event",
       },
     ],
   },

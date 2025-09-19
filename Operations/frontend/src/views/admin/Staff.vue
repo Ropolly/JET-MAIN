@@ -210,6 +210,7 @@ import arraySort from "array-sort";
 import { MenuComponent } from "@/assets/ts/components";
 import Swal from "sweetalert2";
 import { useRouter } from "vue-router";
+import { Modal } from "bootstrap";
 import CreateStaffModal from "@/components/modals/CreateStaffModal.vue";
 import EditStaffModal from "@/components/modals/EditStaffModal.vue";
 import ManageStaffRolesModal from "@/components/modals/ManageStaffRolesModal.vue";
@@ -343,7 +344,6 @@ export default defineComponent({
       const modalElement = document.getElementById('kt_modal_create_staff');
       if (modalElement) {
         try {
-          const { Modal } = require('bootstrap');
           const modal = new Modal(modalElement);
           modal.show();
         } catch (error) {

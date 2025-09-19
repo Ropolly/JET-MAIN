@@ -121,17 +121,18 @@ class FBOSerializer(serializers.ModelSerializer):
     airport_codes = serializers.SerializerMethodField()
     airport_names = serializers.SerializerMethodField()
     contacts = serializers.PrimaryKeyRelatedField(many=True, queryset=Contact.objects.all(), required=False)
-    
+    airports = serializers.PrimaryKeyRelatedField(many=True, queryset=Airport.objects.all(), required=False)
+
     class Meta:
         model = FBO
-        fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip', 
-                 'country', 'phone', 'phone_secondary', 'email', 'notes', 'contacts',
+        fields = ['id', 'name', 'address_line1', 'address_line2', 'city', 'state', 'zip',
+                 'country', 'phone', 'phone_secondary', 'email', 'notes', 'contacts', 'airports',
                  'airport_codes', 'airport_names', 'created_on', 'created_by', 'modified_on', 'modified_by']
-    
+
     def get_airport_codes(self, obj):
         airports = obj.airports.all()
         return [airport.ident for airport in airports] if airports else []
-    
+
     def get_airport_names(self, obj):
         airports = obj.airports.all()
         return [airport.name for airport in airports] if airports else []

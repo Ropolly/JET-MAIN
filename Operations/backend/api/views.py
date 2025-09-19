@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -99,7 +100,7 @@ class AirportPagination(PageNumberPagination):
 
 # Base ViewSet with common functionality
 class BaseViewSet(viewsets.ModelViewSet):
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination  # Apply pagination to all ViewSets
     
@@ -1203,6 +1204,7 @@ class TripViewSet(BaseViewSet):
     queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line')
     search_fields = ['trip_number', 'type', 'patient__info__first_name', 'patient__info__last_name', 'passengers__info__first_name', 'passengers__info__last_name']
     ordering_fields = ['created_on', 'estimated_departure_time']
+    filterset_fields = ['status', 'type']  # Add filtering by status and type
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
@@ -1589,7 +1591,85 @@ class TripViewSet(BaseViewSet):
 
         combined = sorted(chain(legs, events), key=lambda x: x["sort_at"] or "")
         return Response(combined)
-    
+
+    @action(detail=False, methods=['get'])
+    def live(self, request):
+        """
+        Get all trips that have live flights currently in progress.
+        A flight is considered live if current time is between departure and arrival times.
+        """
+        now = timezone.now()
+
+        # Find trips with trip lines where current time is between departure and arrival
+        live_trips = Trip.objects.filter(
+            trip_lines__departure_time_utc__lte=now,
+            trip_lines__arrival_time_utc__gte=now,
+            status='active'
+        ).select_related(
+            'aircraft', 'patient', 'patient__info'
+        ).prefetch_related(
+            'trip_lines__origin_airport',
+            'trip_lines__destination_airport'
+        ).distinct()
+
+        live_flight_data = []
+
+        for trip in live_trips:
+            # Find the current active leg(s) for this trip
+            active_legs = trip.trip_lines.filter(
+                departure_time_utc__lte=now,
+                arrival_time_utc__gte=now
+            ).select_related('origin_airport', 'destination_airport')
+
+            for leg in active_legs:
+                # Calculate flight progress
+                total_flight_time = leg.arrival_time_utc - leg.departure_time_utc
+                elapsed_time = now - leg.departure_time_utc
+                progress_percentage = (elapsed_time.total_seconds() / total_flight_time.total_seconds()) * 100
+
+                # Determine flight phase
+                if progress_percentage < 10:
+                    phase = "departed"
+                    phase_icon = "🛫"
+                elif progress_percentage > 90:
+                    phase = "approaching"
+                    phase_icon = "🛬"
+                else:
+                    phase = "enroute"
+                    phase_icon = "✈️"
+
+                # Calculate estimated remaining time
+                remaining_time = leg.arrival_time_utc - now
+
+                live_flight_data.append({
+                    'trip_id': trip.id,
+                    'trip_number': trip.trip_number,
+                    'aircraft_tail': trip.aircraft.tail_number if trip.aircraft else 'N/A',
+                    'origin_airport': {
+                        'ident': leg.origin_airport.ident,
+                        'name': leg.origin_airport.name,
+                    },
+                    'destination_airport': {
+                        'ident': leg.destination_airport.ident,
+                        'name': leg.destination_airport.name,
+                    },
+                    'departure_time_local': leg.departure_time_local,
+                    'arrival_time_local': leg.arrival_time_local,
+                    'estimated_arrival_utc': leg.arrival_time_utc,
+                    'phase': phase,
+                    'phase_icon': phase_icon,
+                    'progress_percentage': round(progress_percentage, 1),
+                    'remaining_minutes': round(remaining_time.total_seconds() / 60),
+                    'patient_name': f"{trip.patient.info.first_name} {trip.patient.info.last_name}" if trip.patient and trip.patient.info else None,
+                    'trip_type': trip.type,
+                })
+
+        return Response({
+            'live_flights': live_flight_data,
+            'count': len(live_flight_data),
+            'timestamp': now
+        })
+
     @action(detail=True, methods=['post'])
     def generate_documents(self, request, pk=None):
         """

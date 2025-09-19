@@ -53,8 +53,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'all' ? 'badge-secondary' : 'badge-light-secondary'">{{ getAllQuotesCount() }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('pending') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'pending' }"
                   @click.prevent="handleTabChange('pending')"
@@ -65,8 +65,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'pending' ? 'badge-warning' : 'badge-light-secondary'">{{ getStatusCount('pending') }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('confirmed') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'confirmed' }"
                   @click.prevent="handleTabChange('confirmed')"
@@ -77,8 +77,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'confirmed' ? 'badge-info' : 'badge-light-secondary'">{{ getStatusCount('confirmed') }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('active') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'active' }"
                   @click.prevent="handleTabChange('active')"
@@ -89,8 +89,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'active' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('active') }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('completed') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'completed' }"
                   @click.prevent="handleTabChange('completed')"
@@ -101,8 +101,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'completed' ? 'badge-primary' : 'badge-light-secondary'">{{ getStatusCount('completed') }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('cancelled') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'cancelled' }"
                   @click.prevent="handleTabChange('cancelled')"
@@ -113,8 +113,8 @@
                   <span class="ms-1 badge" :class="activeTab === 'cancelled' ? 'badge-danger' : 'badge-light-secondary'">{{ getStatusCount('cancelled') }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a 
+              <li class="nav-item" v-if="getStatusCount('paid') > 0">
+                <a
                   class="nav-link"
                   :class="{ active: activeTab === 'paid' }"
                   @click.prevent="handleTabChange('paid')"
@@ -123,6 +123,18 @@
                 >
                   Paid
                   <span class="ms-1 badge" :class="activeTab === 'paid' ? 'badge-success' : 'badge-light-secondary'">{{ getStatusCount('paid') }}</span>
+                </a>
+              </li>
+              <li class="nav-item" v-if="getStatusCount('lost') > 0">
+                <a
+                  class="nav-link"
+                  :class="{ active: activeTab === 'lost' }"
+                  @click.prevent="handleTabChange('lost')"
+                  data-bs-toggle="tab"
+                  href="#kt_tab_lost_quotes"
+                >
+                  Lost
+                  <span class="ms-1 badge" :class="activeTab === 'lost' ? 'badge-dark' : 'badge-light-secondary'">{{ getStatusCount('lost') }}</span>
                 </a>
               </li>
             </ul>
@@ -193,7 +205,7 @@
         </template>
 
         <template v-slot:status="{ row: quote }">
-          <select 
+          <select
             :value="quote.status"
             @change="updateQuoteStatus(quote, ($event.target as HTMLSelectElement).value)"
             class="form-select form-select-sm"
@@ -203,6 +215,7 @@
             <option value="active">Active</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
+            <option value="lost">Lost</option>
           </select>
         </template>
 
@@ -226,13 +239,6 @@
             <div class="menu-item px-3">
               <a @click="handleEdit(quote)" class="menu-link px-3"
                 >Edit Quote</a
-              >
-            </div>
-            <!--end::Menu item-->
-            <!--begin::Menu item-->
-            <div class="menu-item px-3">
-              <a @click="handleDownloadPdf(quote)" class="menu-link px-3"
-                >Download PDF</a
               >
             </div>
             <!--end::Menu item-->
@@ -370,7 +376,8 @@ export default defineComponent({
       active: 0,
       completed: 0,
       cancelled: 0,
-      paid: 0
+      paid: 0,
+      lost: 0
     });
 
     // Methods
@@ -418,7 +425,7 @@ export default defineComponent({
         statusCounts.value.all = allResponse.data.count || 0;
         
         // Fetch counts for each status
-        const statuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled', 'paid'];
+        const statuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled', 'paid', 'lost'];
         for (const status of statuses) {
           const response = await ApiService.get(`/quotes/?status=${status}&page_size=1`);
           statusCounts.value[status] = response.data.count || 0;
@@ -449,49 +456,6 @@ export default defineComponent({
     };
 
 
-    const handleDownloadPdf = async (quote: Quote) => {
-      try {
-        const baseURL = import.meta.env.VITE_APP_API_URL || "http://localhost:8001/api";
-        const token = JwtService.getToken();
-        
-        const response = await fetch(`${baseURL}/quotes/${quote.id}/pdf/`, {
-          method: 'GET',
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `quote_${quote.id.slice(0, 8)}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
-        Swal.fire({
-          title: "Success!",
-          text: "PDF downloaded successfully",
-          icon: "success",
-          timer: 2000,
-          showConfirmButton: false
-        });
-        
-      } catch (error: any) {
-        console.error('Error downloading PDF:', error);
-        Swal.fire({
-          title: "Error!",
-          text: "Failed to download PDF. Please try again.",
-          icon: "error"
-        });
-      }
-    };
 
 
 
@@ -665,6 +629,7 @@ export default defineComponent({
         active: 'primary',
         completed: 'success',
         cancelled: 'danger',
+        lost: 'dark',
       };
       return colors[status] || 'secondary';
     };
@@ -841,7 +806,6 @@ export default defineComponent({
       handleTabChange,
       handleCreate,
       handleQuoteCreated,
-      handleDownloadPdf,
       handleEdit,
       handleDelete,
       getContactName,
