@@ -58,7 +58,7 @@ from utils.services.docuseal_service import DocuSealService
 logger = logging.getLogger(__name__)
 from .serializers import (
     ModificationSerializer, PermissionSerializer, RoleSerializer, DepartmentSerializer,
-    ContactSerializer, CommentSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
+    ContactReadSerializer, ContactWriteSerializer, CommentSerializer, FBOSerializer, GroundSerializer, AirportSerializer, AircraftSerializer,
     AgreementSerializer, DocumentSerializer, LostReasonSerializer,
     # Standardized CRUD serializers
     UserProfileReadSerializer, UserProfileWriteSerializer,
@@ -115,11 +115,15 @@ class BaseViewSet(viewsets.ModelViewSet):
         # Get the old instance before updating
         if serializer.instance and hasattr(serializer.instance, 'pk'):
             old_instance = serializer.instance.__class__.objects.get(pk=serializer.instance.pk)
-            # Exclude system fields that shouldn't be tracked
+            # Exclude system fields and encrypted PHI fields that shouldn't be tracked
             excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
-            old_fields = {field.name: getattr(old_instance, field.name) 
-                         for field in old_instance._meta.fields 
-                         if not field.is_relation and field.name not in excluded_fields}
+            old_fields = {}
+            for field in old_instance._meta.fields:
+                if (not field.is_relation and
+                    field.name not in excluded_fields and
+                    not field.name.endswith('_encrypted') and
+                    not field.name.endswith('_hash')):
+                    old_fields[field.name] = getattr(old_instance, field.name)
         else:
             old_fields = {}
         
@@ -137,12 +141,16 @@ class BaseViewSet(viewsets.ModelViewSet):
         # Track modifications manually with user
         if old_fields:
             from .utils import track_modification
-            # Use same excluded fields for new values
+            # Use same excluded fields for new values (including encrypted PHI fields)
             excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
-            new_fields = {field.name: getattr(instance, field.name) 
-                         for field in instance._meta.fields 
-                         if not field.is_relation and field.name not in excluded_fields}
-            
+            new_fields = {}
+            for field in instance._meta.fields:
+                if (not field.is_relation and
+                    field.name not in excluded_fields and
+                    not field.name.endswith('_encrypted') and
+                    not field.name.endswith('_hash')):
+                    new_fields[field.name] = getattr(instance, field.name)
+
             for field_name, old_value in old_fields.items():
                 new_value = new_fields.get(field_name)
                 if old_value != new_value:
@@ -197,9 +205,13 @@ class UserProfileViewSet(BaseViewSet):
 # Contact ViewSet
 class ContactViewSet(BaseViewSet):
     queryset = Contact.objects.all()
-    serializer_class = ContactSerializer
     search_fields = ['first_name', 'last_name', 'business_name', 'email']
     ordering_fields = ['first_name', 'last_name', 'business_name', 'created_on']
+
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return ContactReadSerializer
+        return ContactWriteSerializer
 
 # FBO ViewSet
 class FBOViewSet(BaseViewSet):
@@ -342,12 +354,18 @@ class AgreementViewSet(BaseViewSet):
 # Patient ViewSet
 class PatientViewSet(BaseViewSet):
     queryset = Patient.objects.select_related('info')
-    search_fields = ['info__first_name', 'info__last_name', 'nationality']
+    # Remove search_fields to prevent DRF SearchFilter from interfering with our custom search
+    # search_fields = ['info__first_name', 'info__last_name', 'nationality']
     ordering_fields = ['created_on']
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadPatient | CanWritePatient | CanModifyPatient | CanDeletePatient
     ]
+
+    # Override filter_backends to exclude SearchFilter since we handle search in get_queryset
+    from django_filters.rest_framework import DjangoFilterBackend
+    from rest_framework.filters import OrderingFilter
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
     
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -369,6 +387,65 @@ class PatientViewSet(BaseViewSet):
         else:
             permission_classes = [permissions.IsAuthenticated]
         return [permission() for permission in permission_classes]
+
+    def get_queryset(self):
+        """
+        Override to handle encrypted search functionality.
+        """
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search')
+
+        if search:
+            # For encrypted search, we need to handle both legacy data and encrypted data
+            from django.db.models import Q
+            from .encryption import FieldEncryption
+
+            # Search legacy fields (for existing data)
+            legacy_search = Q()
+            legacy_search |= Q(info__first_name__icontains=search)
+            legacy_search |= Q(info__last_name__icontains=search)
+            legacy_search |= Q(nationality__icontains=search)
+
+            # Get legacy results
+            legacy_results = queryset.filter(legacy_search)
+            legacy_ids = set(legacy_results.values_list('id', flat=True))
+
+            # Search encrypted fields for ALL patients (not just when legacy is empty)
+            # Get all patients and check encrypted fields manually
+            all_patients = Patient.objects.select_related('info').all()
+            encrypted_matching_ids = []
+
+            for patient in all_patients:
+                # Skip if already found in legacy search
+                if patient.id in legacy_ids:
+                    continue
+
+                # Check if contact info matches (encrypted data)
+                contact_matches = False
+                if patient.info:
+                    contact_first_name = patient.info.get_first_name().lower()
+                    contact_last_name = patient.info.get_last_name().lower()
+                    if (search.lower() in contact_first_name or
+                        search.lower() in contact_last_name):
+                        contact_matches = True
+
+                # Check patient nationality (encrypted data)
+                patient_nationality = patient.get_nationality().lower()
+                nationality_matches = search.lower() in patient_nationality
+
+                if contact_matches or nationality_matches:
+                    encrypted_matching_ids.append(patient.id)
+
+            # Combine legacy and encrypted results
+            all_matching_ids = list(legacy_ids) + encrypted_matching_ids
+
+            if all_matching_ids:
+                queryset = Patient.objects.filter(id__in=all_matching_ids).select_related('info')
+            else:
+                # No matches found in either legacy or encrypted data
+                queryset = Patient.objects.none()
+
+        return queryset
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_document(self, request, pk=None):
@@ -2346,7 +2423,7 @@ def create_contact_with_related(request):
             related_type = result['related_type']
             
             response_data = {
-                'contact': ContactSerializer(contact).data,
+                'contact': ContactReadSerializer(contact).data,
                 'related_type': related_type,
                 'success': True,
                 'message': f'{related_type.capitalize()} created successfully'
@@ -2362,7 +2439,7 @@ def create_contact_with_related(request):
                 from .serializers import PassengerReadSerializer
                 response_data['passenger'] = PassengerReadSerializer(related_instance).data
             elif related_type == 'customer':
-                response_data['customer'] = ContactSerializer(related_instance).data
+                response_data['customer'] = ContactReadSerializer(related_instance).data
             
             return Response(response_data, status=status.HTTP_201_CREATED)
             

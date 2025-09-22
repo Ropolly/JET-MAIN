@@ -152,6 +152,66 @@ class UserProfile(BaseModel):
                 pass
         return self.phone or ''
 
+    def get_address_line1(self):
+        """Get address line 1, preferring encrypted version."""
+        if self.address_line1_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.address_line1_encrypted)
+            except:
+                pass
+        return self.address_line1 or ''
+
+    def get_address_line2(self):
+        """Get address line 2, preferring encrypted version."""
+        if self.address_line2_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.address_line2_encrypted)
+            except:
+                pass
+        return self.address_line2 or ''
+
+    def get_city(self):
+        """Get city, preferring encrypted version."""
+        if self.city_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.city_encrypted)
+            except:
+                pass
+        return self.city or ''
+
+    def get_state(self):
+        """Get state, preferring encrypted version."""
+        if self.state_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.state_encrypted)
+            except:
+                pass
+        return self.state or ''
+
+    def get_country(self):
+        """Get country, preferring encrypted version."""
+        if self.country_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.country_encrypted)
+            except:
+                pass
+        return self.country or ''
+
+    def get_zip(self):
+        """Get ZIP code, preferring encrypted version."""
+        if self.zip_encrypted:
+            try:
+                from .encryption import FieldEncryption
+                return FieldEncryption.decrypt(self.zip_encrypted)
+            except:
+                pass
+        return self.zip or ''
+
     class Meta:
         indexes = [
             models.Index(fields=['email_hash']),
@@ -648,10 +708,10 @@ class Patient(BaseModel):
     bed_at_destination = models.BooleanField(default=False)
 
     # Legacy PHI fields (will be deprecated after migration)
-    date_of_birth = models.DateField()
-    nationality = models.CharField(max_length=100)
-    passport_number = models.CharField(max_length=100)
-    passport_expiration_date = models.DateField()
+    date_of_birth = models.DateField(blank=True, null=True)
+    nationality = models.CharField(max_length=100, blank=True, null=True)
+    passport_number = models.CharField(max_length=100, blank=True, null=True)
+    passport_expiration_date = models.DateField(blank=True, null=True)
     special_instructions = models.TextField(blank=True, null=True)
 
     # HIPAA-compliant encrypted fields
@@ -790,7 +850,7 @@ class Quote(BaseModel):
         ("denied", "Denied")
     ], default="created")
     # Legacy PHI fields (will be deprecated after migration)
-    quote_pdf_email = models.EmailField()
+    quote_pdf_email = models.EmailField(blank=True, null=True)
     medical_team = models.CharField(max_length=20, choices=[
         ("RN/RN", "RN/RN"),
         ("RN/Paramedic", "RN/Paramedic"),
