@@ -57,6 +57,57 @@ class HandlingRequestData:
 
 
 @dataclass
+class GeneralDeclarationData:
+    """Data class for General Declaration PDF fields - matches actual PDF field names"""
+    # Aircraft information
+    marks_of_nationality: str = ''  # Aircraft registration/tail number
+    owner_or_operator: str = ''     # Company/operator name
+    
+    # Flight information
+    flight_number: str = ''
+    departure_from: str = ''        # Origin airport
+    arrival_at: str = ''           # Destination airport
+    date: str = ''                 # Flight date
+    
+    # Passenger/crew counts for different locations (up to 8 places)
+    place1: str = ''               # Location name
+    place2: str = ''
+    place3: str = ''
+    place4: str = ''
+    place5: str = ''
+    place6: str = ''
+    place7: str = ''
+    place8: str = ''
+    
+    # Total numbers for each place
+    total_number1: str = ''        # Total passengers/crew at place1
+    total_number2: str = ''
+    total_number3: str = ''
+    total_number4: str = ''
+    total_number5: str = ''
+    total_number6: str = ''
+    total_number7: str = ''
+    total_number8: str = ''
+    
+    # Passenger movement
+    embarking: str = ''            # Number embarking
+    disembarking: str = ''         # Number disembarking
+    through_on_same_flight: str = '' # Through passengers
+    through_on_same_flight2: str = '' # Additional through passengers
+    
+    # Additional fields
+    awb: str = ''                  # Air Waybill number
+    sed: str = ''                  # Shipper's Export Declaration
+    declaration1: str = ''         # Declaration text
+    details1: str = ''            # Additional details
+    other1: str = ''              # Other information
+    
+    # Signatures
+    agent_signature: str = ''      # Agent signature
+    sign: str = ''                # Additional signature field
+
+
+@dataclass
 class CrewInfo:
     """Crew information for itinerary"""
     pic: str = ""  # Pilot in Command
@@ -125,23 +176,23 @@ class ItineraryData:
     gen_dec_2: str = ""
 
 
-def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_mapping: Dict[str, str]) -> bool:
+def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_mapping: dict) -> bool:
     """
-    Generic function to populate PDF form fields using pdfrw.
+    Generic function to populate PDF form fields with data
     
     Args:
-        input_pdf_path: Path to the input PDF template
+        input_pdf_path: Path to the template PDF
         output_pdf_path: Path where the filled PDF will be saved
         field_mapping: Dictionary mapping field names to values
-        
+    
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        from pdfrw import PdfReader, PdfWriter, PdfDict, PdfName
+        # Try PyMuPDF (fitz) method first - most reliable for form filling
+        import fitz
         
-        # Read the PDF
-        template_pdf = PdfReader(input_pdf_path)
+        doc = fitz.open(input_pdf_path)
         
         # Clean field mapping - ensure all values are strings
         clean_mapping = {}
@@ -151,36 +202,31 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
             else:
                 clean_mapping[field_name] = ""
         
-        # Find and populate form fields
-        for page in template_pdf.pages:
-            if page.Annots:
-                for annotation in page.Annots:
-                    if annotation.T:  # Field name
-                        field_name = annotation.T[1:-1]  # Remove parentheses
-                        if field_name in clean_mapping:
-                            # Set the field value
-                            annotation.update(PdfDict(V=clean_mapping[field_name]))
-                            # Also set appearance value
-                            annotation.update(PdfDict(AP=''))
+        # Fill form fields
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            widgets = page.widgets()
+            
+            for widget in widgets:
+                if widget.field_name in clean_mapping:
+                    widget.field_value = clean_mapping[widget.field_name]
+                    widget.update()
         
-        # Write the filled PDF
-        PdfWriter(output_pdf_path, trailer=template_pdf).write()
+        # Save the filled PDF
+        doc.save(output_pdf_path)
+        doc.close()
         return True
         
     except Exception as e:
-        print(f"pdfrw failed: {e}")
-        # Fallback to pypdf
+        print(f"PyMuPDF failed: {e}")
+        
+        # Fallback to pdfrw method
         try:
-            from pypdf import PdfReader, PdfWriter
+            from pdfrw import PdfReader, PdfWriter, PdfDict
             
-            reader = PdfReader(input_pdf_path)
-            writer = PdfWriter()
+            template_pdf = PdfReader(input_pdf_path)
             
-            # Copy pages
-            for page in reader.pages:
-                writer.add_page(page)
-            
-            # Clean field mapping
+            # Clean field mapping - ensure all values are strings
             clean_mapping = {}
             for field_name, value in field_mapping.items():
                 if value is not None:
@@ -188,17 +234,23 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
                 else:
                     clean_mapping[field_name] = ""
             
-            # Update form fields
-            writer.update_page_form_field_values(writer.pages[0], clean_mapping)
+            # Find and populate form fields
+            for page in template_pdf.pages:
+                if page.Annots:
+                    for annotation in page.Annots:
+                        if annotation.T:  # Field name
+                            field_name = annotation.T[1:-1]  # Remove parentheses
+                            if field_name in clean_mapping:
+                                # Set the field value
+                                annotation.update(PdfDict(V=f'({clean_mapping[field_name]})'))
+                                annotation.update(PdfDict(DV=f'({clean_mapping[field_name]})'))
             
-            # Write output
-            with open(output_pdf_path, 'wb') as output_file:
-                writer.write(output_file)
-                
+            # Write the filled PDF
+            PdfWriter(output_pdf_path, trailer=template_pdf).write()
             return True
             
         except Exception as e2:
-            print(f"All methods failed: {e2}")
+            print(f"All PDF population methods failed: {e2}")
             return False
 
 
@@ -272,10 +324,14 @@ def populate_handling_request_pdf(input_pdf_path: str, output_pdf_path: str, dat
 
 
 def populate_itinerary_pdf(input_pdf_path: str, output_pdf_path: str, data: ItineraryData) -> bool:
-    """Populate itin.pdf with data from ItineraryData instance"""
-    # Map data to actual PDF field names from itin.pdf
-    # NOTE: trip_number, tail_number, trip_date, trip_type fields do NOT exist in this PDF template
+    """Populate itin-2.pdf with data from ItineraryData instance"""
+    # Map data to actual PDF field names from itin-2.pdf
+    # NOTE: Now includes header fields that were missing in the old itin.pdf template
     field_mapping = {
+        'trip_number': data.trip_number,
+        'trip_date': data.trip_date,
+        'trip_type': data.trip_type,
+        'tail_number': data.tail_number,
         'patient_name': data.patient_name,
         'bed_at_origin': 'Yes' if data.bed_at_origin else 'No',
         'bed_at_dest': 'Yes' if data.bed_at_dest else 'No',
@@ -361,6 +417,64 @@ def populate_itinerary_pdf(input_pdf_path: str, output_pdf_path: str, data: Itin
         'post_flight_duty_time': data.times.post_flight_duty_time
     })
         
+    return populate_pdf_with_fields(input_pdf_path, output_pdf_path, field_mapping)
+
+
+def populate_gen_dec_pdf(input_pdf_path: str, output_pdf_path: str, data: GeneralDeclarationData) -> bool:
+    """Populate gen_dec.pdf with data from GeneralDeclarationData instance"""
+    # Map data to actual PDF field names from gen_dec.pdf
+    field_mapping = {
+        # Aircraft information
+        'MarksofNationality[0]': data.marks_of_nationality,
+        'OwnerorOperator[0]': data.owner_or_operator,
+        
+        # Flight information
+        'flightnumber[0]': data.flight_number,
+        'departurefrom[0]': data.departure_from,
+        'arrivaat[0]': data.arrival_at,
+        'Date[0]': data.date,
+        
+        # Places and totals (up to 8 locations)
+        'place1[0]': data.place1,
+        'place2[0]': data.place2,
+        'place3[0]': data.place3,
+        'place4[0]': data.place4,
+        'place5[0]': data.place5,
+        'place6[0]': data.place6,
+        'place7[0]': data.place7,
+        'place8[0]': data.place8,
+        
+        'totalnumber1[0]': data.total_number1,
+        'totalnumber2[0]': data.total_number2,
+        'totalnumber3[0]': data.total_number3,
+        'totalnumber4[0]': data.total_number4,
+        'totalnumber5[0]': data.total_number5,
+        'totalnumber6[0]': data.total_number6,
+        'totalnumber7[0]': data.total_number7,
+        'totalnumber8[0]': data.total_number8,
+        
+        # Passenger movement
+        'embarking[0]': data.embarking,
+        'disembarking[0]': data.disembarking,
+        'throughonsameflight[0]': data.through_on_same_flight,
+        'throughonsameflight2[0]': data.through_on_same_flight2,
+        
+        # Additional fields
+        'AWB[0]': data.awb,
+        'SED[0]': data.sed,
+        'declaration1[0]': data.declaration1,
+        'details1[0]': data.details1,
+        'other1[0]': data.other1,
+        
+        # Signatures
+        'agentsignature[0]': data.agent_signature,
+        'sign[0]': data.sign,
+        
+        # Additional fields found
+        'P1[0]': '',  # Empty for now
+        'F[0]': ''    # Empty for now
+    }
+    
     return populate_pdf_with_fields(input_pdf_path, output_pdf_path, field_mapping)
 
 
