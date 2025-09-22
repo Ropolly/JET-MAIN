@@ -9,10 +9,21 @@ djangorestframework-simplejwt>=5.2.2,<5.3.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
-pdfrw>=0.4                                                                                           
+pdfrw>=0.4
 pypdf>=6.0.0
 pypdf2>=3.0.1
 reportlab>=4.4.3
 twilio>=9.0.0
 django-filter>=25.0
+
+# Cryptography and Security
+cryptography>=41.0.0,<42.0.0  # For AES-GCM encryption
+pycryptodome>=3.19.0  # Alternative crypto library (optional)
+python-dotenv>=1.0.0  # For environment variable management
+
+# Azure Key Vault (optional - for production key management)
+# Uncomment these lines when ready to integrate with Azure Key Vault:
+# azure-identity>=1.14.0
+# azure-keyvault-secrets>=4.7.0
+# azure-keyvault-keys>=4.8.0
 

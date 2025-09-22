@@ -27,14 +27,19 @@ def get_skip_signal_tracking():
     return getattr(_local, 'skip_signal_tracking', False)
 
 def get_model_fields(instance):
-    """Get all fields from a model instance, excluding system fields"""
+    """Get all fields from a model instance, excluding system fields and encrypted PHI fields"""
     excluded_fields = {'id', 'created_on', 'modified_on', 'created_by', 'modified_by'}
     fields = {}
-    
+
     for field in instance._meta.fields:
         if field.name in excluded_fields:
             continue
-            
+
+        # Skip encrypted PHI fields and hash fields to prevent exposure in modification tracking
+        if (field.name.endswith('_encrypted') or
+            field.name.endswith('_hash')):
+            continue
+
         if field.is_relation:
             # Handle foreign key fields
             if hasattr(field, 'related_model'):

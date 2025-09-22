@@ -70,12 +70,28 @@ class CommentSerializer(serializers.ModelSerializer):
         return None
 
 # Contact and location serializers
-class ContactSerializer(serializers.ModelSerializer):
+class ContactReadSerializer(serializers.ModelSerializer):
     contact_type = serializers.SerializerMethodField()
-    
+    # Use encrypted helper methods for all PHI fields
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    business_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
+    address_line1 = serializers.SerializerMethodField()
+    address_line2 = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+    state = serializers.SerializerMethodField()
+    zip = serializers.SerializerMethodField()
+    country = serializers.SerializerMethodField()
+    nationality = serializers.SerializerMethodField()
+    date_of_birth = serializers.SerializerMethodField()
+    passport_number = serializers.SerializerMethodField()
+    passport_expiration_date = serializers.SerializerMethodField()
+
     class Meta:
         model = Contact
-        fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone', 
+        fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone',
                  'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
                  'nationality', 'date_of_birth', 'passport_number', 'passport_expiration_date',
                  'contact_type', 'created_on', 'created_by', 'modified_on', 'modified_by']
@@ -116,6 +132,174 @@ class ContactSerializer(serializers.ModelSerializer):
         
         # Default type
         return 'General'
+
+    # Helper methods to use encrypted data
+    def get_first_name(self, obj):
+        return obj.get_first_name()
+
+    def get_last_name(self, obj):
+        return obj.get_last_name()
+
+    def get_business_name(self, obj):
+        return obj.get_business_name()
+
+    def get_email(self, obj):
+        return obj.get_email()
+
+    def get_phone(self, obj):
+        return obj.get_phone()
+
+    def get_address_line1(self, obj):
+        return obj.get_address_line1()
+
+    def get_address_line2(self, obj):
+        return obj.get_address_line2()
+
+    def get_city(self, obj):
+        return obj.get_city()
+
+    def get_state(self, obj):
+        return obj.get_state()
+
+    def get_zip(self, obj):
+        return obj.get_zip()
+
+    def get_country(self, obj):
+        return obj.get_country()
+
+    def get_nationality(self, obj):
+        return obj.get_nationality()
+
+    def get_date_of_birth(self, obj):
+        return obj.get_date_of_birth()
+
+    def get_passport_number(self, obj):
+        return obj.get_passport_number()
+
+    def get_passport_expiration_date(self, obj):
+        return obj.get_passport_expiration_date()
+
+
+class ContactWriteSerializer(serializers.ModelSerializer):
+    """Write serializer for Contact that handles both legacy and encrypted fields."""
+
+    class Meta:
+        model = Contact
+        fields = ['id', 'first_name', 'last_name', 'business_name', 'email', 'phone',
+                 'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
+                 'nationality', 'date_of_birth', 'passport_number', 'passport_expiration_date',
+                 'created_on', 'created_by', 'modified_on', 'modified_by']
+        read_only_fields = ['id', 'created_on', 'created_by', 'modified_on', 'modified_by']
+
+    def create(self, validated_data):
+        """Create a new contact with data saved only to encrypted fields (not legacy fields)."""
+        from .encryption import FieldEncryption
+
+        # Define PHI fields that should only be stored encrypted
+        phi_fields = [
+            'first_name', 'last_name', 'business_name', 'email', 'phone',
+            'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
+            'nationality', 'passport_number', 'date_of_birth', 'passport_expiration_date'
+        ]
+
+        # Extract PHI data and remove from validated_data to prevent storing in legacy fields
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Create contact without PHI data in legacy fields
+        contact = Contact(**clean_validated_data)
+        contact.save()
+
+        # Now encrypt the PHI fields and save to encrypted columns only
+        for field_name, value in phi_data.items():
+            if value:
+                try:
+                    if field_name in ['date_of_birth', 'passport_expiration_date']:
+                        # Convert date to ISO format string for encryption
+                        encrypted_value = FieldEncryption.encrypt(value.isoformat())
+                    else:
+                        encrypted_value = FieldEncryption.encrypt(str(value))
+
+                    setattr(contact, f"{field_name}_encrypted", encrypted_value)
+
+                    # Generate search hash for searchable fields
+                    if field_name in ['email', 'phone', 'passport_number']:
+                        search_hash = FieldEncryption.generate_search_hash(str(value))
+                        setattr(contact, f"{field_name}_hash", search_hash)
+                except Exception as e:
+                    # Log the error but don't fail the operation
+                    pass
+
+        contact.save()
+        return contact
+
+    def update(self, instance, validated_data):
+        """Update contact with data saved to both legacy and encrypted fields."""
+        from .encryption import FieldEncryption
+
+        # Update the instance with validated data
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        # Now encrypt the PHI fields and save to encrypted columns
+        phi_fields = [
+            'first_name', 'last_name', 'business_name', 'email', 'phone',
+            'address_line1', 'address_line2', 'city', 'state', 'zip', 'country',
+            'nationality', 'passport_number'
+        ]
+
+        for field_name in phi_fields:
+            value = getattr(instance, field_name, None)
+            if value:
+                try:
+                    encrypted_value = FieldEncryption.encrypt(str(value))
+                    setattr(instance, f"{field_name}_encrypted", encrypted_value)
+
+                    # Generate search hash for searchable fields
+                    if field_name in ['email', 'phone', 'passport_number']:
+                        search_hash = FieldEncryption.generate_search_hash(str(value))
+                        setattr(instance, f"{field_name}_hash", search_hash)
+                except Exception as e:
+                    # Log the error but don't fail the operation
+                    pass
+            else:
+                # Clear encrypted field if legacy field is empty
+                setattr(instance, f"{field_name}_encrypted", None)
+                if field_name in ['email', 'phone', 'passport_number']:
+                    setattr(instance, f"{field_name}_hash", None)
+
+        # Handle date fields separately
+        if instance.date_of_birth:
+            try:
+                encrypted_dob = FieldEncryption.encrypt(instance.date_of_birth.isoformat())
+                instance.date_of_birth_encrypted = encrypted_dob
+            except Exception:
+                pass
+        else:
+            instance.date_of_birth_encrypted = None
+
+        if instance.passport_expiration_date:
+            try:
+                encrypted_exp = FieldEncryption.encrypt(instance.passport_expiration_date.isoformat())
+                instance.passport_expiration_date_encrypted = encrypted_exp
+            except Exception:
+                pass
+        else:
+            instance.passport_expiration_date_encrypted = None
+
+        instance.save()
+        return instance
+
+
+# Create a ContactSerializer alias for backward compatibility
+ContactSerializer = ContactReadSerializer
+
 
 class FBOSerializer(serializers.ModelSerializer):
     airport_codes = serializers.SerializerMethodField()
@@ -225,7 +409,19 @@ class UserProfileReadSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     roles = RoleSerializer(many=True, read_only=True)
     departments = DepartmentSerializer(many=True, read_only=True)
-    
+
+    # Use encrypted helper methods for all PHI fields
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
+    address_line1 = serializers.SerializerMethodField()
+    address_line2 = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+    state = serializers.SerializerMethodField()
+    country = serializers.SerializerMethodField()
+    zip = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
         fields = [
@@ -233,6 +429,36 @@ class UserProfileReadSerializer(serializers.ModelSerializer):
             'address_line1', 'address_line2', 'city', 'state', 'country', 'zip',
             'roles', 'departments', 'flags', 'status', 'created_on'
         ]
+
+    def get_first_name(self, obj):
+        return obj.get_first_name()
+
+    def get_last_name(self, obj):
+        return obj.get_last_name()
+
+    def get_email(self, obj):
+        return obj.get_email()
+
+    def get_phone(self, obj):
+        return obj.get_phone()
+
+    def get_address_line1(self, obj):
+        return obj.get_address_line1()
+
+    def get_address_line2(self, obj):
+        return obj.get_address_line2()
+
+    def get_city(self, obj):
+        return obj.get_city()
+
+    def get_state(self, obj):
+        return obj.get_state()
+
+    def get_country(self, obj):
+        return obj.get_country()
+
+    def get_zip(self, obj):
+        return obj.get_zip()
 
 class UserProfileWriteSerializer(serializers.ModelSerializer):
     user_id = serializers.PrimaryKeyRelatedField(
@@ -259,7 +485,15 @@ class PassengerReadSerializer(serializers.ModelSerializer):
     passport_document = DocumentSerializer(read_only=True)
     related_passengers = serializers.SerializerMethodField()
     trips = serializers.SerializerMethodField()
-    
+
+    # Use encrypted helper methods for all PHI fields
+    date_of_birth = serializers.SerializerMethodField()
+    nationality = serializers.SerializerMethodField()
+    passport_number = serializers.SerializerMethodField()
+    passport_expiration_date = serializers.SerializerMethodField()
+    contact_number = serializers.SerializerMethodField()
+    notes = serializers.SerializerMethodField()
+
     class Meta:
         model = Passenger
         fields = [
@@ -267,10 +501,28 @@ class PassengerReadSerializer(serializers.ModelSerializer):
             'passport_expiration_date', 'contact_number', 'notes', 'passport_document',
             'related_passengers', 'trips', 'status', 'created_on'
         ]
-    
+
+    def get_date_of_birth(self, obj):
+        return obj.get_date_of_birth()
+
+    def get_nationality(self, obj):
+        return obj.get_nationality()
+
+    def get_passport_number(self, obj):
+        return obj.get_passport_number()
+
+    def get_passport_expiration_date(self, obj):
+        return obj.get_passport_expiration_date()
+
+    def get_contact_number(self, obj):
+        return obj.get_contact_number()
+
+    def get_notes(self, obj):
+        return obj.get_notes()
+
     def get_related_passengers(self, obj):
         return [{'id': p.id, 'info': ContactSerializer(p.info).data} for p in obj.passenger_ids.all()]
-    
+
     def get_trips(self, obj):
         trips = obj.trips.all()
         return [{'id': trip.id, 'trip_number': trip.trip_number} for trip in trips]
@@ -808,7 +1060,8 @@ class TripReadSerializer(serializers.ModelSerializer):
     trip_lines = TripLineReadSerializer(many=True, read_only=True)
     passengers_data = PassengerReadSerializer(source='passengers', many=True, read_only=True)
     events = TripEventReadSerializer(many=True, read_only=True)
-    
+    notes = serializers.SerializerMethodField()
+
     class Meta:
         model = Trip
         fields = [
@@ -816,7 +1069,7 @@ class TripReadSerializer(serializers.ModelSerializer):
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'trip_lines', 'passengers_data', 'events', 'notes', 'status', 'created_on'
         ]
-    
+
     def get_quote(self, obj):
         if obj.quote:
             return {
@@ -825,7 +1078,7 @@ class TripReadSerializer(serializers.ModelSerializer):
                 'status': obj.quote.status
             }
         return None
-    
+
     def get_patient(self, obj):
         if obj.patient:
             return {
@@ -834,6 +1087,10 @@ class TripReadSerializer(serializers.ModelSerializer):
                 'info': ContactSerializer(obj.patient.info).data
             }
         return None
+
+    def get_notes(self, obj):
+        """Get decrypted notes using the model's helper method."""
+        return obj.get_notes()
 
 class TripWriteSerializer(serializers.ModelSerializer):
     quote = serializers.PrimaryKeyRelatedField(
@@ -850,7 +1107,7 @@ class TripWriteSerializer(serializers.ModelSerializer):
     )
     # Make trip_number optional - it will be auto-generated if not provided
     trip_number = serializers.CharField(required=False, allow_blank=True)
-    
+
     class Meta:
         model = Trip
         fields = [
@@ -858,6 +1115,75 @@ class TripWriteSerializer(serializers.ModelSerializer):
             'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
             'passenger_ids', 'notes', 'status'
         ]
+
+    def create(self, validated_data):
+        """Create trip with encrypted notes."""
+        from .encryption import FieldEncryption
+
+        # Extract PHI fields that need encryption
+        phi_fields = ['notes']
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Extract passengers for many-to-many relationship
+        passengers = clean_validated_data.pop('passengers', [])
+
+        # Create the trip without PHI fields
+        trip = Trip(**clean_validated_data)
+        trip.save()
+
+        # Set passengers
+        if passengers:
+            trip.passengers.set(passengers)
+
+        # Encrypt and store PHI fields
+        for field_name, value in phi_data.items():
+            if value:  # Only encrypt non-empty values
+                encrypted_value = FieldEncryption.encrypt(str(value))
+                setattr(trip, f"{field_name}_encrypted", encrypted_value)
+
+        trip.save()
+        return trip
+
+    def update(self, instance, validated_data):
+        """Update trip with encrypted notes."""
+        from .encryption import FieldEncryption
+
+        # Extract PHI fields that need encryption
+        phi_fields = ['notes']
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Extract passengers for many-to-many relationship
+        passengers = clean_validated_data.pop('passengers', None)
+
+        # Update non-PHI fields
+        for attr, value in clean_validated_data.items():
+            setattr(instance, attr, value)
+
+        # Update passengers
+        if passengers is not None:
+            instance.passengers.set(passengers)
+
+        # Encrypt and store PHI fields
+        for field_name, value in phi_data.items():
+            if value:  # Only encrypt non-empty values
+                encrypted_value = FieldEncryption.encrypt(str(value))
+                setattr(instance, f"{field_name}_encrypted", encrypted_value)
+            else:
+                # Clear encrypted field if value is empty
+                setattr(instance, f"{field_name}_encrypted", None)
+
+        instance.save()
+        return instance
 
 # 6) Transactions
 class TransactionPublicReadSerializer(serializers.ModelSerializer):
@@ -893,7 +1219,17 @@ class QuoteReadSerializer(serializers.ModelSerializer):
     trips = serializers.SerializerMethodField()
     total_paid = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
-    
+
+    # Use encrypted helper methods for all PHI fields
+    quote_pdf_email = serializers.SerializerMethodField()
+    medical_team = serializers.SerializerMethodField()
+
+    def get_quote_pdf_email(self, obj):
+        return obj.get_quote_pdf_email()
+
+    def get_medical_team(self, obj):
+        return obj.get_medical_team()
+
     class Meta:
         model = Quote
         fields = [
@@ -911,13 +1247,13 @@ class QuoteReadSerializer(serializers.ModelSerializer):
                 'id': obj.patient.id,
                 'status': obj.patient.status
             }
-            # Include patient's contact info (name)
+            # Include patient's contact info (name) using encrypted helper methods
             if obj.patient.info:
                 patient_data['info'] = {
                     'id': obj.patient.info.id,
-                    'first_name': obj.patient.info.first_name,
-                    'last_name': obj.patient.info.last_name,
-                    'email': obj.patient.info.email
+                    'first_name': obj.patient.info.get_first_name(),
+                    'last_name': obj.patient.info.get_last_name(),
+                    'email': obj.patient.info.get_email()
                 }
             return patient_data
         return None
@@ -967,7 +1303,7 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     transaction_ids = serializers.PrimaryKeyRelatedField(
         source='transactions', queryset=Transaction.objects.all(), many=True, write_only=True, required=False
     )
-    
+
     class Meta:
         model = Quote
         fields = [
@@ -975,9 +1311,46 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
             'patient', 'lost_reason', 'aircraft_type', 'medical_team', 'estimated_flight_time',
             'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
-            'payment_agreement', 'consent_for_transport', 'patient_service_agreement', 
+            'payment_agreement', 'consent_for_transport', 'patient_service_agreement',
             'transaction_ids', 'status', 'payment_status'
         ]
+
+    def create(self, validated_data):
+        """Create a new quote with PHI data saved only to encrypted fields (not legacy fields)."""
+        from .encryption import FieldEncryption
+
+        # Define PHI fields that should only be stored encrypted
+        phi_fields = ['quote_pdf_email', 'medical_team']
+
+        # Extract PHI data and remove from validated_data to prevent storing in legacy fields
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Create quote without PHI data in legacy fields
+        quote = Quote(**clean_validated_data)
+        quote.save()
+
+        # Encrypt PHI fields and save to encrypted columns only
+        for field_name, value in phi_data.items():
+            if value:
+                try:
+                    encrypted_value = FieldEncryption.encrypt(str(value))
+                    setattr(quote, f"{field_name}_encrypted", encrypted_value)
+
+                    # Generate search hash for searchable fields
+                    if field_name == 'quote_pdf_email':
+                        search_hash = FieldEncryption.generate_search_hash(str(value))
+                        setattr(quote, f"{field_name}_hash", search_hash)
+                except Exception as e:
+                    # Log the error but don't fail the operation
+                    pass
+
+        quote.save()
+        return quote
 
 
 class EmailQuoteSerializer(serializers.Serializer):
@@ -1049,28 +1422,50 @@ class PatientReadSerializer(serializers.ModelSerializer):
     quotes = serializers.SerializerMethodField()
     letter_of_medical_necessity = DocumentReadSerializer(read_only=True)
     insurance_card = DocumentReadSerializer(read_only=True)
-    
+
+    # Use encrypted helper methods for all PHI fields
+    date_of_birth = serializers.SerializerMethodField()
+    nationality = serializers.SerializerMethodField()
+    passport_number = serializers.SerializerMethodField()
+    passport_expiration_date = serializers.SerializerMethodField()
+    special_instructions = serializers.SerializerMethodField()
+
+    def get_date_of_birth(self, obj):
+        return obj.get_date_of_birth()
+
+    def get_nationality(self, obj):
+        return obj.get_nationality()
+
+    def get_passport_number(self, obj):
+        return obj.get_passport_number()
+
+    def get_passport_expiration_date(self, obj):
+        return obj.get_passport_expiration_date()
+
+    def get_special_instructions(self, obj):
+        return obj.get_special_instructions()
+
     def get_trips(self, obj):
         trips = obj.trips.all()
         return [{'id': trip.id, 'trip_number': trip.trip_number} for trip in trips]
-    
+
     def get_quotes(self, obj):
         quotes = obj.quotes.all()
         return [{'id': quote.id} for quote in quotes]
-    
+
     class Meta:
         model = Patient
         fields = [
-            'id', 
-            'info', 
-            'date_of_birth', 
-            'nationality', 
-            'passport_number', 
-            'passport_expiration_date', 
-            'special_instructions', 
-            'status', 
-            'bed_at_origin', 
-            'bed_at_destination', 
+            'id',
+            'info',
+            'date_of_birth',
+            'nationality',
+            'passport_number',
+            'passport_expiration_date',
+            'special_instructions',
+            'status',
+            'bed_at_origin',
+            'bed_at_destination',
             'letter_of_medical_necessity',
             'insurance_card',
             'created_on',
@@ -1100,16 +1495,48 @@ class PatientWriteSerializer(serializers.ModelSerializer):
         ]
     
     def create(self, validated_data):
-        # Get contact data for filling deprecated fields
-        contact = validated_data['info']
-        
-        # Use contact data as primary source, fallback to provided data
-        validated_data['date_of_birth'] = contact.date_of_birth or validated_data.get('date_of_birth')
-        validated_data['nationality'] = contact.nationality or validated_data.get('nationality', '')
-        validated_data['passport_number'] = contact.passport_number or validated_data.get('passport_number', '')
-        validated_data['passport_expiration_date'] = contact.passport_expiration_date or validated_data.get('passport_expiration_date')
-        
-        return super().create(validated_data)
+        from .encryption import FieldEncryption
+
+        # Define PHI fields that should only be stored encrypted
+        phi_fields = [
+            'date_of_birth', 'nationality', 'passport_number',
+            'passport_expiration_date', 'special_instructions'
+        ]
+
+        # Extract PHI data and remove from validated_data to prevent storing in legacy fields
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Create patient without PHI data in legacy fields
+        patient = Patient(**clean_validated_data)
+        patient.save()
+
+        # Encrypt PHI fields and save to encrypted columns only
+        for field_name, value in phi_data.items():
+            if value:
+                try:
+                    if field_name in ['date_of_birth', 'passport_expiration_date']:
+                        # Convert date to ISO format string for encryption
+                        encrypted_value = FieldEncryption.encrypt(value.isoformat())
+                    else:
+                        encrypted_value = FieldEncryption.encrypt(str(value))
+
+                    setattr(patient, f"{field_name}_encrypted", encrypted_value)
+
+                    # Generate search hash for searchable fields
+                    if field_name == 'passport_number':
+                        search_hash = FieldEncryption.generate_search_hash(str(value))
+                        setattr(patient, f"{field_name}_hash", search_hash)
+                except Exception as e:
+                    # Log the error but don't fail the operation
+                    pass
+
+        patient.save()
+        return patient
 
 
 class StaffWriteSerializer(serializers.ModelSerializer):
@@ -1188,18 +1615,32 @@ class ContractReadSerializer(serializers.ModelSerializer):
     trip_id = serializers.PrimaryKeyRelatedField(source="trip", read_only=True)
     customer_contact_id = serializers.PrimaryKeyRelatedField(source="customer_contact", read_only=True)
     patient_id = serializers.PrimaryKeyRelatedField(source="patient", read_only=True)
-    
+
     # Include related object details for display
     trip = TripReadSerializer(read_only=True)
     customer_contact = ContactSerializer(read_only=True)
     patient = PatientReadSerializer(read_only=True)
     unsigned_document = DocumentReadSerializer(read_only=True)
     signed_document = DocumentReadSerializer(read_only=True)
-    
+
     # Display fields
     contract_type_display = serializers.CharField(source='get_contract_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    
+
+    # Use encrypted helper methods for all PHI fields
+    signer_email = serializers.SerializerMethodField()
+    signer_name = serializers.SerializerMethodField()
+    notes = serializers.SerializerMethodField()
+
+    def get_signer_email(self, obj):
+        return obj.get_signer_email()
+
+    def get_signer_name(self, obj):
+        return obj.get_signer_name()
+
+    def get_notes(self, obj):
+        return obj.get_notes()
+
     class Meta:
         model = Contract
         fields = [
