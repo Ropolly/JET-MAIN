@@ -23,6 +23,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from io import BytesIO
 import logging
+from .decorators import is_hipaa_protected
 # TripEvent imports moved to consolidated imports section below
 
 from .external.airport import get_airport, parse_fuel_cost
@@ -1363,7 +1364,7 @@ class TripViewSet(BaseViewSet):
             permission_classes = [permissions.IsAuthenticated, CanReadTrip]
         elif self.action == 'create':
             permission_classes = [permissions.IsAuthenticated, CanWriteTrip]
-        elif self.action in ['update', 'partial_update', 'generate_itineraries', 'generate_handling_requests']:
+        elif self.action in ['update', 'partial_update', 'generate_itineraries', 'generate_handling_requests', 'generate_gen_dec']:
             permission_classes = [permissions.IsAuthenticated, CanModifyTrip]
         elif self.action == 'destroy':
             permission_classes = [permissions.IsAuthenticated, CanDeleteTrip]
@@ -1482,7 +1483,7 @@ class TripViewSet(BaseViewSet):
                 )
                 
                 # Define file paths
-                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'itin.pdf')
+                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'itin-2.pdf')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"itin_{trip.trip_number}_crew_{crew_line.id.hex[:8]}_{timestamp}.pdf"
                 output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
@@ -1644,6 +1645,90 @@ class TripViewSet(BaseViewSet):
             return Response({
                 'success': False,
                 'message': f'Error generating handling request documents: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def generate_gen_dec(self, request, pk=None):
+        """
+        Generate general declaration documents for the trip with all current occupants
+        Uses enhanced gen_dec.py module with proper member titles (PIC, SIC, MED, PAX)
+        """
+        import os
+        from datetime import datetime
+        from django.conf import settings
+        from documents.templates.gen_dec import populate_gen_dec_pdf_enhanced, create_gen_dec_data_from_trip
+        
+        trip = self.get_object()
+        
+        try:
+            # Check if trip has required data
+            first_trip_line = trip.trip_lines.first()
+            
+            if not first_trip_line:
+                return Response({
+                    'success': False,
+                    'message': 'No trip lines found for this trip'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create enhanced gen dec data with proper member titles
+            gen_dec_data = create_gen_dec_data_from_trip(trip)
+            
+            if gen_dec_data.total_occupants == 0:
+                return Response({
+                    'success': False,
+                    'message': 'No occupants found for this trip'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Define file paths
+            template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'gen_dec.pdf')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"gen_dec_{trip.trip_number}_{timestamp}.pdf"
+            output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
+            
+            # Generate the PDF using enhanced function
+            success = populate_gen_dec_pdf_enhanced(template_path, output_path, gen_dec_data)
+            
+            if success:
+                # Create Document record for tracking
+                from .models import Document
+                document = Document.objects.create(
+                    filename=output_filename,
+                    file_path=output_path,
+                    document_type='gendec',
+                    trip=trip,
+                    created_by=request.user if request.user.is_authenticated else None
+                )
+                
+                # Create detailed occupant list with proper titles
+                occupant_details = [str(member) for member in gen_dec_data.members]
+                
+                return Response({
+                    'success': True,
+                    'message': 'General declaration document generated successfully',
+                    'file': {
+                        'filename': output_filename,
+                        'path': output_path,
+                        'document_id': str(document.id),
+                        'total_occupants': gen_dec_data.total_occupants,
+                        'occupant_breakdown': {
+                            'PIC': gen_dec_data.pic_count,
+                            'SIC': gen_dec_data.sic_count,
+                            'MED': gen_dec_data.med_count,
+                            'PAX': gen_dec_data.pax_count
+                        },
+                        'occupant_details': occupant_details
+                    }
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Failed to generate general declaration document'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'Error generating general declaration: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'])
