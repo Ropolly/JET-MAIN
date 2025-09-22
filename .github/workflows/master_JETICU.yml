@@ -30,7 +30,7 @@ jobs:
       uses: docker/build-push-action@v3
       with:
         push: true
-        tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_291cc939e4a547cf80613043d55476b9 }}/ryanmyrmel/jeticu:${{ github.sha }}
+        tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_291cc939e4a547cf80613043d55476b9 }}/jeticu:${{ github.sha }}
         file: ./Dockerfile
 
   deploy:
