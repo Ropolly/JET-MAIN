@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_API_URL: /api
+    ports:
+      - "80:80"
+      - "8000:8000"
+    environment:
+      # Database configuration
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=jeticu
+      - DB_USER=jeticu
+      - DB_PASSWORD=jeticu_password
+      
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=backend.settings
+      - DJANGO_SECRET_KEY=your-secret-key-here
+      - DJANGO_DEBUG=False
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      
+      # Superuser creation
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@jeticu.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123
+      
+      # Setup flags
+      - LOAD_INITIAL_DATA=true
+      - RUN_SETUP_COMMANDS=true
+    volumes:
+      - static_volume:/app/backend/static
+      - media_volume:/app/backend/media
+      - documents_volume:/app/backend/documents
+    depends_on:
+      - db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/", "&&", "curl", "-f", "http://localhost/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=jeticu
+      - POSTGRES_USER=jeticu
+      - POSTGRES_PASSWORD=jeticu_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jeticu -d jeticu"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+  documents_volume:
