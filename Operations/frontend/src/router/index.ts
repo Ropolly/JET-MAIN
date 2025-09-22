@@ -622,7 +622,7 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import("@/views/admin/FBOs.vue"),
         meta: {
           pageTitle: "FBOs",
-          breadcrumbs: ["Administration", "Contacts", "FBOs"],
+          breadcrumbs: ["Administration", "Contacts", "FBOs "],
           middleware: "auth",
         },
       },
