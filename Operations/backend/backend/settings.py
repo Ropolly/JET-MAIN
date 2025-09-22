@@ -141,22 +141,10 @@ CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174',
-    'https://localhost:5173',
-    'https://localhost:5174',
-    'https://localhost:5175',
-    'https://localhost:5176',
-    'https://localhost:5177',
-    'https://localhost:5178',
-    'https://127.0.0.1:5173',
-    'https://127.0.0.1:5174',
-    'https://127.0.0.1:5175',
-    'https://127.0.0.1:5176',
-    'https://127.0.0.1:5177',
-    'https://127.0.0.1:5178',
+    'http://localhost',
+    'https://localhost',
+    'http://127.0.0.1',
+    'https://127.0.0.1',
 ]
 
 # REST Framework settings
