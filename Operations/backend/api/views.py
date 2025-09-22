@@ -353,7 +353,6 @@ class AgreementViewSet(BaseViewSet):
         return Response(serializer.data)
 
 # Patient ViewSet
-@is_hipaa_protected()
 class PatientViewSet(BaseViewSet):
     queryset = Patient.objects.select_related('info')
     # Remove search_fields to prevent DRF SearchFilter from interfering with our custom search
