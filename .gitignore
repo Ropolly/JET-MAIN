@@ -25,3 +25,5 @@ docker-compose.override.yml
 .gitignore
 # Static files
 staticfiles/
+Operations/backend/documents/templates/nosign_out
+*.sqlite3

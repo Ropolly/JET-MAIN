@@ -31,7 +31,6 @@ def test_transaction_endpoints():
         method="GET",
         title="List Transactions (Staff)"
     )
-    
     # Test 2: Get specific transaction (if we have data)
     transaction_id = None
     transaction_key = None
