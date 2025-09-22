@@ -31,7 +31,7 @@ jobs:
       with:
         push: true
         tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_304ac6fd7c6647c28c47726ffb1c881f }}/ryanmyrmel/jeticu:${{ github.sha }}
-        file: ./Dockerfile
+        file: Operations/Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
