@@ -16,6 +16,10 @@ reportlab>=4.4.3
 twilio>=9.0.0
 django-filter>=25.0
 
+# Production Server
+gunicorn>=21.2.0,<22.0.0
+gevent>=23.0.0,<24.0.0  # For async workers
+
 # Cryptography and Security
 cryptography>=41.0.0,<42.0.0  # For AES-GCM encryption
 pycryptodome>=3.19.0  # Alternative crypto library (optional)
