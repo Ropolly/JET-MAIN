@@ -1,49 +1,6 @@
 version: '3.8'
 
 services:
-  # Nginx Reverse Proxy
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    container_name: jeticu-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      # SSL certificates
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
-      # Logs
-      - ./logs/nginx:/var/log/nginx
-      # Cache
-      - nginx_cache:/var/cache/nginx
-    environment:
-      - DOMAIN_NAME=jeticuops.com
-      - BACKEND_HOST=backend
-      - BACKEND_PORT=8000
-      - FRONTEND_HOST=frontend
-      - FRONTEND_PORT=80
-    networks:
-      - jeticu-network
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
   # Django Backend API
   backend:
     build:
@@ -51,8 +8,8 @@ services:
       dockerfile: Dockerfile
     container_name: jeticu-backend
     restart: unless-stopped
-    expose:
-      - "8000"  # Only expose internally, not to host
+    ports:
+      - "8080:8000"  # Only expose internally, not to host
     volumes:
       - static_volume:/app/static
       - media_volume:/app/media
@@ -61,7 +18,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DJANGO_SETTINGS_MODULE=backend.settings.production
+      - DJANGO_SETTINGS_MODULE=backend.settings
       - ALLOWED_HOSTS=jeticuops.com,www.jeticuops.com,localhost
       - CSRF_TRUSTED_ORIGINS=https://jeticuops.com,https://www.jeticuops.com
     networks:
@@ -87,8 +44,8 @@ services:
         VITE_APP_API_URL: https://jeticuops.com/api
     container_name: jeticu-frontend
     restart: unless-stopped
-    expose:
-      - "80"  # Only expose internally, not to host
+    ports:
+      - "8081:80"  # Only expose internally, not to host
     volumes:
       - static_volume:/usr/share/nginx/html/static:ro
       - media_volume:/usr/share/nginx/html/media:ro

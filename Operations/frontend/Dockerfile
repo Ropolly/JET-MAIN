@@ -35,19 +35,12 @@ RUN apk add --no-cache curl
 RUN rm -rf /etc/nginx/conf.d/default.conf
 
 # Copy nginx configurations
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/nginx.conf
 COPY nginx-ssl.conf /etc/nginx/conf.d/ssl.conf
 
-# Create script to switch between HTTP and HTTPS configurations
-RUN echo '#!/bin/sh\n\
-if [ -f "/etc/nginx/ssl/live/${NGINX_HOST}/fullchain.pem" ]; then\n\
-    echo "SSL certificates found, using HTTPS configuration"\n\
-    cp /etc/nginx/conf.d/ssl.conf /etc/nginx/conf.d/default.conf\n\
-else\n\
-    echo "No SSL certificates found, using HTTP configuration"\n\
-    cp /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf\n\
-fi\n\
-exec "$@"' > /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
+# Copy custom entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Create directory for Let's Encrypt challenges
 RUN mkdir -p /var/www/certbot

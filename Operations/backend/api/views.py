@@ -28,6 +28,9 @@ from .decorators import is_hipaa_protected
 
 from .external.airport import get_airport, parse_fuel_cost
 
+def health_check(request):
+    return JsonResponse({"status": "ok"})
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_fuel_prices(request, airport_code):

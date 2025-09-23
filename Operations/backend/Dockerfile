@@ -59,7 +59,7 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=backend.settings.production
+    DJANGO_SETTINGS_MODULE=backend.settings
 
 # Health check with improved timing
 HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
@@ -69,4 +69,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Optimized Gunicorn command for production
-CMD ["gunicorn", "backend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--worker-class", "gevent", "--worker-connections", "1000", "--timeout", "120", "--keepalive", "5", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]
+CMD ["gunicorn", "backend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--worker-class", "gevent", "--worker-connections", "1000", "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]

@@ -27,3 +27,7 @@ docker-compose.override.yml
 staticfiles/
 Operations/backend/documents/templates/nosign_out
 *.sqlite3
+# Environment files
+.env
+.env.*
+!.env.example

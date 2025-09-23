@@ -18,7 +18,7 @@ services:
     env_file:
       - .env.azure
     environment:
-      - DJANGO_SETTINGS_MODULE=backend.settings.production
+      - DJANGO_SETTINGS_MODULE=backend.settings
     networks:
       - jeticu-network
     healthcheck:
