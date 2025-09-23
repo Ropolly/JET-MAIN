@@ -1808,7 +1808,6 @@ class SetPasswordSerializer(serializers.Serializer):
     """Serializer for setting password with token."""
     token = serializers.CharField(max_length=255)
     password = serializers.CharField(min_length=8, max_length=128)
-    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
     def validate_password(self, value):
         """Validate password strength."""

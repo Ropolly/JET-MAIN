@@ -3609,28 +3609,14 @@ def set_password(request):
         user.is_active = True  # Activate user
         user.save()
 
-        # Update profile with phone number if provided
-        if data.get('phone'):
-            try:
-                profile = user.profile
-                profile.phone = data['phone']
-                profile.status = 'active'
-                profile.save()
-            except Exception:
-                # Create profile if it doesn't exist
-                UserProfile.objects.create(
-                    user=user,
-                    phone=data['phone'],
-                    status='active'
-                )
-        else:
-            # Just update status if profile exists
-            try:
-                profile = user.profile
-                profile.status = 'active'
-                profile.save()
-            except Exception:
-                pass
+        # Update profile status to active
+        try:
+            profile = user.profile
+            profile.status = 'active'
+            profile.save()
+        except Exception:
+            # Profile should already exist from user creation, but handle edge case
+            pass
 
         # Mark token as used
         token_obj.is_used = True
