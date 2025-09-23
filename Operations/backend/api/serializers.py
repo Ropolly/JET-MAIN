@@ -231,8 +231,15 @@ class ContactWriteSerializer(serializers.ModelSerializer):
                         search_hash = FieldEncryption.generate_search_hash(str(value))
                         setattr(contact, f"{field_name}_hash", search_hash)
                 except Exception as e:
-                    # Log the error but don't fail the operation
-                    pass
+                    # Log the error and raise it for proper handling
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to encrypt {field_name}: {str(e)}")
+                    # Clean up the partially created contact
+                    contact.delete()
+                    raise serializers.ValidationError(
+                        f"Encryption error: Unable to secure sensitive data. Please contact support if this persists."
+                    )
 
         contact.save()
         return contact
@@ -266,8 +273,12 @@ class ContactWriteSerializer(serializers.ModelSerializer):
                         search_hash = FieldEncryption.generate_search_hash(str(value))
                         setattr(instance, f"{field_name}_hash", search_hash)
                 except Exception as e:
-                    # Log the error but don't fail the operation
-                    pass
+                    # Log the error
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to encrypt {field_name} during update: {str(e)}")
+                    # For updates, we'll continue but log the issue
+                    # This preserves data integrity for existing records
             else:
                 # Clear encrypted field if legacy field is empty
                 setattr(instance, f"{field_name}_encrypted", None)

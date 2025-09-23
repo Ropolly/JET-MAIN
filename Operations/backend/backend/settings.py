@@ -36,6 +36,9 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 SECRET_KEY = 'django-insecure-6r7f((os!(^y(1j7tti@m5-fm-rx*rdb5%nxo4wfu1)0&h8@*u'
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 
+# Key Vault Configuration (optional - defaults to using ENCRYPTION_KEY from environment)
+KEY_VAULT_TYPE = os.environ.get('KEY_VAULT_TYPE', 'settings')  # 'settings', 'azure', 'aws', or 'development'
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
 
