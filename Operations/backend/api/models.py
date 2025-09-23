@@ -212,6 +212,40 @@ class UserProfile(BaseModel):
                 pass
         return self.zip or ''
 
+    def save(self, *args, **kwargs):
+        """Override save to automatically encrypt PHI fields."""
+        from .encryption import FieldEncryption
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Define fields that need encryption for UserProfile
+        text_fields = [
+            'first_name', 'last_name', 'email', 'phone',
+            'address_line1', 'address_line2', 'city', 'state', 'zip', 'country'
+        ]
+        searchable_fields = ['email', 'phone']
+
+        # Encrypt text fields
+        for field_name in text_fields:
+            value = getattr(self, field_name, None)
+            if value and not getattr(self, f"{field_name}_encrypted", None):
+                try:
+                    # Encrypt the value
+                    encrypted_value = FieldEncryption.encrypt(str(value))
+                    setattr(self, f"{field_name}_encrypted", encrypted_value)
+
+                    # Generate search hash for searchable fields
+                    if field_name in searchable_fields:
+                        search_hash = FieldEncryption.generate_search_hash(str(value))
+                        setattr(self, f"{field_name}_hash", search_hash)
+                except Exception as e:
+                    logger.warning(f"Could not encrypt UserProfile {field_name}: {str(e)}")
+                    # Continue saving - don't block the save operation
+
+        # Call parent save
+        super().save(*args, **kwargs)
+
     class Meta:
         indexes = [
             models.Index(fields=['email_hash']),

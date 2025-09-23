@@ -3437,12 +3437,37 @@ def create_user_with_token(request):
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
+        import logging
+        import traceback
+
+        logger = logging.getLogger(__name__)
+
+        # Log detailed error information
+        logger.error(f"User creation failed for {data.get('email', 'unknown')}: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
         # Clean up if user was created but something failed
         if 'user' in locals():
-            user.delete()
+            try:
+                user.delete()
+                logger.info(f"Cleaned up partially created user for {data.get('email', 'unknown')}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup user: {str(cleanup_error)}")
+
+        # Provide specific error messages based on the error type
+        if "encryption" in str(e).lower():
+            error_message = "Failed to secure user data. Please contact support."
+            logger.error(f"Encryption error during user creation: {str(e)}")
+        elif "email" in str(e).lower() or "smtp" in str(e).lower():
+            error_message = "User created but email could not be sent. Please contact support."
+        elif "database" in str(e).lower() or "integrity" in str(e).lower():
+            error_message = "Database error occurred. Please try again or contact support."
+        else:
+            error_message = f"User creation failed: {str(e)}"
 
         return Response({
-            'error': f'Failed to create user: {str(e)}'
+            'error': error_message,
+            'details': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
