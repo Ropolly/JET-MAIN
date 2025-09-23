@@ -3328,19 +3328,6 @@ def generate_secure_token():
     return secrets.token_urlsafe(32)
 
 
-def create_activation_token(user, email, token_type='activation', hours=24):
-    """Create an activation or reset token for a user."""
-    token = generate_secure_token()
-    expires_at = timezone.now() + timedelta(hours=hours)
-
-    return UserActivationToken.objects.create(
-        user=user,
-        token=token,
-        email=email,
-        token_type=token_type,
-        expires_at=expires_at
-    )
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -3395,7 +3382,8 @@ def create_user_with_token(request):
             user.save()
 
         # Create activation token
-        token_obj = create_activation_token(user, data['email'], 'activation')
+        from .models import UserActivationToken
+        token_obj, raw_token = UserActivationToken.create_token(user, data['email'], 'activation')
 
         # Send activation email if requested
         if data.get('send_activation_email', True):
@@ -3406,14 +3394,14 @@ def create_user_with_token(request):
                     email=data['email'],
                     first_name=data['first_name'],
                     last_name=data['last_name'],
-                    token=token_obj.token,
+                    token=raw_token,
                     frontend_url=frontend_url
                 )
                 if not email_sent:
                     logger.error(f"Failed to send activation email to {data['email']}")
             except Exception as e:
                 logger.error(f"SMTP error sending activation email to {data['email']}: {str(e)}")
-                logger.info(f"Activation token for {data['email']}: {token_obj.token}")
+                logger.info(f"Activation token for {data['email']}: {raw_token}")
                 email_sent = False
 
         # Prepare success message based on email status
@@ -3433,7 +3421,7 @@ def create_user_with_token(request):
             'message': message,
             'user_id': user.id,
             'profile': serialized_profile,
-            'token': token_obj.token if not data.get('send_activation_email', True) or not locals().get('email_sent', False) else None
+            'token': raw_token if not data.get('send_activation_email', True) or not locals().get('email_sent', False) else None
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
@@ -3483,7 +3471,11 @@ def verify_token(request):
     token = serializer.validated_data['token']
 
     try:
-        token_obj = UserActivationToken.objects.get(token=token)
+        # Use the verify_token class method - we need to pass email as well
+        # For now, let's look up by token_hash directly
+        import hashlib
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_obj = UserActivationToken.objects.get(token_hash=token_hash)
 
         if not token_obj.is_valid():
             if token_obj.is_used:
@@ -3546,7 +3538,7 @@ def resend_activation_email(request):
 
         # Create new activation token (invalidate old ones)
         UserActivationToken.objects.filter(user=user, token_type='activation').update(is_used=True)
-        token_obj = create_activation_token(user, profile.email, 'activation')
+        token_obj, raw_token = UserActivationToken.create_token(user, profile.email, 'activation')
 
         # Send activation email
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5179')
@@ -3556,14 +3548,14 @@ def resend_activation_email(request):
                 email=profile.email,
                 first_name=profile.first_name,
                 last_name=profile.last_name,
-                token=token_obj.token,
+                token=raw_token,
                 frontend_url=frontend_url
             )
             if not email_sent:
                 logger.error(f"Failed to send activation email to {profile.email}")
         except Exception as e:
             logger.error(f"SMTP error sending activation email to {profile.email}: {str(e)}")
-            logger.info(f"Activation token for {profile.email}: {token_obj.token}")
+            logger.info(f"Activation token for {profile.email}: {raw_token}")
             email_sent = False
 
         # Prepare success message based on email status
@@ -3574,7 +3566,7 @@ def resend_activation_email(request):
 
         return Response({
             'message': message,
-            'token': token_obj.token if not email_sent else None
+            'token': raw_token if not email_sent else None
         }, status=status.HTTP_200_OK)
 
     except UserProfile.DoesNotExist:
@@ -3600,7 +3592,10 @@ def set_password(request):
     data = serializer.validated_data
 
     try:
-        token_obj = UserActivationToken.objects.get(token=data['token'])
+        # Look up by token_hash
+        import hashlib
+        token_hash = hashlib.sha256(data['token'].encode()).hexdigest()
+        token_obj = UserActivationToken.objects.get(token_hash=token_hash)
 
         if not token_obj.is_valid():
             return Response({
@@ -3668,7 +3663,7 @@ def forgot_password(request):
         user = User.objects.get(email=email, is_active=True)
 
         # Create reset token
-        token_obj = create_activation_token(user, email, 'password_reset', hours=2)  # 2 hour expiry
+        token_obj, raw_token = UserActivationToken.create_token(user, email, 'password_reset', expires_in_hours=2)  # 2 hour expiry
 
         # Send reset email with error handling
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5179')
@@ -3676,7 +3671,7 @@ def forgot_password(request):
         try:
             email_sent = send_password_reset_email(
                 email=email,
-                token=token_obj.token,
+                token=raw_token,
                 frontend_url=frontend_url
             )
 
@@ -3686,7 +3681,7 @@ def forgot_password(request):
             # Log the error but don't fail the request - for security don't reveal SMTP issues
             logger.error(f"SMTP error sending password reset email to {email}: {str(e)}")
             # For debugging purposes when SMTP isn't configured, log the token
-            logger.info(f"Password reset token for {email}: {token_obj.token}")
+            logger.info(f"Password reset token for {email}: {raw_token}")
 
         # Always return success for security - don't reveal whether email actually sent
         return Response({
