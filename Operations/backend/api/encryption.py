@@ -46,7 +46,7 @@ class FieldEncryption:
     @classmethod
     def get_encryption_key(cls, key_id: Optional[str] = None) -> bytes:
         """
-        Retrieve a Data Encryption Key (DEK) from key vault.
+        Retrieve a Data Encryption Key (DEK) from settings or key vault.
 
         Args:
             key_id: Optional specific key ID, uses default if None
@@ -57,35 +57,47 @@ class FieldEncryption:
         Raises:
             KeyVaultError: If key retrieval fails
         """
-        try:
-            # Import here to avoid circular imports
-            from ..utils.key_vault import get_key_vault_manager
+        # First, try to get key from settings (production preferred method)
+        key_material = getattr(settings, 'ENCRYPTION_KEY', None)
 
-            key_vault = get_key_vault_manager()
-            return key_vault.get_encryption_key(key_id or 'default')
-
-        except Exception as e:
-            # Fallback for development/testing
-            if settings.DEBUG:
-                key_material = getattr(settings, 'ENCRYPTION_KEY', None)
-                if not key_material:
-                    # Generate a deterministic key for development only
-                    key_material = hashlib.sha256(b'development-key-do-not-use-in-production').digest()
-
+        if key_material:
+            try:
                 if isinstance(key_material, str):
-                    # If it's a hex string, decode it
-                    if len(key_material) == 64:  # 32 bytes = 64 hex chars
+                    # Handle base64 encoded keys (standard format)
+                    if '=' in key_material or '+' in key_material or '/' in key_material:
+                        key_material = base64.b64decode(key_material)
+                    # Handle hex encoded keys
+                    elif len(key_material) == 64:  # 32 bytes = 64 hex chars
                         key_material = bytes.fromhex(key_material)
                     else:
-                        # If it's base64 encoded
+                        # Try base64 decode for URL-safe format
                         key_material = base64.b64decode(key_material)
 
                 if len(key_material) != cls.DEFAULT_DEK_SIZE:
                     raise KeyVaultError(f"Invalid key size: {len(key_material)} bytes, expected {cls.DEFAULT_DEK_SIZE}")
 
                 return key_material
-            else:
-                raise KeyVaultError(f"Failed to retrieve encryption key: {str(e)}")
+            except Exception as decode_error:
+                raise KeyVaultError(f"Failed to decode ENCRYPTION_KEY: {str(decode_error)}")
+
+        # If no key in settings, try key vault (for advanced deployments)
+        key_vault_type = getattr(settings, 'KEY_VAULT_TYPE', None)
+        if key_vault_type and key_vault_type != 'settings':
+            try:
+                from ..utils.key_vault import get_key_vault_manager
+                key_vault = get_key_vault_manager()
+                return key_vault.get_encryption_key(key_id or 'default')
+            except Exception as e:
+                raise KeyVaultError(f"Key vault error: {str(e)}")
+
+        # No key available - this is a configuration error
+        if settings.DEBUG:
+            # Development fallback - use deterministic key
+            import logging
+            logging.warning("No ENCRYPTION_KEY configured - using development key")
+            return hashlib.sha256(b'development-key-do-not-use-in-production').digest()
+        else:
+            raise KeyVaultError("ENCRYPTION_KEY not configured. Please set ENCRYPTION_KEY in environment variables.")
 
     @classmethod
     def encrypt(cls, plaintext: str, key_id: Optional[str] = None) -> str:

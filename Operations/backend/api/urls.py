@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from api.views import health_check
 
 router = DefaultRouter()
 router.register(r'permissions', views.PermissionViewSet)
@@ -33,6 +34,7 @@ router.register(r'lost-reasons', views.LostReasonViewSet, basename='lost-reason'
 urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+    path("health/", health_check),
     path('airport/fuel-prices/<str:airport_code>/', views.get_fuel_prices, name='fuel-prices'),
     path('dashboard/stats/', views.dashboard_stats, name='dashboard-stats'),
     path('contacts/create-with-related/', views.create_contact_with_related, name='create-contact-with-related'),

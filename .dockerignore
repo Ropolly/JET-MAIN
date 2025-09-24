@@ -1,0 +1,76 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+Project.md
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local development
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build artifacts
+Operations/frontend/dist
+Operations/frontend/node_modules
+Operations/backend/static
+Operations/backend/media
+Operations/backend/*.log
+Operations/backend/db.sqlite3
+
+# Docker
+Dockerfile.dev
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+*.temp

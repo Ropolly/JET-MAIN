@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # Django Backend API
+  backend:
+    build:
+      context: ./Operations/backend
+      dockerfile: Dockerfile
+    container_name: jeticu-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - static_volume:/app/static
+      - media_volume:/app/media
+      - documents_volume:/app/documents
+      - logs_volume:/app/logs
+    env_file:
+      - .env.azure
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+    networks:
+      - jeticu-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Vue Frontend with Nginx (Static Files Only)
+  frontend:
+    build:
+      context: ./Operations/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_API_URL: /api
+    container_name: jeticu-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"  # Internal port for host nginx to proxy to
+    volumes:
+      - static_volume:/usr/share/nginx/html/static:ro
+      - media_volume:/usr/share/nginx/html/media:ro
+      - documents_volume:/usr/share/nginx/html/documents:ro
+    environment:
+      - NGINX_HOST=${DOMAIN_NAME:-localhost}
+    networks:
+      - jeticu-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  jeticu-network:
+    driver: bridge
+
+volumes:
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+  documents_volume:
+    driver: local
+  logs_volume:
+    driver: local
