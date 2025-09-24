@@ -1,70 +1,81 @@
 version: '3.8'
 
 services:
-  app:
+  # Django Backend API
+  backend:
     build:
-      context: .
+      context: ./Operations/backend
       dockerfile: Dockerfile
-      args:
-        VITE_APP_API_URL: /api
-    ports:
-      - "80:80"
-      - "8000:8000"
-    environment:
-      # Database configuration
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=jeticu
-      - DB_USER=jeticu
-      - DB_PASSWORD=jeticu_password
-      
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=backend.settings
-      - DJANGO_SECRET_KEY=your-secret-key-here
-      - DJANGO_DEBUG=False
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
-      
-      # Superuser creation
-      - DJANGO_SUPERUSER_USERNAME=admin
-      - DJANGO_SUPERUSER_EMAIL=admin@jeticu.com
-      - DJANGO_SUPERUSER_PASSWORD=admin123
-      
-      # Setup flags
-      - LOAD_INITIAL_DATA=true
-      - RUN_SETUP_COMMANDS=true
-    volumes:
-      - static_volume:/app/backend/static
-      - media_volume:/app/backend/media
-      - documents_volume:/app/backend/documents
-    depends_on:
-      - db
+    container_name: jeticu-backend
     restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - static_volume:/app/static
+      - media_volume:/app/media
+      - documents_volume:/app/documents
+      - logs_volume:/app/logs
+    env_file:
+      - .env.azure
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+    networks:
+      - jeticu-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/", "&&", "curl", "-f", "http://localhost/api/health/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=jeticu
-      - POSTGRES_USER=jeticu
-      - POSTGRES_PASSWORD=jeticu_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+  # Vue Frontend with Nginx (Static Files Only)
+  frontend:
+    build:
+      context: ./Operations/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_API_URL: /api
+    container_name: jeticu-frontend
     restart: unless-stopped
+    ports:
+      - "3000:80"  # Internal port for host nginx to proxy to
+    volumes:
+      - static_volume:/usr/share/nginx/html/static:ro
+      - media_volume:/usr/share/nginx/html/media:ro
+      - documents_volume:/usr/share/nginx/html/documents:ro
+    environment:
+      - NGINX_HOST=${DOMAIN_NAME:-localhost}
+    networks:
+      - jeticu-network
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jeticu -d jeticu"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  jeticu-network:
+    driver: bridge
 
 volumes:
-  postgres_data:
   static_volume:
+    driver: local
   media_volume:
+    driver: local
   documents_volume:
+    driver: local
+  logs_volume:
+    driver: local

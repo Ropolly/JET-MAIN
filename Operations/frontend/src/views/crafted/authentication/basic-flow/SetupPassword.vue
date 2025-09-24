@@ -108,34 +108,6 @@
         </div>
         <!--end::Input group-->
 
-        <!--begin::Input group - Phone Number-->
-        <div class="fv-row mb-10">
-          <PhoneNumberInput
-            v-model="phoneNumber"
-            label="Phone Number"
-            :required="true"
-            :auto-format="true"
-            :validate-on-input="true"
-            placeholder="(555) 123-4567"
-            help-text="Please provide your phone number for account security."
-            @validation-change="handlePhoneValidation"
-            ref="phoneInputRef"
-          />
-
-
-          <!-- Hidden field for form validation -->
-          <Field
-            type="hidden"
-            name="phone"
-            :value="phoneNumber"
-          />
-          <div class="fv-plugins-message-container">
-            <div class="fv-help-block">
-              <ErrorMessage name="phone" />
-            </div>
-          </div>
-        </div>
-        <!--end::Input group-->
 
         <!--begin::Actions-->
         <div class="text-center">
@@ -160,15 +132,6 @@
     </VForm>
     <!--end::Form-->
 
-    <!-- SMS Verification Modal -->
-    <SMSVerificationModal
-      ref="smsModalRef"
-      title="Verify Phone Number"
-      phone-input-message="We'll send a verification code to confirm your phone number"
-      :initial-phone-number="phoneNumber"
-      :allow-phone-edit="false"
-      @phone-verified="handlePhoneVerified"
-    />
   </div>
   <!--end::Wrapper-->
 </template>
@@ -180,8 +143,6 @@ import { ErrorMessage, Field, Form as VForm } from "vee-validate";
 import * as Yup from "yup";
 import Swal from "sweetalert2";
 import ApiService from "@/core/services/ApiService";
-import PhoneNumberInput from "@/components/forms/PhoneNumberInput.vue";
-import SMSVerificationModal from "@/components/modals/SMSVerificationModal.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
@@ -189,39 +150,13 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const submitButton = ref<HTMLButtonElement | null>(null);
-const phoneInputRef = ref<InstanceType<typeof PhoneNumberInput> | null>(null);
-const smsModalRef = ref<InstanceType<typeof SMSVerificationModal> | null>(null);
 
 const showPassword = ref(false);
 const showConfirmPassword = ref(false);
 const isSubmitting = ref(false);
 const tokenStatus = ref<'validating' | 'valid' | 'invalid'>('validating');
 const userData = ref<any>(null);
-const formValues = ref<any>({}); // Store form values for SMS verification completion
 
-// Phone verification state
-const phoneNumber = ref(""); // Raw digits from v-model
-const validatedPhoneNumber = ref(""); // E.164 format from validation
-const isPhoneValid = ref(false);
-const isPhoneVerified = ref(false);
-const isSendingCode = ref(false);
-
-// Computed properties
-const maskedPhone = computed(() => {
-  if (!validatedPhoneNumber.value) return "";
-
-  const cleaned = validatedPhoneNumber.value.replace(/\D/g, "");
-  if (cleaned.length === 11 && cleaned.startsWith("1")) {
-    const areaCode = cleaned.slice(1, 4);
-    const last = cleaned.slice(7, 11);
-    return `+1 (${areaCode}) ***-${last}`;
-  } else if (cleaned.length === 10) {
-    const areaCode = cleaned.slice(0, 3);
-    const last = cleaned.slice(6, 10);
-    return `(${areaCode}) ***-${last}`;
-  }
-  return validatedPhoneNumber.value;
-});
 
 // Form validation schema
 const setupPasswordSchema = Yup.object().shape({
@@ -230,74 +165,9 @@ const setupPasswordSchema = Yup.object().shape({
     .required("Password is required"),
   confirmPassword: Yup.string()
     .oneOf([Yup.ref("password")], "Passwords must match")
-    .required("Please confirm your password"),
-  phone: Yup.string()
-    .required("Phone number is required")
+    .required("Please confirm your password")
 });
 
-// Phone verification methods
-function handlePhoneValidation(isValid: boolean, formattedNumber: string) {
-  console.log('Phone validation:', { isValid, formattedNumber, rawPhone: phoneNumber.value });
-  isPhoneValid.value = isValid;
-  if (isValid && formattedNumber) {
-    validatedPhoneNumber.value = formattedNumber; // Store the E.164 format
-  }
-
-  // Reset verification status if phone changes
-  if (isPhoneVerified.value && validatedPhoneNumber.value !== formattedNumber) {
-    isPhoneVerified.value = false;
-  }
-}
-
-
-async function handlePhoneVerified(data: { phoneNumber: string, verificationCode: string }) {
-  isPhoneVerified.value = true;
-  validatedPhoneNumber.value = data.phoneNumber;
-
-  // Now complete the password setup process
-  const token = route.query.token as string;
-
-  try {
-    const response = await ApiService.post('/auth/set-password/', {
-      token: token,
-      password: formValues.value.password,
-      phone: validatedPhoneNumber.value
-    });
-
-    // Show success message
-    await Swal.fire({
-      title: "Welcome!",
-      text: "Your account has been activated successfully with phone verification. You can now sign in.",
-      icon: "success",
-      confirmButtonText: "Continue to Sign In"
-    });
-
-    // Redirect to sign-in page
-    router.push('/sign-in');
-
-  } catch (error: any) {
-    console.error('Setup password error:', error);
-
-    let errorMessage = "Failed to set up your password. Please try again.";
-
-    if (error.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data;
-      } else if (error.response.data.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.response.data.error) {
-        errorMessage = error.response.data.error;
-      }
-    }
-
-    Swal.fire({
-      title: "Error",
-      text: errorMessage,
-      icon: "error",
-      confirmButtonText: "Try Again"
-    });
-  }
-}
 
 // Validate token on component mount
 onMounted(async () => {
@@ -327,17 +197,6 @@ onMounted(async () => {
 const onSubmitSetupPassword = async (values: any) => {
   if (isSubmitting.value) return;
 
-  // Validate phone number is provided and valid
-  if (!isPhoneValid.value || !validatedPhoneNumber.value) {
-    Swal.fire({
-      title: "Invalid Phone Number",
-      text: "Please enter a valid phone number.",
-      icon: "warning",
-      confirmButtonText: "OK"
-    });
-    return;
-  }
-
   const token = route.query.token as string;
 
   if (!token) {
@@ -353,36 +212,31 @@ const onSubmitSetupPassword = async (values: any) => {
   isSubmitting.value = true;
 
   try {
-    // Store form values for completion after SMS verification
-    formValues.value = values;
-
-    // Step 1: Send SMS verification code
-    console.log('Sending SMS to:', validatedPhoneNumber.value);
-    const smsResult = await authStore.sendSmsCode(validatedPhoneNumber.value);
-
-    if (!smsResult.success) {
-      throw new Error(smsResult.error || "Failed to send verification code");
-    }
-
-    // Step 2: Show SMS verification modal
-    if (smsModalRef.value) {
-      smsModalRef.value.show();
-    }
-
-    Swal.fire({
-      text: "Verification code sent to your phone!",
-      icon: "info",
-      buttonsStyling: false,
-      timer: 2000,
-      showConfirmButton: false,
-      heightAuto: false,
+    const response = await ApiService.post('/auth/set-password/', {
+      token: token,
+      password: values.password
     });
 
-  } catch (error: any) {
-    console.error('Error sending SMS code:', error);
+    if (response.data.success) {
+      Swal.fire({
+        title: "Success!",
+        text: "Your password has been set successfully. You can now sign in.",
+        icon: "success",
+        confirmButtonText: "Continue to Sign In"
+      }).then(() => {
+        router.push({ name: "sign-in" });
+      });
+    } else {
+      throw new Error(response.data.error || "Failed to set password");
+    }
 
-    let errorMessage = "Failed to send verification code. Please try again.";
-    if (error.message) {
+  } catch (error: any) {
+    console.error('Error setting password:', error);
+
+    let errorMessage = "Failed to set password. Please try again.";
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    } else if (error.message) {
       errorMessage = error.message;
     }
 
