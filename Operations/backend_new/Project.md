@@ -1,36 +1,16 @@
 ```
 backend_new/
 ├── 📎 .python-version
-├── 📂 main/
+├── 📂 core/
 │   ├── 🐍 __init__.py
 │   ├── 🐍 asgi.py
 │   ├── 🐍 settings.py
 │   ├── 🐍 urls.py
 │   └── 🐍 wsgi.py
-├── 🐍 main.py
-├── 🐍 manage.py
-├── 📂 operations/
-│   ├── 🐍 __init__.py
-│   ├── 🐍 admin.py
-│   ├── 🐍 apps.py
-│   ├── 🐍 models.py
-│   ├── 🐍 tests.py
-│   └── 🐍 views.py
-├── ⚙️ pyproject.toml
-├── 🖥️ run_dev.sh
-├── 🖥️ run_prod.sh
-├── 📂 seed/
+├── 📂 dev/
 
-├── 📂 users/
-│   ├── 🐍 __init__.py
-│   ├── 🐍 admin.py
-│   ├── 🐍 apps.py
-│   ├── 🐍 models.py
-│   ├── 🐍 tests.py
-│   └── 🐍 views.py
-├── 📂 utils/
-│   ├── 🐍 __init__.py
-│   └── 🐍 env.py
+├── 🐍 manage.py
+├── ⚙️ pyproject.toml
 └── 📎 uv.lock
 ```
 
@@ -43,7 +23,7 @@ backend_new/
 
 ```
 
-## 📂 main
+## 📂 core
 
 #### 🐍 __init__.py
 
@@ -76,61 +56,62 @@ application = get_asgi_application()
 #### 🐍 settings.py
 
 ```python
-from pathlib import Path
+IS_IN_DEVELOPMENT = True
 
-from datetime import timedelta
+
 import os
-
-# OURS
-from Operations.backend.backend.settings import CORS_ALLOW_CREDENTIALS
-from utils import Settings
+from pathlib import Path
+from datetime import timedelta
 
 
+# HELPER
+def _get_env(key: str, default=None):
+    result = os.environ.get(key, default)
+    if result == None:
+        raise KeyError(f"{key} not set in {Path(__file__).resolve()}")
+    return result
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# TODO ENSURE WE STILL NEED
-STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+if IS_IN_DEVELOPMENT:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+SECRET_KEY = _get_env('SECRET_KEY')
+ENCRYPTION_KEY = _get_env('ENCRYPTION_KEY')
+DEBUG = 'True' if IS_IN_DEVELOPMENT == True else 'False'
+ALLOWED_HOSTS = _get_env('ALLOWED_HOSTS').split(',')
+ALLOWED_PORTS = _get_env('ALLOWED_PORTS').split(',')
 
+# EMAIL
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'smtp.office365.com'
+EMAIL_PORT = '587'
+EMAIL_USE_TLS = 'true'
+EMAIL_USE_SSL = 'true'
 
+EMAIL_USER = _get_env('EMAIL_USER', 'noreply@jeticu.com')
+EMAIL_PASS = _get_env('EMAIL_PASS')
+EMAIL_FROM = _get_env('EMAIL_FROM', 'noreply@jeticu.com')
 
+# for activation links
+FRONTEND_URL = 'https://jeticuops.com'
 
-SECRET_KEY = Settings.SECRET_KEY
-ENCRYPTION_KEY = Settings.ENCRYPTION_KEY
-DEBUG = Settings.DEBUG
-ALLOWED_HOSTS = Settings.ALLOWED_HOSTS
-
-
-# SECURITY WARNING: don't run with debug turned on in production!
-
-
-
-## Application definition
-
+# Application definitions
 INSTALLED_APPS = [
-    # DEFAULTS
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # EXTERN
     'rest_framework',
     'django_filters',
     'corsheaders',
-    # INTERNAL
-    'operations',
-    'users'
+    'rest_framework_simplejwt',
 ]
 
-
-# TODO VERIFY
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -143,7 +124,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'main.urls'
+ROOT_URLCONF = 'core.urls'
+WSGI_APPLICATION = 'core.wsgi.application'
 
 TEMPLATES = [
     {
@@ -160,25 +142,17 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'main.wsgi.application'
-
-
-## Database
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': Settings.DB_NAME,
-        'USER': Settings.DB_USER,
-        'PASSWORD': Settings.DB_PASSWORD,
-        'HOST': Settings.DB_HOST,
-        'PORT': Settings.DB_PORT,
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": _get_env("DB_NAME"),
+        "USER": _get_env("DB_USER"),
+        "PASSWORD": _get_env("DB_PASS"),
+        # If Django is running on your Mac (outside Docker), use localhost:
+        "HOST": _get_env("DB_HOST", "localhost"),
+        "PORT": _get_env("DB_PORT", "5432"),
     }
 }
-
-
-## Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -195,31 +169,27 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-## Internationalization
+# INTERNALIZATION
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
-
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-## CORS SETTINGS
-# allow all origins if no allowed hosts else only allow hosts specified in env
-CORS_ALLOW_ALL_ORIGINS = True if not Settings.ALLOWED_HOSTS else False 
+# CORS SETTINGS
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = []
+for host in ALLOWED_HOSTS:
+    CORS_ALLOWED_ORIGINS.append(f"https://{host}")
+    for port in ALLOWED_PORTS:
+        CORS_ALLOWED_ORIGINS.append(f"http://{host}:{port}")
 
-# CRSF SETTINGS
-CRSF_TRUSTED_ORIGINS = Settings.CSRF_TRUSTED_ORIGINS
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS]
 
-# REST Framework settings
-REST_FRAMEWORK = {
+# REST Settings
+EST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
@@ -231,7 +201,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 10
 }
 
-# JWT settings (auth)
+# JWT settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -239,8 +209,44 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# DOCUSEAL INTEGRATION
-DOCUSEAL_API_KEY = 
+# AUTHORIZE.NET
+AUTH_NET_LOGIN_ID = _get_env('AUTH_NET_LOGIN_ID')
+AUTH_NET_TRANSACTION_ID = _get_env('AUTH_NET_TRANSACTION_ID')
+
+# DOCUSEAL settings
+DOCUSEAL_API_KEY = _get_env('DOCUSEAL_API_KEY')
+DOCUSEAL_BASE_URL = _get_env('DOCUSEAL_BASE_URL', 'https://api.docuseal.com')
+DOCUSEAL_WEBHOOK_SECRET = _get_env('DOCUSEAL_WEBHOOK_SECRET')
+DOCUSEAL_INTERNAL_SIGNER = _get_env('DOCUSEAL_INTERNAL_SIGNER')
+DOCUSEAL_CONTRACT_SETTINGS = {
+    'default_expiration_days': 30,
+    'send_email_notifications': True,
+    'auto_generate_on_trip_creation': True,
+    'templates': {
+        'consent_transport': {
+            'template_id': '1712631',
+            'name': 'Consent for Transport',
+            'requires_jet_icu_signature': True,  # JET ICU needs to be involved for field data
+            'customer_role': 'patient',       # Customer signs as patient
+            'jet_icu_role': 'jet_icu',        # JET ICU gets the field data
+        },
+        'payment_agreement': {
+            'template_id': '1712677',
+            'name': 'Air Ambulance Payment Agreement',
+            'requires_jet_icu_signature': True,
+            'customer_role': 'customer',      # Customer signs as customer
+            'jet_icu_role': 'jet_icu',        # JET ICU signs as jet_icu (gets the field data)
+        },
+        'patient_service_agreement': {
+            'template_id': '1712724',
+            'name': 'Patient Service Agreement',
+            'requires_jet_icu_signature': True,
+            'customer_role': 'patient',       # Customer signs as patient
+            'jet_icu_role': 'jet_icu',        # JET ICU signs as jet_icu (gets the field data)
+        }
+    }
+}
+
 ```
 
 #### 🐍 urls.py
@@ -287,23 +293,13 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
 application = get_wsgi_application()
 
 ```
 
-#### 🐍 main.py
-
-```python
-def main():
-    print("Hello from backend!")
-
-
-if __name__ == "__main__":
-    main()
-
-```
+## 📂 dev
 
 #### 🐍 manage.py
 
@@ -316,7 +312,7 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
@@ -333,219 +329,24 @@ if __name__ == '__main__':
 
 ```
 
-## 📂 operations
-
-#### 🐍 __init__.py
-
-```python
-
-```
-
-#### 🐍 admin.py
-
-```python
-from django.contrib import admin
-
-# Register your models here.
-
-```
-
-#### 🐍 apps.py
-
-```python
-from django.apps import AppConfig
-
-
-class OperationsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'operations'
-
-```
-
-#### 🐍 models.py
-
-```python
-from django.db import models
-
-# Create your models here.
-
-```
-
-#### 🐍 tests.py
-
-```python
-from django.test import TestCase
-
-# Create your tests here.
-
-```
-
-#### 🐍 views.py
-
-```python
-from django.shortcuts import render
-
-# Create your views here.
-
-```
-
 #### ⚙️ pyproject.toml
 
 ```toml
 [project]
-name = "backend"
+name = "backend-new"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "django>=5.2.6",
-    "pydantic>=2.11.9",
-    "pydantic-settings>=2.10.1",
+    "django-cors-headers>=4.9.0",
+    "django-filter>=25.1",
+    "djangorestframework>=3.16.1",
+    "djangorestframework-simplejwt>=5.5.1",
+    "dotenv>=0.9.9",
+    "psycopg2[binary]>=2.9.10",
 ]
-
-```
-
-#### 🖥️ run_dev.sh
-
-```bash
-
-```
-
-#### 🖥️ run_prod.sh
-
-```bash
-
-```
-
-## 📂 seed
-
-## 📂 users
-
-#### 🐍 __init__.py
-
-```python
-
-```
-
-#### 🐍 admin.py
-
-```python
-from django.contrib import admin
-
-# Register your models here.
-
-```
-
-#### 🐍 apps.py
-
-```python
-from django.apps import AppConfig
-
-
-class UsersConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'users'
-
-```
-
-#### 🐍 models.py
-
-```python
-from django.db import models
-
-# Create your models here.
-
-```
-
-#### 🐍 tests.py
-
-```python
-from django.test import TestCase
-
-# Create your tests here.
-
-```
-
-#### 🐍 views.py
-
-```python
-from django.shortcuts import render
-
-# Create your views here.
-
-```
-
-## 📂 utils
-
-#### 🐍 __init__.py
-
-```python
-from env import Settings
-
-
-
-__all__ = [
-    "Settings"
-]
-```
-
-#### 🐍 env.py
-
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-
-# ASSIGNED VARIABLES DEFINE DEFUALTS
-# if there is not a default program will crash
-# prod variables should already be loaded into environment before execution
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-
-
-    # BEGIN ENV VARIABLES
-    # DEFAULTS ARE DEVELOPMENT VARIABLES
-    DEBUG: bool = True
-    SECRET_KEY: str = "DEV_KEYS_ARE_GREAT"
-    ENCRYPTION_KEY: str
-    ALLOWED_HOSTS: list[str]
-
-
-    # TOKEN CREDENTIALS
-    CSRF_TRUSTED_ORIGINS: list[str] = ['http://localhost','https://localhost']
-
-    # DATABASE SETTINGS
-    DB_NAME: str = "airmed"
-    DB_USER: str = "airmed"
-    DB_PASSWORD: str = "airmedpass"
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-
-    CORS_ALLOW_ALL_ORIGINS: bool = True
-
-    # SMTP Email Settings
-    EMAIL_HOST: str = "smtp.office365.com"
-    EMAIL_PORT: str = "587"
-    EMAIL_USER: "noreply@jeticu.com"
-    EMAIL_PASS: str
-    EMAIL_DEFAULT_FROM: str = "noreply@jeticu.com"
-
-    ## EXTERNAL
-
-    # flightaware
-    AERO_API_KEY: str
-
-    # docuseal
-    DOCUSEAL_API_KEY: str
-    DOCUSEAL_WEBHOOK_SECRET: str
-
-    # authorize.net
-    AUTH_NET_LOGIN_ID: str
-    AUTH_NET_TRANS_ID: str
-    
 
 ```
 
@@ -557,15 +358,6 @@ revision = 3
 requires-python = ">=3.13"
 
 [[package]]
-name = "annotated-types"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5ec9c3402f9f51bf748cec26dde048a2f973a4eea7f5/annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89", size = 16081, upload-time = "2024-05-20T21:33:25.928Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
-]
-
-[[package]]
 name = "asgiref"
 version = "3.9.2"
 source = { registry = "https://pypi.org/simple" }
@@ -575,20 +367,28 @@ wheels = [
 ]
 
 [[package]]
-name = "backend"
+name = "backend-new"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "django" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
+    { name = "django-cors-headers" },
+    { name = "django-filter" },
+    { name = "djangorestframework" },
+    { name = "djangorestframework-simplejwt" },
+    { name = "dotenv" },
+    { name = "psycopg2" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "django", specifier = ">=5.2.6" },
-    { name = "pydantic", specifier = ">=2.11.9" },
-    { name = "pydantic-settings", specifier = ">=2.10.1" },
+    { name = "django-cors-headers", specifier = ">=4.9.0" },
+    { name = "django-filter", specifier = ">=25.1" },
+    { name = "djangorestframework", specifier = ">=3.16.1" },
+    { name = "djangorestframework-simplejwt", specifier = ">=5.5.1" },
+    { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "psycopg2", extras = ["binary"], specifier = ">=2.9.10" },
 ]
 
 [[package]]
@@ -606,60 +406,83 @@ wheels = [
 ]
 
 [[package]]
-name = "pydantic"
-version = "2.11.9"
+name = "django-cors-headers"
+version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "annotated-types" },
-    { name = "pydantic-core" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
+    { name = "asgiref" },
+    { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/5d/09a551ba512d7ca404d785072700d3f6727a02f6f3c24ecfd081c7cf0aa8/pydantic-2.11.9.tar.gz", hash = "sha256:6b8ffda597a14812a7975c90b82a8a2e777d9257aba3453f973acd3c032a18e2", size = 788495, upload-time = "2025-09-13T11:26:39.325Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/39/55822b15b7ec87410f34cd16ce04065ff390e50f9e29f31d6d116fc80456/django_cors_headers-4.9.0.tar.gz", hash = "sha256:fe5d7cb59fdc2c8c646ce84b727ac2bca8912a247e6e68e1fb507372178e59e8", size = 21458, upload-time = "2025-09-18T10:40:52.326Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/d3/108f2006987c58e76691d5ae5d200dd3e0f532cb4e5fa3560751c3a1feba/pydantic-2.11.9-py3-none-any.whl", hash = "sha256:c42dd626f5cfc1c6950ce6205ea58c93efa406da65f479dcb4029d5934857da2", size = 444855, upload-time = "2025-09-13T11:26:36.909Z" },
+    { url = "https://files.pythonhosted.org/packages/30/d8/19ed1e47badf477d17fb177c1c19b5a21da0fd2d9f093f23be3fb86c5fab/django_cors_headers-4.9.0-py3-none-any.whl", hash = "sha256:15c7f20727f90044dcee2216a9fd7303741a864865f0c3657e28b7056f61b449", size = 12809, upload-time = "2025-09-18T10:40:50.843Z" },
 ]
 
 [[package]]
-name = "pydantic-core"
-version = "2.33.2"
+name = "django-filter"
+version = "25.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/88/5f2260bdfae97aabf98f1778d43f69574390ad787afb646292a638c923d4/pydantic_core-2.33.2.tar.gz", hash = "sha256:7cb8bc3605c29176e1b105350d2e6474142d7c1bd1d9327c4a9bdb46bf827acc", size = 435195, upload-time = "2025-04-23T18:33:52.104Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/40/c702a6fe8cccac9bf426b55724ebdf57d10a132bae80a17691d0cf0b9bac/django_filter-25.1.tar.gz", hash = "sha256:1ec9eef48fa8da1c0ac9b411744b16c3f4c31176c867886e4c48da369c407153", size = 143021, upload-time = "2025-02-14T16:30:53.238Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/8c/99040727b41f56616573a28771b1bfa08a3d3fe74d3d513f01251f79f172/pydantic_core-2.33.2-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:1082dd3e2d7109ad8b7da48e1d4710c8d06c253cbc4a27c1cff4fbcaa97a9e3f", size = 2015688, upload-time = "2025-04-23T18:31:53.175Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/cc/5999d1eb705a6cefc31f0b4a90e9f7fc400539b1a1030529700cc1b51838/pydantic_core-2.33.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f517ca031dfc037a9c07e748cefd8d96235088b83b4f4ba8939105d20fa1dcd6", size = 1844808, upload-time = "2025-04-23T18:31:54.79Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/5e/a0a7b8885c98889a18b6e376f344da1ef323d270b44edf8174d6bce4d622/pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0a9f2c9dd19656823cb8250b0724ee9c60a82f3cdf68a080979d13092a3b0fef", size = 1885580, upload-time = "2025-04-23T18:31:57.393Z" },
-    { url = "https://files.pythonhosted.org/packages/3b/2a/953581f343c7d11a304581156618c3f592435523dd9d79865903272c256a/pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:2b0a451c263b01acebe51895bfb0e1cc842a5c666efe06cdf13846c7418caa9a", size = 1973859, upload-time = "2025-04-23T18:31:59.065Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/55/f1a813904771c03a3f97f676c62cca0c0a4138654107c1b61f19c644868b/pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1ea40a64d23faa25e62a70ad163571c0b342b8bf66d5fa612ac0dec4f069d916", size = 2120810, upload-time = "2025-04-23T18:32:00.78Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/c3/053389835a996e18853ba107a63caae0b9deb4a276c6b472931ea9ae6e48/pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:0fb2d542b4d66f9470e8065c5469ec676978d625a8b7a363f07d9a501a9cb36a", size = 2676498, upload-time = "2025-04-23T18:32:02.418Z" },
-    { url = "https://files.pythonhosted.org/packages/eb/3c/f4abd740877a35abade05e437245b192f9d0ffb48bbbbd708df33d3cda37/pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9fdac5d6ffa1b5a83bca06ffe7583f5576555e6c8b3a91fbd25ea7780f825f7d", size = 2000611, upload-time = "2025-04-23T18:32:04.152Z" },
-    { url = "https://files.pythonhosted.org/packages/59/a7/63ef2fed1837d1121a894d0ce88439fe3e3b3e48c7543b2a4479eb99c2bd/pydantic_core-2.33.2-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:04a1a413977ab517154eebb2d326da71638271477d6ad87a769102f7c2488c56", size = 2107924, upload-time = "2025-04-23T18:32:06.129Z" },
-    { url = "https://files.pythonhosted.org/packages/04/8f/2551964ef045669801675f1cfc3b0d74147f4901c3ffa42be2ddb1f0efc4/pydantic_core-2.33.2-cp313-cp313-musllinux_1_1_aarch64.whl", hash = "sha256:c8e7af2f4e0194c22b5b37205bfb293d166a7344a5b0d0eaccebc376546d77d5", size = 2063196, upload-time = "2025-04-23T18:32:08.178Z" },
-    { url = "https://files.pythonhosted.org/packages/26/bd/d9602777e77fc6dbb0c7db9ad356e9a985825547dce5ad1d30ee04903918/pydantic_core-2.33.2-cp313-cp313-musllinux_1_1_armv7l.whl", hash = "sha256:5c92edd15cd58b3c2d34873597a1e20f13094f59cf88068adb18947df5455b4e", size = 2236389, upload-time = "2025-04-23T18:32:10.242Z" },
-    { url = "https://files.pythonhosted.org/packages/42/db/0e950daa7e2230423ab342ae918a794964b053bec24ba8af013fc7c94846/pydantic_core-2.33.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:65132b7b4a1c0beded5e057324b7e16e10910c106d43675d9bd87d4f38dde162", size = 2239223, upload-time = "2025-04-23T18:32:12.382Z" },
-    { url = "https://files.pythonhosted.org/packages/58/4d/4f937099c545a8a17eb52cb67fe0447fd9a373b348ccfa9a87f141eeb00f/pydantic_core-2.33.2-cp313-cp313-win32.whl", hash = "sha256:52fb90784e0a242bb96ec53f42196a17278855b0f31ac7c3cc6f5c1ec4811849", size = 1900473, upload-time = "2025-04-23T18:32:14.034Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/75/4a0a9bac998d78d889def5e4ef2b065acba8cae8c93696906c3a91f310ca/pydantic_core-2.33.2-cp313-cp313-win_amd64.whl", hash = "sha256:c083a3bdd5a93dfe480f1125926afcdbf2917ae714bdb80b36d34318b2bec5d9", size = 1955269, upload-time = "2025-04-23T18:32:15.783Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/86/1beda0576969592f1497b4ce8e7bc8cbdf614c352426271b1b10d5f0aa64/pydantic_core-2.33.2-cp313-cp313-win_arm64.whl", hash = "sha256:e80b087132752f6b3d714f041ccf74403799d3b23a72722ea2e6ba2e892555b9", size = 1893921, upload-time = "2025-04-23T18:32:18.473Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/7d/e09391c2eebeab681df2b74bfe6c43422fffede8dc74187b2b0bf6fd7571/pydantic_core-2.33.2-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:61c18fba8e5e9db3ab908620af374db0ac1baa69f0f32df4f61ae23f15e586ac", size = 1806162, upload-time = "2025-04-23T18:32:20.188Z" },
-    { url = "https://files.pythonhosted.org/packages/f1/3d/847b6b1fed9f8ed3bb95a9ad04fbd0b212e832d4f0f50ff4d9ee5a9f15cf/pydantic_core-2.33.2-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:95237e53bb015f67b63c91af7518a62a8660376a6a0db19b89acc77a4d6199f5", size = 1981560, upload-time = "2025-04-23T18:32:22.354Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/9a/e73262f6c6656262b5fdd723ad90f518f579b7bc8622e43a942eec53c938/pydantic_core-2.33.2-cp313-cp313t-win_amd64.whl", hash = "sha256:c2fc0a768ef76c15ab9238afa6da7f69895bb5d1ee83aeea2e3509af4472d0b9", size = 1935777, upload-time = "2025-04-23T18:32:25.088Z" },
+    { url = "https://files.pythonhosted.org/packages/07/a6/70dcd68537c434ba7cb9277d403c5c829caf04f35baf5eb9458be251e382/django_filter-25.1-py3-none-any.whl", hash = "sha256:4fa48677cf5857b9b1347fed23e355ea792464e0fe07244d1fdfb8a806215b80", size = 94114, upload-time = "2025-02-14T16:30:50.435Z" },
 ]
 
 [[package]]
-name = "pydantic-settings"
+name = "djangorestframework"
+version = "3.16.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/95/5376fe618646fde6899b3cdc85fd959716bb67542e273a76a80d9f326f27/djangorestframework-3.16.1.tar.gz", hash = "sha256:166809528b1aced0a17dc66c24492af18049f2c9420dbd0be29422029cfc3ff7", size = 1089735, upload-time = "2025-08-06T17:50:53.251Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/ce/bf8b9d3f415be4ac5588545b5fcdbbb841977db1c1d923f7568eeabe1689/djangorestframework-3.16.1-py3-none-any.whl", hash = "sha256:33a59f47fb9c85ede792cbf88bde71893bcda0667bc573f784649521f1102cec", size = 1080442, upload-time = "2025-08-06T17:50:50.667Z" },
+]
+
+[[package]]
+name = "djangorestframework-simplejwt"
+version = "5.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "djangorestframework" },
+    { name = "pyjwt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a8/27/2874a325c11112066139769f7794afae238a07ce6adf96259f08fd37a9d7/djangorestframework_simplejwt-5.5.1.tar.gz", hash = "sha256:e72c5572f51d7803021288e2057afcbd03f17fe11d484096f40a460abc76e87f", size = 101265, upload-time = "2025-07-21T16:52:25.026Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/94/fdfb7b2f0b16cd3ed4d4171c55c1c07a2d1e3b106c5978c8ad0c15b4a48b/djangorestframework_simplejwt-5.5.1-py3-none-any.whl", hash = "sha256:2c30f3707053d384e9f315d11c2daccfcb548d4faa453111ca19a542b732e469", size = 107674, upload-time = "2025-07-21T16:52:07.493Z" },
+]
+
+[[package]]
+name = "dotenv"
+version = "0.9.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dotenv" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/b7/545d2c10c1fc15e48653c91efde329a790f2eecfbbf2bd16003b5db2bab0/dotenv-0.9.9-py2.py3-none-any.whl", hash = "sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9", size = 1892, upload-time = "2025-02-19T22:15:01.647Z" },
+]
+
+[[package]]
+name = "psycopg2"
+version = "2.9.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/51/2007ea29e605957a17ac6357115d0c1a1b60c8c984951c19419b3474cdfd/psycopg2-2.9.10.tar.gz", hash = "sha256:12ec0b40b0273f95296233e8750441339298e6a572f7039da5b260e3c8b60e11", size = 385672, upload-time = "2024-10-16T11:24:54.832Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/49/a6cfc94a9c483b1fa401fbcb23aca7892f60c7269c5ffa2ac408364f80dc/psycopg2-2.9.10-cp313-cp313-win_amd64.whl", hash = "sha256:91fd603a2155da8d0cfcdbf8ab24a2d54bca72795b90d2a3ed2b6da8d979dee2", size = 2569060, upload-time = "2025-01-04T20:09:15.28Z" },
+]
+
+[[package]]
+name = "pyjwt"
 version = "2.10.1"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/85/1ea668bbab3c50071ca613c6ab30047fb36ab0da1b92fa8f17bbc38fd36c/pydantic_settings-2.10.1.tar.gz", hash = "sha256:06f0062169818d0f5524420a360d632d5857b83cffd4d42fe29597807a1614ee", size = 172583, upload-time = "2025-06-24T13:26:46.841Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/46/bd74733ff231675599650d3e47f361794b22ef3e3770998dda30d3b63726/pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953", size = 87785, upload-time = "2024-11-28T03:43:29.933Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/f0/427018098906416f580e3cf1366d3b1abfb408a0652e9f31600c24a1903c/pydantic_settings-2.10.1-py3-none-any.whl", hash = "sha256:a60952460b99cf661dc25c29c0ef171721f98bfcb52ef8d9ea4c943d7c8cc796", size = 45235, upload-time = "2025-06-24T13:26:45.485Z" },
+    { url = "https://files.pythonhosted.org/packages/61/ad/689f02752eeec26aed679477e80e632ef1b682313be70793d798c1d5fc8f/PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb", size = 22997, upload-time = "2024-11-28T03:43:27.893Z" },
 ]
 
 [[package]]
@@ -678,27 +501,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e5/40/edede8dd6977b0d3da179a342c198ed100dd2aba4be081861ee5911e4da4/sqlparse-0.5.3.tar.gz", hash = "sha256:09f67787f56a0b16ecdbde1bfc7f5d9c3371ca683cfeaa8e6ff60b4807ec9272", size = 84999, upload-time = "2024-12-10T12:05:30.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/5c/bfd6bd0bf979426d405cc6e71eceb8701b148b16c21d2dc3c261efc61c7b/sqlparse-0.5.3-py3-none-any.whl", hash = "sha256:cf2196ed3418f3ba5de6af7e82c694a9fbdbfecccdfc72e281548517081f16ca", size = 44415, upload-time = "2024-12-10T12:05:27.824Z" },
-]
-
-[[package]]
-name = "typing-extensions"
-version = "4.15.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466", size = 109391, upload-time = "2025-08-25T13:49:26.313Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548", size = 44614, upload-time = "2025-08-25T13:49:24.86Z" },
-]
-
-[[package]]
-name = "typing-inspection"
-version = "0.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/b1/0c11f5058406b3af7609f121aaa6b609744687f1d158b3c3a5bf4cc94238/typing_inspection-0.4.1.tar.gz", hash = "sha256:6ae134cc0203c33377d43188d4064e9b357dba58cff3185f22924610e70a9d28", size = 75726, upload-time = "2025-05-21T18:55:23.885Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/69/cd203477f944c353c31bade965f880aa1061fd6bf05ded0726ca845b6ff7/typing_inspection-0.4.1-py3-none-any.whl", hash = "sha256:389055682238f53b04f7badcb49b989835495a96700ced5dab2d8feae4b26f51", size = 14552, upload-time = "2025-05-21T18:55:22.152Z" },
 ]
 
 [[package]]
