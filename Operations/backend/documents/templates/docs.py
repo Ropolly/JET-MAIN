@@ -179,21 +179,21 @@ class ItineraryData:
 def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_mapping: dict) -> bool:
     """
     Generic function to populate PDF form fields with data
-    
+
     Args:
         input_pdf_path: Path to the template PDF
         output_pdf_path: Path where the filled PDF will be saved
         field_mapping: Dictionary mapping field names to values
-    
+
     Returns:
         bool: True if successful, False otherwise
     """
     try:
         # Try PyMuPDF (fitz) method first - most reliable for form filling
         import fitz
-        
+
         doc = fitz.open(input_pdf_path)
-        
+
         # Clean field mapping - ensure all values are strings
         clean_mapping = {}
         for field_name, value in field_mapping.items():
@@ -201,17 +201,21 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
                 clean_mapping[field_name] = str(value)
             else:
                 clean_mapping[field_name] = ""
-        
+
         # Fill form fields
+        filled_count = 0
         for page_num in range(len(doc)):
             page = doc[page_num]
             widgets = page.widgets()
-            
+
             for widget in widgets:
                 if widget.field_name in clean_mapping:
                     widget.field_value = clean_mapping[widget.field_name]
                     widget.update()
-        
+                    filled_count += 1
+
+        print(f"DEBUG: Successfully filled {filled_count} PDF fields")
+
         # Save the filled PDF
         doc.save(output_pdf_path)
         doc.close()
@@ -223,9 +227,9 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
         # Fallback to pdfrw method
         try:
             from pdfrw import PdfReader, PdfWriter, PdfDict
-            
+
             template_pdf = PdfReader(input_pdf_path)
-            
+
             # Clean field mapping - ensure all values are strings
             clean_mapping = {}
             for field_name, value in field_mapping.items():
@@ -233,8 +237,9 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
                     clean_mapping[field_name] = str(value)
                 else:
                     clean_mapping[field_name] = ""
-            
+
             # Find and populate form fields
+            filled_count = 0
             for page in template_pdf.pages:
                 if page.Annots:
                     for annotation in page.Annots:
@@ -242,9 +247,12 @@ def populate_pdf_with_fields(input_pdf_path: str, output_pdf_path: str, field_ma
                             field_name = annotation.T[1:-1]  # Remove parentheses
                             if field_name in clean_mapping:
                                 # Set the field value
-                                annotation.update(PdfDict(V=f'({clean_mapping[field_name]})'))
-                                annotation.update(PdfDict(DV=f'({clean_mapping[field_name]})'))
-            
+                                annotation.update(PdfDict(V=clean_mapping[field_name]))
+                                annotation.update(PdfDict(DV=clean_mapping[field_name]))
+                                filled_count += 1
+
+            print(f"DEBUG PDFRW: Successfully filled {filled_count} PDF fields")
+
             # Write the filled PDF
             PdfWriter(output_pdf_path, trailer=template_pdf).write()
             return True
@@ -324,20 +332,27 @@ def populate_handling_request_pdf(input_pdf_path: str, output_pdf_path: str, dat
 
 
 def populate_itinerary_pdf(input_pdf_path: str, output_pdf_path: str, data: ItineraryData) -> bool:
-    """Populate itin-2.pdf with data from ItineraryData instance"""
-    # Map data to actual PDF field names from itin-2.pdf
+    """Populate itin-4.pdf with data from ItineraryData instance"""
+    # Map data to actual PDF field names from itin-4.pdf
     # NOTE: Now includes header fields that were missing in the old itin.pdf template
     field_mapping = {
-        'trip_number': data.trip_number,
-        'trip_date': data.trip_date,
-        'trip_type': data.trip_type,
-        'tail_number': data.tail_number,
+        # Basic header fields - mapping to both _1 and _2 versions for redundancy
+        'trip_number_1': data.trip_number,
+        'trip_date_1': data.trip_date,
+        'trip_type_1': data.trip_type,
+        'tail_number_1': data.tail_number,
+        'trip_number_2': data.trip_number,
+        'trip_date_2': data.trip_date,
+        'trip_type_2': data.trip_type,
+        'tail_number_2': data.tail_number,
         'patient_name': data.patient_name,
         'bed_at_origin': 'Yes' if data.bed_at_origin else 'No',
         'bed_at_dest': 'Yes' if data.bed_at_dest else 'No',
         'special_instructions': data.special_instructions,
     }
-    
+
+    print(f"DEBUG: Mapping basic header fields - trip_number: '{data.trip_number}', trip_date: '{data.trip_date}', trip_type: '{data.trip_type}', tail_number: '{data.tail_number}'")
+
     # Add passenger information (up to 5 passengers)
     for i in range(1, 6):
         if i <= len(data.passengers):
@@ -416,8 +431,11 @@ def populate_itinerary_pdf(input_pdf_path: str, output_pdf_path: str, data: Itin
         'pre_flight_duty_time': data.times.pre_flight_duty_time,
         'post_flight_duty_time': data.times.post_flight_duty_time
     })
-        
-    return populate_pdf_with_fields(input_pdf_path, output_pdf_path, field_mapping)
+
+    print(f"DEBUG: Calling populate_pdf_with_fields with {len(field_mapping)} fields")
+    result = populate_pdf_with_fields(input_pdf_path, output_pdf_path, field_mapping)
+    print(f"DEBUG: populate_pdf_with_fields returned: {result}")
+    return result
 
 
 def populate_gen_dec_pdf(input_pdf_path: str, output_pdf_path: str, data: GeneralDeclarationData) -> bool:
