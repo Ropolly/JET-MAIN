@@ -1437,29 +1437,102 @@ class TripViewSet(BaseViewSet):
                 for trip_line in trip_lines:
                     all_airports.add(trip_line.origin_airport)
                     all_airports.add(trip_line.destination_airport)
-                
+
                 for airport in all_airports:
                     if airport:
+                        # Get FBO information for this airport
+                        fbo_info = ''
+                        fbo_phone = ''
+                        if airport.fbos.exists():
+                            # Get the first FBO for this airport
+                            fbo = airport.fbos.first()
+                            if fbo:
+                                fbo_info = fbo.name or ''
+                                fbo_phone = fbo.phone or fbo.phone_secondary or ''
+
                         airport_info = AirportInfo(
                             icao=airport.icao_code or airport.ident,
                             airport_city_name=airport.name,
                             state_country=f"{airport.iso_region}, {airport.iso_country}",
                             time_zone=getattr(airport, 'timezone', ''),
-                            fbo_handler='',  # Will be populated from FBO data if available
-                            freq='',
-                            phone_fax='',
-                            fuel=''
+                            fbo_handler=fbo_info,
+                            freq='',  # Could be populated from airport data if available
+                            phone_fax=fbo_phone,
+                            fuel=''  # Could be populated from FBO services if available
                         )
                         airports.append(airport_info)
                 
+                # Calculate timing information
+                try:
+                    print(f"DEBUG: Starting timing calculations...")
+                    print(f"DEBUG: Number of trip_lines: {len(trip_lines)}")
+
+                    # Check flight_time types
+                    for i, trip_line in enumerate(trip_lines):
+                        print(f"DEBUG: trip_line {i} flight_time: {trip_line.flight_time} (type: {type(trip_line.flight_time)})")
+
+                    total_flight_minutes = sum(int(trip_line.flight_time.total_seconds() / 60) if trip_line.flight_time else 0 for trip_line in trip_lines)
+                    print(f"DEBUG: total_flight_minutes: {total_flight_minutes} (type: {type(total_flight_minutes)})")
+
+                    total_flight_hours = total_flight_minutes / 60 if total_flight_minutes else 0
+                    total_flight_time_str = f"{int(total_flight_hours)}:{int((total_flight_hours % 1) * 60):02d}" if total_flight_hours else ''
+
+                    # Calculate total duty time (pre-flight + flight time + post-flight)
+                    # Convert DurationField to minutes
+                    print(f"DEBUG: trip.pre_flight_duty_time: {trip.pre_flight_duty_time} (type: {type(trip.pre_flight_duty_time)})")
+                    print(f"DEBUG: trip.post_flight_duty_time: {trip.post_flight_duty_time} (type: {type(trip.post_flight_duty_time)})")
+
+                    pre_flight_minutes = int(trip.pre_flight_duty_time.total_seconds() / 60) if trip.pre_flight_duty_time else 60  # Default 1 hour
+                    post_flight_minutes = int(trip.post_flight_duty_time.total_seconds() / 60) if trip.post_flight_duty_time else 60  # Default 1 hour
+
+                    print(f"DEBUG: pre_flight_minutes: {pre_flight_minutes} (type: {type(pre_flight_minutes)})")
+                    print(f"DEBUG: post_flight_minutes: {post_flight_minutes} (type: {type(post_flight_minutes)})")
+                    print(f"DEBUG: total_flight_minutes: {total_flight_minutes} (type: {type(total_flight_minutes)})")
+
+                    print(f"DEBUG: About to add: {pre_flight_minutes} + {total_flight_minutes} + {post_flight_minutes}")
+                    total_duty_minutes = pre_flight_minutes + total_flight_minutes + post_flight_minutes
+                    print(f"DEBUG: total_duty_minutes: {total_duty_minutes}")
+
+                    total_duty_hours = total_duty_minutes / 60 if total_duty_minutes else 0
+                    total_duty_time_str = f"{int(total_duty_hours)}:{int((total_duty_hours % 1) * 60):02d}" if total_duty_hours else ''
+
+                    # Calculate showtime (estimated departure time minus pre-flight duty time)
+                    showtime_str = ''
+                    if trip.estimated_departure_time:
+                        # Use actual pre-flight duty time or default to 1 hour
+                        from datetime import timedelta
+                        pre_flight_duration = trip.pre_flight_duty_time if trip.pre_flight_duty_time else timedelta(hours=1)
+                        showtime = trip.estimated_departure_time - pre_flight_duration
+                        showtime_str = showtime.strftime('%H:%M')
+                    elif trip.trip_lines.exists() and trip.trip_lines.first().departure_time_local:
+                        # Fallback: use first leg departure time minus 1 hour pre-flight
+                        from datetime import timedelta
+                        first_departure = trip.trip_lines.first().departure_time_local
+                        pre_flight_duration = trip.pre_flight_duty_time if trip.pre_flight_duty_time else timedelta(hours=1)
+                        showtime = first_departure - pre_flight_duration
+                        showtime_str = showtime.strftime('%H:%M')
+
+                    print(f"DEBUG: Timing calculations completed successfully")
+
+                except Exception as e:
+                    print(f"Error calculating timing information: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Set default values
+                    total_flight_time_str = ''
+                    total_duty_time_str = ''
+                    showtime_str = ''
+                    pre_flight_minutes = 0
+                    post_flight_minutes = 0
+
                 # Prepare timing info
                 times = TimeInfo(
-                    showtime='',
-                    origin_edt=trip.estimated_departure_time.strftime('%H:%M %Z') if trip.estimated_departure_time else '',
-                    total_flight_time='',
-                    total_duty_time='',
-                    pre_flight_duty_time=str(trip.pre_flight_duty_time) if trip.pre_flight_duty_time else '',
-                    post_flight_duty_time=str(trip.post_flight_duty_time) if trip.post_flight_duty_time else ''
+                    showtime=showtime_str,
+                    origin_edt=trip.estimated_departure_time.strftime('%H:%M') if trip.estimated_departure_time else (trip.trip_lines.first().departure_time_local.strftime('%H:%M') if trip.trip_lines.exists() and trip.trip_lines.first().departure_time_local else ''),
+                    total_flight_time=total_flight_time_str,
+                    total_duty_time=total_duty_time_str,
+                    pre_flight_duty_time=f"{int(pre_flight_minutes / 60)}:{int(pre_flight_minutes % 60):02d}",
+                    post_flight_duty_time=f"{int(post_flight_minutes / 60)}:{int(post_flight_minutes % 60):02d}"
                 )
                 
                 # Prepare passenger list
@@ -1484,9 +1557,22 @@ class TripViewSet(BaseViewSet):
                     airports=airports,
                     times=times
                 )
-                
+
+                # Debug output to check if data is being passed correctly
+                print(f"DEBUG: Basic itinerary data generated successfully:")
+                print(f"  trip_number: '{itinerary_data.trip_number}'")
+                print(f"  tail_number: '{itinerary_data.tail_number}'")
+                print(f"  trip_date: '{itinerary_data.trip_date}'")
+                print(f"  trip_type: '{itinerary_data.trip_type}'")
+                print(f"DEBUG: Timing data - showtime: '{itinerary_data.times.showtime}'")
+                print(f"DEBUG: Timing data - origin_edt: '{itinerary_data.times.origin_edt}'")
+                print(f"DEBUG: Timing data - total_flight_time: '{itinerary_data.times.total_flight_time}'")
+                print(f"DEBUG: Timing data - total_duty_time: '{itinerary_data.times.total_duty_time}'")
+                print(f"DEBUG: Timing data - pre_flight_duty_time: '{itinerary_data.times.pre_flight_duty_time}'")
+                print(f"DEBUG: Timing data - post_flight_duty_time: '{itinerary_data.times.post_flight_duty_time}'")
+
                 # Define file paths
-                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'itin-2.pdf')
+                template_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_pdf', 'itin-4.pdf')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"itin_{trip.trip_number}_crew_{crew_line.id.hex[:8]}_{timestamp}.pdf"
                 output_path = os.path.join(settings.BASE_DIR, 'documents', 'templates', 'nosign_out', output_filename)
@@ -1975,7 +2061,7 @@ class TripViewSet(BaseViewSet):
             filename = f"{trip.trip_number}-{doc_type.replace('_', '_')}-{timestamp}-{unique_id}.pdf"
             
             # Input and output paths
-            input_path = os.path.join(template_base_path, 'itin.pdf')
+            input_path = os.path.join(template_base_path, 'itin-4.pdf')
             output_path = os.path.join(output_base_path, filename)
             
             if not os.path.exists(input_path):

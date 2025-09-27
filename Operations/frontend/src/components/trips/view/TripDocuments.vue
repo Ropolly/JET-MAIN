@@ -225,7 +225,7 @@ const documentTypes = [
   { value: 'quote', label: 'Quote Form', endpoint: 'generate_quote_document' },
   { value: 'customer_itinerary', label: 'Customer Itinerary', endpoint: 'generate_itineraries' },
   { value: 'handling_request', label: 'Handling Request', endpoint: 'generate_handling_requests' },
-  { value: 'gendec', label: 'General Declaration', endpoint: 'generate_documents' },
+  { value: 'gendec', label: 'General Declaration', endpoint: 'generate_gen_dec' },
   { value: 'internal_itinerary', label: 'Internal Itinerary', endpoint: 'generate_documents' }
 ];
 
@@ -309,11 +309,11 @@ const generateDocument = async (documentType: string) => {
     if (documentType === 'quote' && props.trip?.quote?.id) {
       // For quotes, use the quote endpoint
       endpoint = `quotes/${props.trip.quote.id}/${docTypeConfig.endpoint}/`;
-    } else if (documentType === 'customer_itinerary' || documentType === 'handling_request') {
-      // For legacy trip-based documents, use the specific endpoints
+    } else if (documentType === 'customer_itinerary' || documentType === 'handling_request' || documentType === 'gendec') {
+      // For trip-based documents with dedicated endpoints
       endpoint = `trips/${props.tripId}/${docTypeConfig.endpoint}/`;
-    } else if (documentType === 'gendec' || documentType === 'internal_itinerary') {
-      // For new document types, use the generate_documents endpoint
+    } else if (documentType === 'internal_itinerary') {
+      // For new document types that use the generic generate_documents endpoint
       endpoint = `trips/${props.tripId}/generate_documents/`;
       requestData = { document_type: documentType };
     } else {
@@ -356,34 +356,17 @@ const generateAllDocuments = async () => {
 
   isGeneratingDocs.value = true;
   try {
-    // Use the comprehensive generate_documents endpoint for all documents
-    // This single endpoint generates all applicable documents atomically
-    const response = await ApiService.post(`trips/${props.tripId}/generate_documents/`);
-    
-    await loadDocuments();
-    
-    const documentCount = response.data?.documents?.length || 0;
-    
-    Swal.fire({
-      icon: 'success',
-      title: 'Success',
-      text: `${documentCount} documents generated successfully`,
-      timer: 2000,
-      showConfirmButton: false
-    });
+    // Try to use the comprehensive generate_documents endpoint first
+    // Note: The backend's generate_documents endpoint may not include gen_dec,
+    // so we'll use the legacy approach for now to ensure all documents are generated
+    await generateAllDocumentsLegacy();
   } catch (error: any) {
     console.error('Error generating documents:', error);
-    
-    // Fallback to individual document generation if the new endpoint fails
-    if (error.response?.status === 404 || error.response?.status === 405) {
-      await generateAllDocumentsLegacy();
-    } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.response?.data?.error || error.message || 'Failed to generate documents'
-      });
-    }
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: error.response?.data?.error || error.message || 'Failed to generate documents'
+    });
   } finally {
     isGeneratingDocs.value = false;
   }
@@ -415,6 +398,13 @@ const generateAllDocumentsLegacy = async () => {
       ApiService.post(`trips/${props.tripId}/generate_handling_requests/`)
         .then(() => generatedCount++)
         .catch(err => console.error('Error generating handling requests:', err))
+    );
+
+    // Generate general declaration document
+    promises.push(
+      ApiService.post(`trips/${props.tripId}/generate_gen_dec/`)
+        .then(() => generatedCount++)
+        .catch(err => console.error('Error generating general declaration:', err))
     );
 
     // Wait for all document generation calls to complete
@@ -456,30 +446,30 @@ const regenerateDocument = async (documentType: string) => {
 
 const downloadDocument = async (doc: Document) => {
   try {
-    // Use axios with proper blob configuration and authorization
+    // Get the document as blob first, then create an object URL to open in new tab
     const response = await ApiService.vueInstance.axios({
       method: 'GET',
       url: `documents/${doc.id}/download/`,
       responseType: 'blob'
     });
-    
-    // Create download link from blob
-    const blob = new Blob([response.data]);
+
+    // Create object URL from blob
+    const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', doc.filename);
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+
+    // Open in new tab
+    window.open(url, '_blank');
+
+    // Clean up object URL after a short delay to allow the browser to load it
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 1000);
   } catch (error) {
-    console.error('Error downloading document:', error);
+    console.error('Error opening document:', error);
     Swal.fire({
       icon: 'error',
       title: 'Error',
-      text: 'Failed to download document'
+      text: 'Failed to open document'
     });
   }
 };
