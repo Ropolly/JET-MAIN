@@ -304,16 +304,16 @@ const medicalStaff = computed(() => {
 // Role checking functions
 const hasActiveRole = (staff: any, roleCode: string, today: string): boolean => {
   if (!staff.role_memberships || staff.role_memberships.length === 0) return false;
-  
+
   return staff.role_memberships.some((membership: any) => {
     if (membership.role?.code !== roleCode) return false;
-    
+
     const startDate = membership.start_on;
     const endDate = membership.end_on;
-    
+
     const startValid = !startDate || startDate <= today;
     const endValid = !endDate || endDate >= today;
-    
+
     return startValid && endValid;
   });
 };

@@ -507,6 +507,16 @@ const routes: Array<RouteRecordRaw> = [
         },
       },
       {
+        path: "/admin/trips/:id/complete",
+        name: "admin-trip-complete-view",
+        component: () => import("@/views/admin/trips/CompleteTripView.vue"),
+        meta: {
+          pageTitle: "Trip",
+          breadcrumbs: ["Trips", "Trip"],
+          middleware: "auth",
+        },
+      },
+      {
         path: "/admin/quotes",
         name: "admin-quotes",
         component: () => import("@/views/admin/Quotes.vue"),

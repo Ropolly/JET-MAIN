@@ -55,19 +55,32 @@ class CommentSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
     created_by_name = serializers.SerializerMethodField(read_only=True)
     content_type_name = serializers.CharField(source='content_type.model', read_only=True)
-    
+
     class Meta:
         model = Comment
-        fields = ['id', 'content_type', 'content_type_name', 'object_id', 'text', 
+        fields = ['id', 'content_type', 'content_type_name', 'object_id', 'text',
                  'created_on', 'created_by', 'created_by_username', 'created_by_name',
                  'modified_on', 'modified_by', 'status']
-    
+
     def get_created_by_name(self, obj):
         if obj.created_by:
             if hasattr(obj.created_by, 'profile'):
                 return f"{obj.created_by.profile.first_name} {obj.created_by.profile.last_name}".strip()
             return obj.created_by.username
         return None
+
+    def create(self, validated_data):
+        # Handle content_type as string if needed
+        content_type_data = validated_data.get('content_type')
+        if isinstance(content_type_data, str):
+            from django.contrib.contenttypes.models import ContentType
+            try:
+                content_type = ContentType.objects.get(model=content_type_data.lower())
+                validated_data['content_type'] = content_type
+            except ContentType.DoesNotExist:
+                raise serializers.ValidationError(f"ContentType '{content_type_data}' does not exist")
+
+        return super().create(validated_data)
 
 # Contact and location serializers
 class ContactReadSerializer(serializers.ModelSerializer):
@@ -1086,7 +1099,12 @@ class TripReadSerializer(serializers.ModelSerializer):
             return {
                 'id': obj.quote.id,
                 'quoted_amount': obj.quote.quoted_amount,
-                'status': obj.quote.status
+                'status': obj.quote.status,
+                'created_on': obj.quote.created_on,
+                'aircraft_type': obj.quote.aircraft_type,
+                'medical_team': obj.quote.get_medical_team(),
+                'estimated_flight_time': obj.quote.estimated_flight_time,
+                'includes_grounds': obj.quote.includes_grounds
             }
         return None
 
@@ -1118,6 +1136,18 @@ class TripWriteSerializer(serializers.ModelSerializer):
     )
     # Make trip_number optional - it will be auto-generated if not provided
     trip_number = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        """Add debug logging to see validation data and errors."""
+        print(f"DEBUG TRIP SERIALIZER: Initial attrs: {attrs}")
+        try:
+            validated_attrs = super().validate(attrs)
+            print(f"DEBUG TRIP SERIALIZER: Validated attrs: {validated_attrs}")
+            return validated_attrs
+        except Exception as e:
+            print(f"DEBUG TRIP SERIALIZER: Validation error: {e}")
+            print(f"DEBUG TRIP SERIALIZER: Error type: {type(e)}")
+            raise
 
     class Meta:
         model = Trip

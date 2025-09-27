@@ -10,7 +10,7 @@
       <!--end::Card title-->
 
       <!--begin::Card toolbar-->
-      <div class="card-toolbar">
+      <div class="card-toolbar" v-if="getTripLines().length > 0">
         <button class="btn btn-light-secondary" disabled>
           <KTIcon icon-name="geolocation" icon-class="fs-3" />
           Track Flight
@@ -60,11 +60,6 @@
           </div>
           <!--end::Col-->
 
-        </div>
-        
-        <!-- Empty state when no trip lines -->
-        <div v-else class="text-center py-5">
-          <div class="text-muted">No flight statistics available</div>
         </div>
       </div>
       <!--end::Flight Statistics-->
@@ -251,24 +246,34 @@
       <!--end::Timeline-->
       
       <!-- No itinerary message -->
-      <div v-else class="alert alert-light-info">
-        <div class="d-flex align-items-center">
-          <KTIcon icon-name="information" icon-class="fs-2 text-info me-3" />
-          <div>
-            <h5 class="text-info mb-1">No Flight Itinerary</h5>
-            <span class="text-gray-700">Flight legs have not been scheduled for this trip yet.</span>
-          </div>
-        </div>
+      <div v-else class="text-center py-10">
+        <i class="fas fa-route fs-3x text-muted mb-4"></i>
+        <p class="text-muted">No flight legs scheduled yet</p>
+        <button @click="addTripLine" type="button" class="btn btn-primary">
+          <i class="fas fa-plus fs-4 me-2"></i>
+          Add Flight Legs
+        </button>
       </div>
     </div>
     <!--end::Card body-->
   </div>
   <!--end::Card-->
+
+  <!--begin::Add Trip Legs Modal-->
+  <AddTripLegsModal
+    :trip="trip"
+    :show="showTripLegsModal"
+    @close="onModalClose"
+    @trip-updated="onTripUpdated"
+  />
+  <!--end::Add Trip Legs Modal-->
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { calculateTripDistance, formatDistance } from '@/core/helpers/distanceCalculator';
+import { showModal } from '@/core/helpers/modal';
+import AddTripLegsModal from '@/components/modals/AddTripLegsModal.vue';
 
 interface Props {
   trip: any;
@@ -276,6 +281,10 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const emit = defineEmits(['trip-updated']);
+
+// Modal state
+const showTripLegsModal = ref(false);
 
 // Get trip lines and combine with events for chronological timeline
 const combinedTimelineItems = computed(() => {
@@ -728,6 +737,23 @@ const getStatusColor = (): string => {
     case 'pending': return 'warning';
     default: return 'secondary';
   }
+};
+
+// Function to handle adding a new trip line
+const addTripLine = () => {
+  showTripLegsModal.value = true;
+  showModal(document.getElementById('kt_modal_add_trip_legs'));
+};
+
+// Handle modal close
+const onModalClose = () => {
+  showTripLegsModal.value = false;
+};
+
+// Handle trip updated from modal
+const onTripUpdated = () => {
+  showTripLegsModal.value = false;
+  emit('trip-updated');
 };
 
 </script>

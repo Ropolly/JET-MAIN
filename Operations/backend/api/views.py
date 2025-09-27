@@ -1290,6 +1290,16 @@ class TripViewSet(BaseViewSet):
         permissions.IsAuthenticated,
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
+
+    def create(self, request, *args, **kwargs):
+        """Override create to add debug logging."""
+        print(f"DEBUG TRIP CREATE: Incoming request data: {request.data}")
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            print(f"DEBUG TRIP CREATE: Exception during creation: {e}")
+            print(f"DEBUG TRIP CREATE: Exception type: {type(e)}")
+            raise
     
     def generate_trip_number(self):
         """
@@ -1331,11 +1341,14 @@ class TripViewSet(BaseViewSet):
         """
         Override perform_create to automatically generate trip number if not provided.
         """
+        print(f"DEBUG TRIP CREATE: Request data: {self.request.data}")
+        print(f"DEBUG TRIP CREATE: Validated data: {serializer.validated_data}")
+
         # Check if trip_number is provided in the validated data
         if not serializer.validated_data.get('trip_number'):
             # Generate a unique trip number
             trip_number = self.generate_trip_number()
-            
+
             # Ensure uniqueness (in case of race conditions)
             while Trip.objects.filter(trip_number=trip_number).exists():
                 # If somehow the number exists, generate the next one
@@ -1348,11 +1361,13 @@ class TripViewSet(BaseViewSet):
                     # Fallback to timestamp if we can't parse
                     import time
                     trip_number = f"T{int(time.time())}"
-            
+
+            print(f"DEBUG TRIP CREATE: Generated trip number: {trip_number}")
             # Save with the generated trip number
             instance = serializer.save(created_by=self.request.user, trip_number=trip_number)
         else:
             # Trip number was provided, use it
+            print(f"DEBUG TRIP CREATE: Using provided trip number: {serializer.validated_data.get('trip_number')}")
             instance = serializer.save(created_by=self.request.user)
         
         # Track creation
@@ -2209,11 +2224,30 @@ class TripViewSet(BaseViewSet):
         """
         List all documents associated with a trip.
         """
-        from .serializers import DocumentSerializer
-        
+        from rest_framework import serializers
+
+        # Create a full document serializer that includes all needed fields
+        class FullDocumentSerializer(serializers.ModelSerializer):
+            document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+            created_by_name = serializers.SerializerMethodField()
+
+            class Meta:
+                model = Document
+                fields = [
+                    'id', 'filename', 'file_path', 'document_type', 'document_type_display',
+                    'created_on', 'created_by', 'created_by_name', 'trip', 'contact',
+                    'patient', 'passenger'
+                ]
+                read_only_fields = ['id', 'created_on']
+
+            def get_created_by_name(self, obj):
+                if obj.created_by:
+                    return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+                return None
+
         trip = self.get_object()
         documents = trip.documents.all().order_by('-created_on')
-        serializer = DocumentSerializer(documents, many=True)
+        serializer = FullDocumentSerializer(documents, many=True)
         return Response(serializer.data)
 
 # Document ViewSet
@@ -2285,6 +2319,40 @@ class DocumentViewSet(BaseViewSet):
             # Fallback to binary content if stored in database
             response = HttpResponse(document.content, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{document.filename}"'
+            return response
+        else:
+            return Response(
+                {'error': 'Document file not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['get'])
+    def view(self, request, pk=None):
+        """
+        View a document file in browser (without forcing download).
+        """
+        from django.http import FileResponse, HttpResponse
+        from pathlib import Path
+        import mimetypes
+
+        document = self.get_object()
+
+        # Determine the correct MIME type
+        mime_type, _ = mimetypes.guess_type(document.filename)
+        if not mime_type:
+            mime_type = 'application/octet-stream'
+
+        if document.file_path and Path(document.file_path).exists():
+            file_path = Path(document.file_path)
+            response = FileResponse(
+                open(file_path, 'rb'),
+                content_type=mime_type
+            )
+            # Don't set Content-Disposition to allow browser to display inline
+            return response
+        elif document.content:
+            # Fallback to binary content if stored in database
+            response = HttpResponse(document.content, content_type=mime_type)
             return response
         else:
             return Response(
@@ -2483,7 +2551,7 @@ def dashboard_stats(request):
 
 class StaffViewSet(BaseViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = Staff.objects.select_related("contact").all().order_by("-created_on")
+    queryset = Staff.objects.select_related("contact").prefetch_related("role_memberships__role").all().order_by("-created_on")
     search_fields = ['contact__first_name', 'contact__last_name', 'contact__business_name', 'contact__email']
 
     def get_serializer_class(self):
