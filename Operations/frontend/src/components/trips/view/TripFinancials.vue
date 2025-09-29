@@ -10,7 +10,7 @@
       <!--end::Title-->
 
       <!--begin::Toolbar-->
-      <div>
+      <div v-if="trip?.quote">
         <button class="btn btn-light-primary btn-sm">
           <KTIcon icon-name="dollar" icon-class="fs-6" />
           Add Payment
@@ -199,7 +199,7 @@
       <div v-if="!loading && !trip?.quote" class="text-center py-10">
         <i class="fas fa-file-invoice-dollar fs-3x text-muted mb-4"></i>
         <p class="text-muted">No quote assigned to this trip yet</p>
-        <button @click="addQuote" type="button" class="btn btn-primary">
+        <button @click="showQuoteModal" type="button" class="btn btn-primary">
           <i class="fas fa-plus fs-4 me-2"></i>
           Add Quote
         </button>
@@ -209,10 +209,21 @@
     <!--end::Content-->
   </div>
   <!--end::Financials Content-->
+
+  <!--begin::Quote Modal-->
+  <CreateQuoteForTripModal
+    :trip="trip"
+    :show="showQuoteModalRef"
+    @close="onQuoteModalClose"
+    @quote-created="onQuoteCreated"
+  />
+  <!--end::Quote Modal-->
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import CreateQuoteForTripModal from '@/components/modals/CreateQuoteForTripModal.vue';
+import { showModal } from '@/core/helpers/modal';
 
 interface Props {
   trip: any;
@@ -220,6 +231,10 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const emit = defineEmits(['trip-updated']);
+
+// Modal state
+const showQuoteModalRef = ref(false);
 
 // Quote helper functions
 const getQuoteStatusColor = (): string => {
@@ -402,15 +417,25 @@ const formatDuration = (duration?: string | number): string => {
   return `${hours}h ${minutes}m`;
 };
 
-// Function to handle adding a new quote
-const addQuote = () => {
-  // For now, just show an alert - this could be replaced with a modal or navigation
-  alert('Add Quote functionality - this could open a modal or navigate to a quote creation form.');
+// Modal functions
+const showQuoteModal = async () => {
+  showQuoteModalRef.value = true;
+  // Use showModal helper to show the modal
+  const modalElement = document.getElementById('kt_modal_create_quote_for_trip');
+  if (modalElement) {
+    showModal(modalElement);
+  }
+};
 
-  // TODO: Implement one of these approaches:
-  // 1. Open a modal to create a quote
-  // 2. Navigate to a dedicated quote creation page
-  // 3. Emit an event to parent component to handle the action
+const onQuoteModalClose = () => {
+  showQuoteModalRef.value = false;
+};
+
+const onQuoteCreated = (quote: any) => {
+  console.log('Quote created and connected to trip:', quote);
+  showQuoteModalRef.value = false;
+  // Emit event to parent to refresh trip data
+  emit('trip-updated');
 };
 </script>
 

@@ -252,6 +252,10 @@
       <div v-if="!loading && getTripLines().length === 0" class="text-center py-10">
         <i class="fas fa-users fs-3x text-muted mb-4"></i>
         <p class="text-muted">Add flight legs to assign crew members</p>
+        <button @click="showTripLegsModal" type="button" class="btn btn-primary">
+          <i class="fas fa-plus fs-4 me-2"></i>
+          Add Flight Legs
+        </button>
       </div>
       <!--end::No Trip Lines-->
 
@@ -259,10 +263,21 @@
     <!--end::Content-->
   </div>
   <!--end::Crew Content-->
+
+  <!--begin::Add Trip Legs Modal-->
+  <AddTripLegsModal
+    :trip="trip"
+    :show="showTripLegsModalRef"
+    @close="onModalClose"
+    @trip-updated="onTripUpdated"
+  />
+  <!--end::Add Trip Legs Modal-->
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import AddTripLegsModal from '@/components/modals/AddTripLegsModal.vue';
+import { showModal } from '@/core/helpers/modal';
 
 interface Props {
   trip: any;
@@ -270,6 +285,10 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const emit = defineEmits(['trip-updated']);
+
+// Modal state
+const showTripLegsModalRef = ref(false);
 
 // Trip lines and crew data
 const getTripLines = (): any[] => {
@@ -464,6 +483,23 @@ const getEventAirport = (event: any): string => {
     return event.airport.icao_code || event.airport.iata_code || event.airport.name || 'Unknown';
   }
   return 'Unknown Airport';
+};
+
+// Modal functions
+const showTripLegsModal = () => {
+  showTripLegsModalRef.value = true;
+  showModal(document.getElementById('kt_modal_add_trip_legs'));
+};
+
+// Handle modal close
+const onModalClose = () => {
+  showTripLegsModalRef.value = false;
+};
+
+// Handle trip updated from modal
+const onTripUpdated = () => {
+  showTripLegsModalRef.value = false;
+  emit('trip-updated');
 };
 </script>
 

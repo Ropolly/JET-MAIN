@@ -249,7 +249,7 @@
 
           <!--begin::Crew Tab-->
           <div v-if="activeTab === 'crew'">
-            <TripCrew :trip="trip" :loading="loading" />
+            <TripCrew :trip="trip" :loading="loading" @trip-updated="handleTripUpdated" />
           </div>
           <!--end::Crew Tab-->
 

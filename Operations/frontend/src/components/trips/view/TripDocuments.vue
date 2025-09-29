@@ -8,33 +8,6 @@
       </div>
       <!--end::Title-->
 
-      <!--begin::Toolbar-->
-      <div class="dropdown">
-        <button
-          class="btn btn-sm btn-light-primary dropdown-toggle"
-          type="button"
-          data-bs-toggle="dropdown"
-          :disabled="isGenerating"
-        >
-          <span v-if="!isGenerating">
-            <i class="fas fa-cogs fs-4 me-2"></i>
-            Actions
-          </span>
-          <span v-else>
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-            Processing...
-          </span>
-        </button>
-        <ul class="dropdown-menu">
-          <li>
-            <a class="dropdown-item" href="#" @click.prevent="generateAllDocuments">
-              <i class="fas fa-file-plus me-2"></i>
-              Generate All Documents
-            </a>
-          </li>
-        </ul>
-      </div>
-      <!--end::Toolbar-->
     </div>
     <!--end::Header-->
 
@@ -62,53 +35,6 @@
 
     <!-- Documents Grid -->
     <div v-else class="row g-6 g-xl-9 mb-6 mb-xl-9">
-      <!--begin::Document Cards-->
-      <div v-for="doc in documents" :key="doc.id" class="col-md-6 col-lg-4 col-xl-3">
-        <!--begin::Card-->
-        <div class="card h-100 position-relative">
-          <!--begin::Delete Button-->
-          <button
-            type="button"
-            class="position-absolute top-0 end-0 m-2 p-1 border-0 bg-transparent text-danger"
-            @click="deleteDocument(doc)"
-            title="Delete"
-            style="z-index: 10; font-size: 18px; line-height: 1;"
-          >
-            <i class="fas fa-times"></i>
-          </button>
-          <!--end::Delete Button-->
-
-          <!--begin::Card body-->
-          <div class="card-body d-flex justify-content-center text-center flex-column p-8">
-            <!--begin::Name-->
-            <a href="#" @click.prevent="downloadDocument(doc)" class="text-gray-800 text-hover-primary d-flex flex-column">
-              <!--begin::Image-->
-              <div class="symbol symbol-60px mb-5">
-                <img :src="getDocumentImage(doc)" class="theme-light-show" :alt="doc.document_type">
-                <img :src="getDocumentImageDark(doc)" class="theme-dark-show" :alt="doc.document_type">
-              </div>
-              <!--end::Image-->
-
-              <!--begin::Title-->
-              <div class="fs-5 fw-bold mb-2">
-                {{ doc.document_type_display || formatDocType(doc.document_type) || 'Document' }}
-              </div>
-              <!--end::Title-->
-            </a>
-            <!--end::Name-->
-
-            <!--begin::Description-->
-            <div class="fs-7 fw-semibold text-gray-500">
-              {{ formatDate(doc.created_on) }}
-            </div>
-            <!--end::Description-->
-          </div>
-          <!--end::Card body-->
-        </div>
-        <!--end::Card-->
-      </div>
-      <!--end::Document Cards-->
-
       <!-- Add Document Card -->
       <div class="col-md-6 col-lg-4 col-xl-3">
         <!--begin::Card-->
@@ -219,6 +145,53 @@
         <!--end::Card-->
       </div>
       <!--end::Generate Agreements Card-->
+
+      <!--begin::Document Cards-->
+      <div v-for="doc in documents" :key="doc.id" class="col-md-6 col-lg-4 col-xl-3">
+        <!--begin::Card-->
+        <div class="card h-100 position-relative">
+          <!--begin::Delete Button-->
+          <button
+            type="button"
+            class="position-absolute top-0 end-0 m-2 p-1 border-0 bg-transparent text-danger"
+            @click="deleteDocument(doc)"
+            title="Delete"
+            style="z-index: 10; font-size: 18px; line-height: 1;"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+          <!--end::Delete Button-->
+
+          <!--begin::Card body-->
+          <div class="card-body d-flex justify-content-center text-center flex-column p-8">
+            <!--begin::Name-->
+            <a href="#" @click.prevent="downloadDocument(doc)" class="text-gray-800 text-hover-primary d-flex flex-column">
+              <!--begin::Image-->
+              <div class="symbol symbol-60px mb-5">
+                <img :src="getDocumentImage(doc)" class="theme-light-show" :alt="doc.document_type">
+                <img :src="getDocumentImageDark(doc)" class="theme-dark-show" :alt="doc.document_type">
+              </div>
+              <!--end::Image-->
+
+              <!--begin::Title-->
+              <div class="fs-5 fw-bold mb-2">
+                {{ doc.document_type_display || formatDocType(doc.document_type) || 'Document' }}
+              </div>
+              <!--end::Title-->
+            </a>
+            <!--end::Name-->
+
+            <!--begin::Description-->
+            <div class="fs-7 fw-semibold text-gray-500">
+              {{ formatDate(doc.created_on) }}
+            </div>
+            <!--end::Description-->
+          </div>
+          <!--end::Card body-->
+        </div>
+        <!--end::Card-->
+      </div>
+      <!--end::Document Cards-->
     </div>
 
     <!-- Hidden file inputs for patient document uploads -->
@@ -255,8 +228,6 @@ interface Document {
   created_by?: string;
   isContract?: boolean;
   contract_id?: string;
-  isPatientDoc?: boolean;
-  media_url?: string;
 }
 
 interface Props {
@@ -406,61 +377,9 @@ const loadDocuments = async () => {
     const documentsResponse = await ApiService.get(`trips/${props.tripId}/documents/`);
     let allDocuments = [...documentsResponse.data];
 
-    // Load patient documents if trip has a patient
-    if (props.trip?.patient?.id) {
-      try {
-        const patientResponse = await ApiService.get(`patients/${props.trip.patient.id}/`);
-        const patient = patientResponse.data;
-
-        // Add insurance card if it exists
-        if (patient.insurance_card) {
-          // Remove any existing trip document with same ID (we want the patient version with media_url)
-          allDocuments = allDocuments.filter(doc => doc.id !== patient.insurance_card.id);
-
-          // Construct media URL from file_path
-          const filePath = patient.insurance_card.file_path || patient.insurance_card.filename;
-          const mediaUrl = filePath
-            ? `http://localhost:8001/media/${filePath.startsWith('patient_documents/') ? filePath : `patient_documents/${filePath}`}`
-            : null;
-
-          console.log('Insurance card file_path:', filePath, 'media_url:', mediaUrl);
-
-          allDocuments.push({
-            ...patient.insurance_card,
-            document_type: 'insurance_card',
-            document_type_display: 'Insurance Card',
-            isPatientDoc: true,
-            media_url: mediaUrl,
-            file_path: filePath
-          });
-        }
-
-        // Add medical letter if it exists
-        if (patient.letter_of_medical_necessity) {
-          // Remove any existing trip document with same ID (we want the patient version with media_url)
-          allDocuments = allDocuments.filter(doc => doc.id !== patient.letter_of_medical_necessity.id);
-
-          // Construct media URL from file_path
-          const filePath = patient.letter_of_medical_necessity.file_path || patient.letter_of_medical_necessity.filename;
-          const mediaUrl = filePath
-            ? `http://localhost:8001/media/${filePath.startsWith('patient_documents/') ? filePath : `patient_documents/${filePath}`}`
-            : null;
-
-          console.log('Medical letter file_path:', filePath, 'media_url:', mediaUrl);
-
-          allDocuments.push({
-            ...patient.letter_of_medical_necessity,
-            document_type: 'letter_of_medical_necessity',
-            document_type_display: 'Letter of Medical Necessity',
-            isPatientDoc: true,
-            media_url: mediaUrl,
-            file_path: filePath
-          });
-        }
-      } catch (patientError) {
-        console.log('Error loading patient documents (continuing without them):', patientError);
-      }
-    }
+    // Patient documents are now included in the trip's documents endpoint
+    // No need to load them separately from the patient object
+    // The backend creates trip-specific patient documents that will be loaded above
 
     // Try to load contracts with proper error handling
     let contractsData = [];
@@ -771,10 +690,14 @@ const regenerateDocument = async (documentType: string) => {
 
 const downloadDocument = async (doc: Document) => {
   try {
-    // Handle patient documents with media URLs first
-    if (doc.isPatientDoc && doc.media_url) {
-      window.open(doc.media_url, '_blank');
-      return;
+    // Handle patient documents (insurance card and medical letter)
+    if (doc.document_type === 'insurance_card' || doc.document_type === 'letter_of_medical_necessity') {
+      // Construct media URL from file_path for patient documents
+      if (doc.file_path) {
+        const mediaUrl = `http://localhost:8001/media/${doc.file_path.startsWith('patient_documents/') ? doc.file_path : `patient_documents/${doc.file_path}`}`;
+        window.open(mediaUrl, '_blank');
+        return;
+      }
     }
 
     // Handle contracts differently - they use DocuSeal for signing

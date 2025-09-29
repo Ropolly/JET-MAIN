@@ -10,9 +10,9 @@
       <!--end::Title-->
 
       <!--begin::Toolbar-->
-      <div>
+      <div v-if="trip?.patient || hasPassengers()">
         <button
-          v-if="!trip?.patient"
+          v-if="!trip?.patient && isMedicalTrip()"
           @click="showPatientSelectionModal"
           class="btn btn-primary btn-sm me-2"
         >
@@ -158,9 +158,18 @@
           <div class="text-center py-10">
             <i class="fas fa-user-friends fs-3x text-muted mb-4"></i>
             <p class="text-muted">No patients or passengers assigned yet</p>
-            <button @click="showPatientSelectionModal" type="button" class="btn btn-primary">
+            <button
+              v-if="isMedicalTrip()"
+              @click="showPatientSelectionModal"
+              type="button"
+              class="btn btn-primary me-2"
+            >
               <i class="fas fa-plus fs-4 me-2"></i>
               Add Patient
+            </button>
+            <button type="button" class="btn btn-primary">
+              <i class="fas fa-plus fs-4 me-2"></i>
+              Add Passenger
             </button>
           </div>
         </div>
@@ -407,6 +416,10 @@ const getPassengers = (): any[] => {
 
 const hasPassengers = (): boolean => {
   return getPassengers().length > 0;
+};
+
+const isMedicalTrip = (): boolean => {
+  return props.trip?.type === 'medical';
 };
 
 const getPassengerCount = (): number => {
