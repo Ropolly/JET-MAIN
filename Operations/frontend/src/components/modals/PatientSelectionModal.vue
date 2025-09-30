@@ -372,7 +372,8 @@ const assignExistingPatient = async () => {
   try {
     // Update the trip with the selected patient
     await ApiService.patch(`/trips/${props.trip.id}/`, {
-      patient: selectedPatient.value.id
+      patient: selectedPatient.value.id,
+      type: props.trip.type // Include required type field for validation
     });
 
     await Swal.fire({
@@ -442,7 +443,8 @@ const createAndAssignPatient = async () => {
 
     // Step 3: Assign the patient to the trip
     await ApiService.patch(`/trips/${props.trip.id}/`, {
-      patient: createdPatient.id
+      patient: createdPatient.id,
+      type: props.trip.type // Include required type field for validation
     });
 
     await Swal.fire({

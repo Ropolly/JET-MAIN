@@ -4,24 +4,25 @@
       {{ label }}
     </label>
     
-    <div class="position-relative">
-      <!-- Search Input -->
-      <input
-        ref="searchInput"
-        v-model="searchTerm"
-        @input="handleSearch"
-        @focus="handleFocus"
-        @blur="handleBlur"
-        @keydown.down.prevent="navigateDown"
-        @keydown.up.prevent="navigateUp"
-        @keydown.enter.prevent="selectHighlighted"
-        @keydown.escape="hideDropdown"
-        type="text"
-        :class="`form-control form-control-solid ${dropdownVisible ? 'dropdown-open' : ''}`"
-        :placeholder="placeholder"
-        :disabled="disabled"
-        autocomplete="off"
-      />
+    <div class="d-flex">
+      <div class="position-relative flex-grow-1">
+        <!-- Search Input -->
+        <input
+          ref="searchInput"
+          v-model="searchTerm"
+          @input="handleSearch"
+          @focus="handleFocus"
+          @blur="handleBlur"
+          @keydown.down.prevent="navigateDown"
+          @keydown.up.prevent="navigateUp"
+          @keydown.enter.prevent="selectHighlighted"
+          @keydown.escape="hideDropdown"
+          type="text"
+          :class="`form-control form-control-solid me-2 ${dropdownVisible ? 'dropdown-open' : ''}`"
+          :placeholder="placeholder"
+          :disabled="disabled"
+          autocomplete="off"
+        />
       
       <!-- Loading Spinner -->
       <div v-if="loading" class="position-absolute top-50 end-0 translate-middle-y me-3">
@@ -40,9 +41,21 @@
       </div>
       
       <!-- Search Icon -->
-      <div v-if="!selectedPatient && !loading" class="position-absolute top-50 end-0 translate-middle-y me-3">
+      <div v-if="!selectedPatient && !loading" class="position-absolute top-50 end-0 translate-middle-y me-5">
         <KTIcon icon-name="magnifier" icon-class="fs-4 text-muted" />
       </div>
+      </div>
+
+      <!-- Create New Patient Button -->
+      <button
+        type="button"
+        class="btn btn-light-primary btn-sm"
+        @click="createNewPatient"
+        :disabled="disabled"
+        title="Create New Patient"
+      >
+        <KTIcon icon-name="plus" icon-class="fs-6" />
+      </button>
     </div>
     
     <!-- Selected Patient Display -->
@@ -175,6 +188,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'update:modelValue': [value: string | null];
   'patientSelected': [patient: any];
+  'createPatient': [];
 }>();
 
 // Refs
@@ -324,6 +338,10 @@ const openPatientDetails = () => {
     const url = `/admin/contacts/patients/${selectedPatient.value.id}`;
     window.open(url, '_blank');
   }
+};
+
+const createNewPatient = () => {
+  emit('createPatient');
 };
 
 const loadPatientById = async (patientId: string) => {

@@ -292,7 +292,8 @@ const submitPatient = async () => {
   try {
     // Update the trip with the selected patient
     await ApiService.patch(`/trips/${props.trip.id}/`, {
-      patient: selectedPatientId.value
+      patient: selectedPatientId.value,
+      type: props.trip.type // Include required type field for validation
     });
 
     Swal.fire({
@@ -362,7 +363,8 @@ const updateTripStatus = async (newStatus: string) => {
   try {
     // Update the trip status
     await ApiService.patch(`/trips/${props.trip.id}/`, {
-      status: newStatus
+      status: newStatus,
+      type: props.trip.type // Include required type field for validation
     });
     
     // Emit event to parent to update the trip data

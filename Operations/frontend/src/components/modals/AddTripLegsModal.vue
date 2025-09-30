@@ -168,8 +168,48 @@ const saveTripLegs = async () => {
   saving.value = true;
 
   try {
-    // Create trip lines via API
-    const tripLinePromises = legs.value.map(async (leg) => {
+    // Step 1: Create CrewLine objects from individual crew selections
+    const crewLinePromises = legs.value.map(async (leg) => {
+      // Only create crew line if both PIC and SIC are selected
+      if (leg.pic_staff_id && leg.sic_staff_id) {
+        // Find the staff objects to get their contact_ids
+        const picStaff = staffMembers.value.find(s => s.id === leg.pic_staff_id);
+        const sicStaff = staffMembers.value.find(s => s.id === leg.sic_staff_id);
+
+        if (!picStaff || !sicStaff) {
+          throw new Error(`Staff members not found: PIC=${picStaff ? 'found' : 'not found'}, SIC=${sicStaff ? 'found' : 'not found'}`);
+        }
+
+        // Convert medical staff IDs to contact IDs if any are selected
+        const medicContactIds = (leg.medical_staff_ids || []).map(staffId => {
+          const medicStaff = staffMembers.value.find(s => s.id === staffId);
+          if (!medicStaff) {
+            throw new Error(`Medical staff member not found: ${staffId}`);
+          }
+          return medicStaff.contact_id;
+        });
+
+        const crewLineData = {
+          primary_in_command: picStaff.contact_id,
+          secondary_in_command: sicStaff.contact_id,
+          medic_ids: medicContactIds
+        };
+
+        console.log('Creating crew line:', crewLineData);
+        const crewResponse = await ApiService.post('/crew-lines/', crewLineData);
+        console.log('Created crew line:', crewResponse.data);
+        return crewResponse.data.id;
+      }
+      // Return null if no crew selected (for positioning legs)
+      return null;
+    });
+
+    // Wait for all crew lines to be created
+    const crewLineIds = await Promise.all(crewLinePromises);
+    console.log('Created crew line IDs:', crewLineIds);
+
+    // Step 2: Create trip lines with proper crew_line assignments
+    const tripLinePromises = legs.value.map(async (leg, index) => {
       const tripLineData = {
         trip: props.trip.id,
         origin_airport: leg.origin_airport,
@@ -182,11 +222,12 @@ const saveTripLegs = async () => {
         flight_time: '01:00:00', // Default, will be calculated by backend
         ground_time: '00:30:00', // Default
         passenger_leg: true,
-        crew_line: leg.crew_line_id || null,
+        crew_line: crewLineIds[index], // Use the created crew line ID
         departure_fbo: leg.departure_fbo_id || null,
         arrival_fbo: leg.arrival_fbo_id || null
       };
 
+      console.log('Creating trip line with crew:', tripLineData);
       return ApiService.post('/trip-lines/', tripLineData);
     });
 
@@ -232,13 +273,24 @@ const saveTripLegs = async () => {
     emit('trip-updated');
     closeModal();
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving trip legs:', error);
 
     let errorMessage = 'Failed to save flight legs. Please try again.';
-    if (error.response?.data) {
+
+    // Check for specific crew-related errors
+    if (error.message && (error.message.includes('Staff members not found') || error.message.includes('Medical staff member not found'))) {
+      errorMessage = 'Selected crew members are no longer available. Please refresh the page and try again.';
+    } else if (error.message && error.message.includes('crew')) {
+      errorMessage = 'Failed to create crew assignments. Please check that you have selected both PIC and SIC for each leg with crew.';
+    } else if (error.response?.data) {
       if (typeof error.response.data === 'object') {
-        errorMessage = JSON.stringify(error.response.data);
+        // Check for crew line validation errors
+        if (error.response.data.primary_in_command || error.response.data.secondary_in_command) {
+          errorMessage = 'Invalid crew selection. Please ensure both PIC and SIC are selected from valid staff members.';
+        } else {
+          errorMessage = JSON.stringify(error.response.data);
+        }
       } else {
         errorMessage = error.response.data.detail || error.response.data.message || error.response.data.toString();
       }

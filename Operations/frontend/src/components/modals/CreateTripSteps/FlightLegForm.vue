@@ -564,13 +564,16 @@ const calculateArrivalTime = async (retryCount = 0) => {
     const flightTimeMilliseconds = legData.flight_time_hours * 60 * 60 * 1000;
     const arrivalDateTime = new Date(departureDateTime.getTime() + flightTimeMilliseconds);
     
-    legData.arrival_date = arrivalDateTime.toISOString().split('T')[0];
-    legData.arrival_time = arrivalDateTime.toISOString().split('T')[1].slice(0, 5);
+    legData.arrival_date = arrivalDateTime.getFullYear() + '-' +
+                      String(arrivalDateTime.getMonth() + 1).padStart(2, '0') + '-' +
+                      String(arrivalDateTime.getDate()).padStart(2, '0');
+    legData.arrival_time = String(arrivalDateTime.getHours()).padStart(2, '0') + ':' +
+                          String(arrivalDateTime.getMinutes()).padStart(2, '0');
     
-    console.log('📅 Fallback UTC calculation result:');
-    console.log(`  Departure: ${legData.departure_date} ${legData.departure_time} (treated as UTC)`);
+    console.log('📅 Fallback calculation result:');
+    console.log(`  Departure: ${legData.departure_date} ${legData.departure_time}`);
     console.log(`  Flight time: ${legData.flight_time_hours} hours`);
-    console.log(`  Arrival: ${legData.arrival_date} ${legData.arrival_time} (UTC - will display incorrectly)`);
+    console.log(`  Arrival: ${legData.arrival_date} ${legData.arrival_time} (local time)`);
   } catch (fallbackError) {
     console.error('❌ Even fallback calculation failed:', fallbackError);
   }

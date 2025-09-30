@@ -70,7 +70,7 @@ from .serializers import (
     CrewLineReadSerializer, CrewLineWriteSerializer,
     TripLineReadSerializer, TripLineWriteSerializer,
     TripEventReadSerializer, TripEventWriteSerializer,
-    TripReadSerializer, TripWriteSerializer,
+    TripReadSerializer, TripWriteSerializer, TripPartialUpdateSerializer,
     QuoteReadSerializer, QuoteWriteSerializer,
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
@@ -1301,79 +1301,75 @@ class TripViewSet(BaseViewSet):
             print(f"DEBUG TRIP CREATE: Exception type: {type(e)}")
             raise
     
-    def generate_trip_number(self):
+    def generate_draft_number(self):
         """
-        Generate a unique five-digit auto-incrementing trip number.
-        Format: 00001, 00002, etc.
+        Generate a unique DRAFT trip number for new trips.
+        Format: DRAFT-{timestamp}-{random}
         """
-        from django.db.models import Max
-        import re
-        
-        # Get the highest existing trip number
-        max_trip = Trip.objects.aggregate(max_num=Max('trip_number'))['max_num']
-        
-        if not max_trip:
-            # First trip
-            return '00001'
-        
-        # Extract numeric value from trip numbers (handle various formats)
-        try:
-            # Try to extract numeric part from trip number
-            match = re.search(r'\d+', max_trip)
-            if match:
-                max_num = int(match.group())
-            else:
-                max_num = 0
-        except (ValueError, AttributeError):
-            # If we can't parse existing numbers, start fresh
-            max_num = 0
-        
-        # Increment and format as 5-digit number
-        new_num = max_num + 1
-        return str(new_num).zfill(5)
+        import time
+        import random
+        timestamp = int(time.time())
+        random_part = random.randint(1000, 9999)
+        return f"DRAFT-{timestamp}-{random_part}"
     
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve', 'trip_lines'):
             return TripReadSerializer
+        elif self.action in ('update', 'partial_update'):
+            return TripPartialUpdateSerializer
         return TripWriteSerializer
     
     def perform_create(self, serializer):
         """
-        Override perform_create to automatically generate trip number if not provided.
+        Override perform_create to create trips without trip numbers initially.
+        Trip numbers will be generated when the first trip line is added.
         """
         print(f"DEBUG TRIP CREATE: Request data: {self.request.data}")
         print(f"DEBUG TRIP CREATE: Validated data: {serializer.validated_data}")
 
-        # Check if trip_number is provided in the validated data
-        if not serializer.validated_data.get('trip_number'):
-            # Generate a unique trip number
-            trip_number = self.generate_trip_number()
-
-            # Ensure uniqueness (in case of race conditions)
-            while Trip.objects.filter(trip_number=trip_number).exists():
-                # If somehow the number exists, generate the next one
-                import re
-                match = re.search(r'\d+', trip_number)
-                if match:
-                    num = int(match.group()) + 1
-                    trip_number = str(num).zfill(5)
-                else:
-                    # Fallback to timestamp if we can't parse
-                    import time
-                    trip_number = f"T{int(time.time())}"
-
-            print(f"DEBUG TRIP CREATE: Generated trip number: {trip_number}")
-            # Save with the generated trip number
-            instance = serializer.save(created_by=self.request.user, trip_number=trip_number)
-        else:
-            # Trip number was provided, use it
+        # Only set trip number if explicitly provided in the request
+        if serializer.validated_data.get('trip_number'):
             print(f"DEBUG TRIP CREATE: Using provided trip number: {serializer.validated_data.get('trip_number')}")
             instance = serializer.save(created_by=self.request.user)
-        
+        else:
+            # Do not generate trip number on creation - it will be generated when trip legs are added
+            print(f"DEBUG TRIP CREATE: Creating trip without trip number - will be assigned when trip legs are added")
+            instance = serializer.save(created_by=self.request.user, trip_number=None)
+
         # Track creation
         from .utils import track_creation
         track_creation(instance, self.request.user)
-    
+
+    def perform_update(self, serializer):
+        """
+        Override perform_update to generate trip number only when explicitly requested.
+        Trip numbers should only be generated when trip_number field is explicitly provided as empty.
+        This prevents unwanted generation during quote creation updates.
+        """
+        print(f"DEBUG TRIP UPDATE: Request data: {self.request.data}")
+        print(f"DEBUG TRIP UPDATE: Validated data: {serializer.validated_data}")
+
+        # Only generate trip number if trip_number field is explicitly provided but empty
+        # This prevents generation during quote creation (where trip_number is not in request)
+        if 'trip_number' in serializer.validated_data:
+            trip_number = serializer.validated_data.get('trip_number')
+            if not trip_number or trip_number == '':
+                # Use the atomic method from the model to get next sequential number
+                new_trip_number = Trip.get_next_trip_number()
+                print(f"DEBUG TRIP UPDATE: Generated sequential trip number: {new_trip_number}")
+                # Save with the generated sequential trip number
+                instance = serializer.save(modified_by=self.request.user, trip_number=new_trip_number)
+            else:
+                # Trip number was provided and is valid, use it
+                print(f"DEBUG TRIP UPDATE: Using provided trip number: {trip_number}")
+                instance = serializer.save(modified_by=self.request.user)
+        else:
+            # trip_number field not in request - normal update without trip number generation
+            print(f"DEBUG TRIP UPDATE: Normal update without trip number field")
+            instance = serializer.save(modified_by=self.request.user)
+
+        # Updates are automatically tracked by signals
+
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2393,7 +2389,20 @@ class TripLineViewSet(BaseViewSet):
     def perform_create(self, serializer):
         trip_line = serializer.save(created_by=self.request.user)
         trip = trip_line.trip
-        
+
+        # Generate trip number if this trip doesn't have one yet
+        if not trip.trip_number:
+            # Check if this is the first trip line for this trip
+            trip_line_count = trip.trip_lines.count()
+            print(f"DEBUG TRIP LINE CREATE: Trip {trip.id} has {trip_line_count} trip lines")
+
+            if trip_line_count == 1:  # This is the first trip line
+                # Generate a real sequential trip number
+                new_trip_number = Trip.get_next_trip_number()
+                print(f"DEBUG TRIP LINE CREATE: Generated trip number {new_trip_number} for trip {trip.id}")
+                trip.trip_number = new_trip_number
+                trip.save(update_fields=['trip_number'])
+
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
             self.recalculate_trip_times(trip)

@@ -55,10 +55,6 @@
 
                   <!--begin::Actions-->
                   <div class="d-flex mb-4">
-                    <button @click="handleEditTrip" class="btn btn-sm btn-bg-light btn-active-color-primary me-3">
-                      Edit Trip
-                    </button>
-
                     <!--begin::Menu-->
                     <div class="me-0">
                       <button class="btn btn-sm btn-icon btn-bg-light btn-active-color-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
@@ -67,14 +63,6 @@
 
                       <!--begin::Menu-->
                       <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-800 menu-state-bg-light-primary fw-semibold w-200px py-3" data-kt-menu="true">
-                        <!--begin::Menu item-->
-                        <div class="menu-item px-3">
-                          <a href="#" @click="handleEditTrip" class="menu-link px-3">
-                            Edit Trip
-                          </a>
-                        </div>
-                        <!--end::Menu item-->
-
                         <!--begin::Menu item-->
                         <div class="menu-item px-3">
                           <a href="#" @click="duplicateTrip" class="menu-link px-3">
@@ -213,6 +201,17 @@
               <!--begin::Nav item-->
               <li class="nav-item">
                 <a class="nav-link text-active-primary py-5 me-6"
+                   :class="{ active: activeTab === 'notes' }"
+                   @click="activeTab = 'notes'"
+                   href="#">
+                  Notes
+                </a>
+              </li>
+              <!--end::Nav item-->
+
+              <!--begin::Nav item-->
+              <li class="nav-item">
+                <a class="nav-link text-active-primary py-5 me-6"
                    :class="{ active: activeTab === 'activity' }"
                    @click="activeTab = 'activity'"
                    href="#">
@@ -243,7 +242,7 @@
 
           <!--begin::Financials Tab-->
           <div v-if="activeTab === 'financials'">
-            <TripFinancials :trip="trip" :loading="loading" />
+            <TripFinancials :trip="trip" :loading="loading" @trip-updated="handleTripUpdated" />
           </div>
           <!--end::Financials Tab-->
 
@@ -258,6 +257,12 @@
             <TripDocuments v-if="trip?.id" :trip-id="trip.id" :trip="trip" />
           </div>
           <!--end::Documents Tab-->
+
+          <!--begin::Notes Tab-->
+          <div v-if="activeTab === 'notes'">
+            <TripNotes v-if="trip?.id" :trip-id="trip.id" :trip-data="trip" :loading="loading" @notes-updated="handleNotesUpdated" @patient-updated="handlePatientUpdated" />
+          </div>
+          <!--end::Notes Tab-->
 
           <!--begin::Activity Tab-->
           <div v-if="activeTab === 'activity'">
@@ -284,6 +289,7 @@ import TripDocuments from "@/components/trips/view/TripDocuments.vue";
 import TripPatients from "@/components/trips/view/TripPatients.vue";
 import TripFinancials from "@/components/trips/view/TripFinancials.vue";
 import TripCrew from "@/components/trips/view/TripCrew.vue";
+import TripNotes from "@/components/trips/view/TripNotes.vue";
 import TripActivity from "@/components/trips/view/TripActivity.vue";
 
 interface Trip {
@@ -394,6 +400,22 @@ const handleTripUpdated = async () => {
   console.log('Trip updated, refreshing data...');
   await fetchTrip();
   await updatePageTitle();
+};
+
+// Handle notes updates from TripNotes component
+const handleNotesUpdated = (notes: string) => {
+  console.log('Trip notes updated:', notes);
+  if (trip.value) {
+    trip.value.notes = notes;
+  }
+};
+
+// Handle patient updates from TripNotes component
+const handlePatientUpdated = (patient: any) => {
+  console.log('Patient updated:', patient);
+  if (trip.value && trip.value.patient) {
+    trip.value.patient = { ...trip.value.patient, ...patient };
+  }
 };
 
 // Computed properties for trip data

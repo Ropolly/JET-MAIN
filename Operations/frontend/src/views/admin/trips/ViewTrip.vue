@@ -195,13 +195,6 @@ export default defineComponent({
       // Build dropdown items
       const dropdownItems = [
         {
-          id: 'edit-trip',
-          label: 'Edit Trip',
-          icon: 'pencil',
-          handler: handleEditTrip
-        },
-        { divider: true },
-        {
           id: 'delete-trip',
           label: 'Delete Trip',
           icon: 'trash',

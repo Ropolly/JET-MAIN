@@ -11,10 +11,6 @@
 
       <!--begin::Card toolbar-->
       <div class="card-toolbar">
-        <button class="btn btn-light-primary me-3">
-          <KTIcon icon-name="pencil" icon-class="fs-3" />
-          Edit Trip
-        </button>
         <button class="btn btn-primary">
           <KTIcon icon-name="printer" icon-class="fs-3" />
           Generate Manifest

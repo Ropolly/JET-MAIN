@@ -8,7 +8,7 @@
     >
       <span v-if="creatingTrip" class="spinner-border spinner-border-sm me-2"></span>
       <KTIcon icon-name="plus" icon-class="fs-6 me-1" />
-      Create Trip
+      New Workflow
     </button>
   </div>
   <!--end::Floating Create Trip Button-->

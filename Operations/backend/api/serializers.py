@@ -1096,7 +1096,7 @@ class TripReadSerializer(serializers.ModelSerializer):
 
     def get_quote(self, obj):
         if obj.quote:
-            return {
+            quote_data = {
                 'id': obj.quote.id,
                 'quoted_amount': obj.quote.quoted_amount,
                 'status': obj.quote.status,
@@ -1106,6 +1106,30 @@ class TripReadSerializer(serializers.ModelSerializer):
                 'estimated_flight_time': obj.quote.estimated_flight_time,
                 'includes_grounds': obj.quote.includes_grounds
             }
+
+            # Include customer contact information for the patients/PAX tab
+            if obj.quote.contact:
+                contact = obj.quote.contact
+                quote_data['customer_contact'] = {
+                    'id': contact.id,
+                    'first_name': contact.get_first_name(),
+                    'last_name': contact.get_last_name(),
+                    'business_name': contact.get_business_name(),
+                    'email': contact.get_email(),
+                    'phone': contact.get_phone(),
+                    'date_of_birth': contact.get_date_of_birth(),
+                    'nationality': contact.get_nationality(),
+                    # Also include the encrypted field getters for compatibility
+                    'get_first_name': contact.get_first_name(),
+                    'get_last_name': contact.get_last_name(),
+                    'get_business_name': contact.get_business_name(),
+                    'get_email': contact.get_email(),
+                    'get_phone': contact.get_phone(),
+                    'get_date_of_birth': contact.get_date_of_birth(),
+                    'get_nationality': contact.get_nationality()
+                }
+
+            return quote_data
         return None
 
     def get_patient(self, obj):
@@ -1113,6 +1137,9 @@ class TripReadSerializer(serializers.ModelSerializer):
             return {
                 'id': obj.patient.id,
                 'status': obj.patient.status,
+                'special_instructions': obj.patient.get_special_instructions(),
+                'bed_at_origin': obj.patient.bed_at_origin,
+                'bed_at_destination': obj.patient.bed_at_destination,
                 'info': ContactSerializer(obj.patient.info).data
             }
         return None
@@ -1225,6 +1252,76 @@ class TripWriteSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class TripPartialUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for partial trip updates - allows updating individual fields without requiring all required fields"""
+    quote = serializers.PrimaryKeyRelatedField(
+        queryset=Quote.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    patient = serializers.PrimaryKeyRelatedField(
+        queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    aircraft = serializers.PrimaryKeyRelatedField(
+        queryset=Aircraft.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        source='passengers', queryset=Passenger.objects.all(), many=True, write_only=True, required=False
+    )
+    # Make all fields optional for partial updates
+    type = serializers.CharField(required=False)
+    trip_number = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.CharField(required=False)
+
+    class Meta:
+        model = Trip
+        fields = [
+            'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
+            'passenger_ids', 'notes', 'status'
+        ]
+        # Allow partial updates for all fields
+        extra_kwargs = {
+            'type': {'required': False},
+            'trip_number': {'required': False}
+        }
+
+    def update(self, instance, validated_data):
+        """Update trip with encrypted notes for partial updates."""
+        from .encryption import FieldEncryption
+
+        # Extract PHI fields that need encryption
+        phi_fields = ['notes']
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Extract passengers for many-to-many relationship
+        passengers = clean_validated_data.pop('passengers', None)
+
+        # Update non-PHI fields (only fields that were provided)
+        for attr, value in clean_validated_data.items():
+            setattr(instance, attr, value)
+
+        # Update passengers only if provided
+        if passengers is not None:
+            instance.passengers.set(passengers)
+
+        # Encrypt and store PHI fields
+        for field_name, value in phi_data.items():
+            if value:  # Only encrypt non-empty values
+                encrypted_value = FieldEncryption.encrypt(str(value))
+                setattr(instance, f"{field_name}_encrypted", encrypted_value)
+            else:
+                # Clear encrypted field if value is empty
+                setattr(instance, f"{field_name}_encrypted", None)
+
+        instance.save()
+        return instance
+
 
 # 6) Transactions
 class TransactionPublicReadSerializer(serializers.ModelSerializer):
@@ -1348,7 +1445,7 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quote
         fields = [
-            'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
+            'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
             'patient', 'lost_reason', 'aircraft_type', 'medical_team', 'estimated_flight_time',
             'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
@@ -1518,18 +1615,19 @@ class PatientWriteSerializer(serializers.ModelSerializer):
     info = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    
+
     class Meta:
         model = Patient
         fields = [
-            'info', 
-            'date_of_birth', 
-            'nationality', 
-            'passport_number', 
-            'passport_expiration_date', 
-            'special_instructions', 
-            'status', 
-            'bed_at_origin', 
+            'id',  # Include ID in response after creation
+            'info',
+            'date_of_birth',
+            'nationality',
+            'passport_number',
+            'passport_expiration_date',
+            'special_instructions',
+            'status',
+            'bed_at_origin',
             'bed_at_destination',
             'letter_of_medical_necessity',
             'insurance_card'

@@ -10,19 +10,45 @@
       <!--end::Title-->
 
       <!--begin::Toolbar-->
-      <div v-if="trip?.patient || hasPassengers()">
-        <button
-          v-if="!trip?.patient && isMedicalTrip()"
-          @click="showPatientSelectionModal"
-          class="btn btn-primary btn-sm me-2"
-        >
-          <KTIcon icon-name="plus" icon-class="fs-6" />
-          Add Patient
-        </button>
-        <button class="btn btn-light-primary btn-sm">
-          <KTIcon icon-name="plus" icon-class="fs-6" />
-          Add Passenger
-        </button>
+      <div>
+        <!--begin::Actions dropdown-->
+        <div class="d-flex align-items-center">
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <KTIcon icon-name="plus" icon-class="fs-6 me-1" />
+              Actions
+            </button>
+            <ul class="dropdown-menu">
+              <li v-if="!trip?.patient && isMedicalTrip()">
+                <a class="dropdown-item" href="#" @click.prevent="showPatientCreationModal">
+                  <KTIcon icon-name="people" icon-class="fs-6 me-2" />
+                  Add New Patient
+                </a>
+              </li>
+              <li v-if="!trip?.patient && isMedicalTrip()">
+                <a class="dropdown-item" href="#" @click.prevent="showPatientSelectionModal">
+                  <KTIcon icon-name="address-book" icon-class="fs-6 me-2" />
+                  Select Existing Patient
+                </a>
+              </li>
+              <li v-if="!trip?.patient && isMedicalTrip()">
+                <hr class="dropdown-divider">
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" @click.prevent="showPassengerCreationModal">
+                  <KTIcon icon-name="user-plus" icon-class="fs-6 me-2" />
+                  Add New Passenger
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <!--end::Actions dropdown-->
       </div>
       <!--end::Toolbar-->
     </div>
@@ -64,13 +90,6 @@
 
               <!--begin::Info-->
               <div class="d-flex flex-center flex-wrap">
-                <!--begin::Age-->
-                <div v-if="trip.patient.info?.date_of_birth || trip.patient.info?.get_date_of_birth" class="border border-gray-300 border-dashed rounded min-w-80px py-3 px-4 mx-2 mb-3">
-                  <div class="fs-6 fw-bold text-gray-700">{{ calculateAge(trip.patient.info?.get_date_of_birth || trip.patient.info?.date_of_birth) }}</div>
-                  <div class="fw-semibold text-gray-500">Age</div>
-                </div>
-                <!--end::Age-->
-
                 <!--begin::Origin Bed-->
                 <div class="border border-gray-300 border-dashed rounded min-w-80px py-3 px-4 mx-2 mb-3">
                   <div class="fs-6 fw-bold">
@@ -153,8 +172,47 @@
         </div>
         <!--end::Passenger Cards-->
 
+        <!--begin::Quote Contact Card-->
+        <div v-if="hasQuoteContact()" class="col-md-6 col-xxl-4">
+          <!--begin::Card-->
+          <div class="card cursor-pointer" @click="openContactDrawer">
+            <!--begin::Card body-->
+            <div class="card-body d-flex flex-center flex-column pt-12 p-9">
+              <!--begin::Avatar-->
+              <div class="symbol symbol-65px symbol-circle mb-5">
+                <span class="symbol-label fs-2x fw-semibold text-dark bg-light-dark">
+                  {{ getQuoteContactInitials() }}
+                </span>
+              </div>
+              <!--end::Avatar-->
+
+              <!--begin::Name-->
+              <a href="#" class="fs-4 text-gray-800 text-hover-primary fw-bold mb-0">{{ getQuoteContactName() }}</a>
+              <!--end::Name-->
+
+              <!--begin::Position-->
+              <div class="fw-semibold text-gray-500 mb-6">Quote Contact</div>
+              <!--end::Position-->
+
+              <!--begin::Info-->
+              <div class="d-flex flex-center flex-wrap">
+                <!--begin::Phone Number-->
+                <div v-if="getQuoteContactPhone()" class="border border-gray-300 border-dashed rounded min-w-80px py-3 px-4 mx-2 mb-3">
+                  <div class="fs-6 fw-bold text-gray-700">{{ getQuoteContactPhone() }}</div>
+                  <div class="fw-semibold text-gray-500">Phone</div>
+                </div>
+                <!--end::Phone Number-->
+              </div>
+              <!--end::Info-->
+            </div>
+            <!--end::Card body-->
+          </div>
+          <!--end::Card-->
+        </div>
+        <!--end::Quote Contact Card-->
+
         <!--begin::No Data Message-->
-        <div v-if="!trip?.patient && !hasPassengers()" class="col-12">
+        <div v-if="!trip?.patient && !hasPassengers() && !hasQuoteContact()" class="col-12">
           <div class="text-center py-10">
             <i class="fas fa-user-friends fs-3x text-muted mb-4"></i>
             <p class="text-muted">No patients or passengers assigned yet</p>
@@ -196,7 +254,11 @@
         <div class="card-title">
           <div class="d-flex justify-content-center flex-column me-3">
             <span class="fs-4 fw-bold text-gray-900 text-hover-primary me-1 lh-1">
-              {{ drawerData?.type === 'patient' ? 'Patient Details' : 'Passenger Details' }}
+              {{
+                drawerData?.type === 'patient' ? 'Patient Details' :
+                drawerData?.type === 'contact' ? 'Contact Details' :
+                'Passenger Details'
+              }}
             </span>
           </div>
         </div>
@@ -221,20 +283,32 @@
           <div class="d-flex flex-center flex-column mb-8">
             <div class="symbol symbol-100px symbol-circle mb-5">
               <span
-                :class="drawerData.type === 'patient'
-                  ? 'symbol-label fs-1 fw-semibold text-danger bg-light-danger'
-                  : 'symbol-label fs-1 fw-semibold text-info bg-light-info'"
+                :class="
+                  drawerData.type === 'patient'
+                    ? 'symbol-label fs-1 fw-semibold text-danger bg-light-danger'
+                    : drawerData.type === 'contact'
+                    ? 'symbol-label fs-1 fw-semibold text-dark bg-light-dark'
+                    : 'symbol-label fs-1 fw-semibold text-info bg-light-info'
+                "
               >
                 {{ drawerData.initials }}
               </span>
             </div>
             <h3 class="text-gray-900 fw-bold mb-1">{{ drawerData.name }}</h3>
             <div
-              :class="drawerData.type === 'patient'
-                ? 'fw-semibold text-danger'
-                : 'fw-semibold text-gray-500'"
+              :class="
+                drawerData.type === 'patient'
+                  ? 'fw-semibold text-danger'
+                  : drawerData.type === 'contact'
+                  ? 'fw-semibold text-dark'
+                  : 'fw-semibold text-gray-500'
+              "
             >
-              {{ drawerData.type === 'patient' ? 'Active Patient' : (drawerData.relationship || 'Passenger') }}
+              {{
+                drawerData.type === 'patient' ? 'Active Patient' :
+                drawerData.type === 'contact' ? 'Quote Contact' :
+                (drawerData.relationship || 'Passenger')
+              }}
             </div>
           </div>
           <!--end::Avatar and Name-->
@@ -315,6 +389,27 @@
             </div>
           </div>
           <!--end::Special Needs-->
+
+          <!--begin::Quote Information (Contact only)-->
+          <div v-if="drawerData.type === 'contact'" class="mb-8">
+            <h4 class="fw-bold text-gray-900 mb-4">Quote Information</h4>
+
+            <div class="d-flex align-items-center mb-3">
+              <span class="fw-semibold text-gray-600 me-3" style="width: 120px;">Quote Status:</span>
+              <span class="badge badge-light-primary">{{ drawerData.quoteStatus }}</span>
+            </div>
+
+            <div v-if="drawerData.quotedAmount" class="d-flex align-items-center mb-3">
+              <span class="fw-semibold text-gray-600 me-3" style="width: 120px;">Quoted Amount:</span>
+              <span class="text-gray-900">${{ drawerData.quotedAmount?.toLocaleString() }}</span>
+            </div>
+
+            <div v-if="drawerData.aircraftType" class="d-flex align-items-center mb-3">
+              <span class="fw-semibold text-gray-600 me-3" style="width: 120px;">Aircraft Type:</span>
+              <span class="text-gray-900">{{ drawerData.aircraftType }}</span>
+            </div>
+          </div>
+          <!--end::Quote Information-->
         </div>
       </div>
       <!--end::Card body-->
@@ -340,12 +435,32 @@
     @patient-assigned="onPatientAssigned"
   />
   <!--end::Patient Selection Modal-->
+
+  <!--begin::Create Patient Modal-->
+  <CreatePatientModal
+    @patientCreated="onPatientCreated"
+    @close="onCreatePatientModalClose"
+  />
+  <!--end::Create Patient Modal-->
+
+  <!--begin::Create Passenger Modal-->
+  <CreatePassengerFromContactModal
+    :show="showCreatePassengerModal"
+    :trip="trip"
+    @passengerCreated="onPassengerCreated"
+    @close="onCreatePassengerModalClose"
+  />
+  <!--end::Create Passenger Modal-->
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import PatientSelectionModal from '@/components/modals/PatientSelectionModal.vue';
+import CreatePatientModal from '@/components/modals/CreatePatientModal.vue';
+import CreatePassengerFromContactModal from '@/components/modals/CreatePassengerFromContactModal.vue';
 import { showModal } from '@/core/helpers/modal';
+import ApiService from '@/core/services/ApiService';
+import Swal from 'sweetalert2';
 
 interface Props {
   trip: any;
@@ -359,8 +474,9 @@ const emit = defineEmits(['trip-updated']);
 const showDrawer = ref(false);
 const drawerData = ref<any>(null);
 
-// Patient modal state
+// Modal states
 const showPatientModal = ref(false);
+const showCreatePassengerModal = ref(false);
 
 // Patient helper functions
 const getPatientName = (): string => {
@@ -624,6 +740,170 @@ const onPatientAssigned = (patient: any) => {
   showPatientModal.value = false;
   // Emit event to parent to refresh trip data
   emit('trip-updated');
+};
+
+// Patient creation modal functions
+const showPatientCreationModal = () => {
+  // Use Bootstrap modal helper to show the modal
+  const modalElement = document.getElementById('kt_modal_create_patient');
+  if (modalElement) {
+    showModal(modalElement);
+  }
+};
+
+const onCreatePatientModalClose = () => {
+  // Modal closed via Bootstrap, no state to manage
+};
+
+const onPatientCreated = async (patient: any) => {
+  console.log('Patient created:', patient);
+
+  // Auto-assign the newly created patient to the trip
+  try {
+    await ApiService.patch(`/trips/${props.trip.id}/`, {
+      patient_id: patient.id,
+      type: props.trip.type // Include required type field for validation
+    });
+
+    // Show success message
+    Swal.fire({
+      title: 'Success',
+      text: 'Patient has been created and assigned to this trip',
+      icon: 'success',
+      timer: 2000,
+      showConfirmButton: false
+    });
+
+    // Emit event to parent to refresh trip data
+    emit('trip-updated');
+  } catch (error: any) {
+    console.error('Error assigning patient to trip:', error);
+
+    Swal.fire({
+      title: 'Patient Created',
+      text: 'Patient was created successfully, but there was an error assigning them to the trip. Please try selecting the patient from the dropdown.',
+      icon: 'warning',
+      confirmButtonText: 'OK'
+    });
+
+    // Still emit the event in case the parent wants to refresh
+    emit('trip-updated');
+  }
+};
+
+
+// Passenger creation modal functions
+const showPassengerCreationModal = () => {
+  showCreatePassengerModal.value = true;
+};
+
+const onCreatePassengerModalClose = () => {
+  showCreatePassengerModal.value = false;
+};
+
+const onPassengerCreated = (passenger: any) => {
+  console.log('Passenger created:', passenger);
+  showCreatePassengerModal.value = false;
+  // Auto-assign the newly created passenger to the trip
+  emit('trip-updated');
+};
+
+// Quote contact helper functions
+const hasQuoteContact = (): boolean => {
+  // Show quote contact card if there's a quote with a customer contact that is not also the patient
+  if (!props.trip?.quote?.customer_contact) return false;
+
+  // If there's no patient, always show quote contact
+  if (!props.trip?.patient) return true;
+
+  // If patient exists, only show quote contact if it's different from patient contact
+  const quoteContactId = props.trip.quote.customer_contact.id;
+  const patientContactId = props.trip.patient.info?.id;
+
+  return quoteContactId !== patientContactId;
+};
+
+const getQuoteContactName = (): string => {
+  if (!props.trip?.quote?.customer_contact) return 'Unknown Contact';
+
+  const contact = props.trip.quote.customer_contact;
+  // Try decrypted fields first, then fall back to regular fields
+  const first = contact.get_first_name || contact.first_name || '';
+  const last = contact.get_last_name || contact.last_name || '';
+  const business = contact.get_business_name || contact.business_name || '';
+
+  // Prioritize business name if available
+  if (business) return business;
+
+  return `${first} ${last}`.trim() || 'Unknown Contact';
+};
+
+const getQuoteContactInitials = (): string => {
+  if (!props.trip?.quote?.customer_contact) return '?';
+
+  const contact = props.trip.quote.customer_contact;
+  // Try decrypted fields first, then fall back to regular fields
+  const first = contact.get_first_name || contact.first_name || '';
+  const last = contact.get_last_name || contact.last_name || '';
+  const business = contact.get_business_name || contact.business_name || '';
+
+  // For business contacts, use first two letters of business name
+  if (business) {
+    return business.substring(0, 2).toUpperCase();
+  }
+
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || '?';
+};
+
+const getQuoteContactInfoCount = (): number => {
+  let count = 0;
+
+  if (!props.trip?.quote?.customer_contact) return count;
+
+  const contact = props.trip.quote.customer_contact;
+  // Check both encrypted and regular fields
+  if (contact.get_phone || contact.phone) count++;
+  if (contact.get_email || contact.email) count++;
+
+  return count;
+};
+
+const getQuoteContactPhone = (): string => {
+  if (!props.trip?.quote?.customer_contact) return '';
+
+  const contact = props.trip.quote.customer_contact;
+  // Try decrypted fields first, then fall back to regular fields
+  return contact.get_phone || contact.phone || '';
+};
+
+const getQuoteStatus = (): string => {
+  if (!props.trip?.quote?.status) return 'Unknown';
+
+  // Capitalize first letter and replace underscores with spaces
+  return props.trip.quote.status
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+};
+
+const openContactDrawer = () => {
+  if (!props.trip?.quote?.customer_contact) return;
+
+  const contact = props.trip.quote.customer_contact;
+
+  drawerData.value = {
+    type: 'contact',
+    name: getQuoteContactName(),
+    initials: getQuoteContactInitials(),
+    dateOfBirth: contact.get_date_of_birth || contact.date_of_birth,
+    nationality: contact.get_nationality || contact.nationality,
+    phone: contact.get_phone || contact.phone,
+    email: contact.get_email || contact.email,
+    quoteStatus: getQuoteStatus(),
+    quotedAmount: props.trip.quote.quoted_amount,
+    aircraftType: props.trip.quote.aircraft_type
+  };
+
+  showDrawer.value = true;
 };
 </script>
 

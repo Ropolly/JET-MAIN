@@ -18,33 +18,29 @@
       </div>
     </div>
 
-    <!-- No Documents State -->
-    <div v-else-if="documents.length === 0" class="text-center py-10">
-      <i class="fas fa-folder-open fs-3x text-muted mb-4"></i>
-      <p class="text-muted">No documents generated yet</p>
-      <button
-        type="button"
-        class="btn btn-primary"
-        @click="generateAllDocuments"
-        :disabled="isGenerating"
-      >
-        <i class="fas fa-file-plus fs-4 me-2"></i>
-        Generate Documents
-      </button>
-    </div>
-
     <!-- Documents Grid -->
     <div v-else class="row g-6 g-xl-9 mb-6 mb-xl-9">
       <!-- Add Document Card -->
       <div class="col-md-6 col-lg-4 col-xl-3">
         <!--begin::Card-->
-        <div class="card h-100 flex-center bg-light-primary border-primary border border-dashed p-8">
+        <div
+          class="card h-100 flex-center border border-dashed p-8"
+          :class="{
+            'bg-light-primary border-primary': allRequiredAgreementsGenerated,
+            'bg-light-muted border-muted': !allRequiredAgreementsGenerated
+          }"
+        >
           <!--begin::Image-->
-          <img src="/media/svg/files/upload.svg" class="mb-5" alt="">
+          <img
+            src="/media/svg/files/upload.svg"
+            class="mb-5"
+            alt=""
+            :class="{ 'opacity-50': !allRequiredAgreementsGenerated }"
+          >
           <!--end::Image-->
 
           <!--begin::Link-->
-          <div class="dropdown">
+          <div class="dropdown" v-if="allRequiredAgreementsGenerated">
             <a href="#" class="text-hover-primary fs-5 fw-bold mb-2 dropdown-toggle" data-bs-toggle="dropdown">
               Add Document
             </a>
@@ -71,11 +67,17 @@
               </li>
             </ul>
           </div>
+          <div v-else>
+            <span class="fs-5 fw-bold mb-2 text-muted">Add Document</span>
+          </div>
           <!--end::Link-->
 
           <!--begin::Description-->
-          <div class="fs-7 fw-semibold text-gray-500">
-            Generate or upload documents
+          <div class="fs-7 fw-semibold" :class="{
+            'text-gray-500': allRequiredAgreementsGenerated,
+            'text-muted': !allRequiredAgreementsGenerated
+          }">
+            {{ allRequiredAgreementsGenerated ? 'Generate or upload documents' : 'Generate agreements first' }}
           </div>
           <!--end::Description-->
         </div>
@@ -86,13 +88,24 @@
       <!-- Generate Agreements Card -->
       <div class="col-md-6 col-lg-4 col-xl-3" v-if="availableContractTypes.length > 0 || hasAnyContracts">
         <!--begin::Card-->
-        <div class="card h-100 flex-center bg-light-warning border-warning border border-dashed p-8">
+        <div
+          class="card h-100 flex-center border border-dashed p-8"
+          :class="{
+            'bg-light-warning border-warning': hasQuote,
+            'bg-light-muted border-muted': !hasQuote
+          }"
+        >
           <!--begin::Image-->
-          <img src="data:image/svg+xml,%3csvg%20width='67'%20height='67'%20viewBox='0%200%2067%2067'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20opacity='0.25'%20d='M8.375%2011.167C8.375%206.54161%2012.1246%202.79199%2016.75%202.79199H43.9893C46.2105%202.79199%2048.3407%203.67436%2049.9113%205.24497L56.172%2011.5057C57.7426%2013.0763%2058.625%2015.2065%2058.625%2017.4277V55.8337C58.625%2060.459%2054.8754%2064.2087%2050.25%2064.2087H16.75C12.1246%2064.2087%208.375%2060.459%208.375%2055.8337V11.167Z'%20fill='%23FFC700'/%3e%3cpath%20d='M41.875%205.28162C41.875%203.90663%2042.9896%202.79199%2044.3646%202.79199V2.79199C46.3455%202.79199%2048.2452%203.57889%2049.6459%204.97957L56.4374%2011.7711C57.8381%2013.1718%2058.625%2015.0715%2058.625%2017.0524V17.0524C58.625%2018.4274%2057.5104%2019.542%2056.1354%2019.542H44.6667C43.1249%2019.542%2041.875%2018.2921%2041.875%2016.7503V5.28162Z'%20fill='%23FFC700'/%3e%3cpath%20d='M32.4311%2025.3368C32.1018%2025.4731%2031.7933%2025.675%2031.5257%2025.9427L23.1507%2034.3177C22.0605%2035.4079%2022.0605%2037.1755%2023.1507%2038.2657C24.2409%2039.3559%2026.0085%2039.3559%2027.0987%2038.2657L30.708%2034.6563V47.4583C30.708%2049.0001%2031.9579%2050.25%2033.4997%2050.25C35.0415%2050.25%2036.2913%2049.0001%2036.2913%2047.4583V34.6563L39.9007%2038.2657C40.9909%2039.3559%2042.7585%2039.3559%2043.8487%2038.2657C44.9389%2037.1755%2044.9389%2035.4079%2043.8487%2034.3177L35.4737%2025.9427C34.6511%2025.1201%2033.443%2024.9182%2032.4311%2025.3368Z'%20fill='%23FFC700'/%3e%3c/svg%3e" class="mb-5" alt="">
+          <img
+            src="data:image/svg+xml,%3csvg%20width='67'%20height='67'%20viewBox='0%200%2067%2067'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20opacity='0.25'%20d='M8.375%2011.167C8.375%206.54161%2012.1246%202.79199%2016.75%202.79199H43.9893C46.2105%202.79199%2048.3407%203.67436%2049.9113%205.24497L56.172%2011.5057C57.7426%2013.0763%2058.625%2015.2065%2058.625%2017.4277V55.8337C58.625%2060.459%2054.8754%2064.2087%2050.25%2064.2087H16.75C12.1246%2064.2087%208.375%2060.459%208.375%2055.8337V11.167Z'%20fill='%23FFC700'/%3e%3cpath%20d='M41.875%205.28162C41.875%203.90663%2042.9896%202.79199%2044.3646%202.79199V2.79199C46.3455%202.79199%2048.2452%203.57889%2049.6459%204.97957L56.4374%2011.7711C57.8381%2013.1718%2058.625%2015.0715%2058.625%2017.0524V17.0524C58.625%2018.4274%2057.5104%2019.542%2056.1354%2019.542H44.6667C43.1249%2019.542%2041.875%2018.2921%2041.875%2016.7503V5.28162Z'%20fill='%23FFC700'/%3e%3cpath%20d='M32.4311%2025.3368C32.1018%2025.4731%2031.7933%2025.675%2031.5257%2025.9427L23.1507%2034.3177C22.0605%2035.4079%2022.0605%2037.1755%2023.1507%2038.2657C24.2409%2039.3559%2026.0085%2039.3559%2027.0987%2038.2657L30.708%2034.6563V47.4583C30.708%2049.0001%2031.9579%2050.25%2033.4997%2050.25C35.0415%2050.25%2036.2913%2049.0001%2036.2913%2047.4583V34.6563L39.9007%2038.2657C40.9909%2039.3559%2042.7585%2039.3559%2043.8487%2038.2657C44.9389%2037.1755%2044.9389%2035.4079%2043.8487%2034.3177L35.4737%2025.9427C34.6511%2025.1201%2033.443%2024.9182%2032.4311%2025.3368Z'%20fill='%23FFC700'/%3e%3c/svg%3e"
+            class="mb-5"
+            alt=""
+            :class="{ 'opacity-50': !hasQuote }"
+          >
           <!--end::Image-->
 
           <!--begin::Link-->
-          <div class="dropdown" v-if="availableContractTypes.length > 0">
+          <div class="dropdown" v-if="hasQuote && availableContractTypes.length > 0">
             <a href="#" class="text-warning text-hover-warning fs-5 fw-bold mb-2 dropdown-toggle" data-bs-toggle="dropdown">
               Generate Agreements
             </a>
@@ -129,16 +142,30 @@
               </li>
             </ul>
           </div>
-          <div v-else>
-            <a href="#" class="text-hover-warning fs-5 fw-bold mb-2">
+          <div v-else-if="hasQuote && availableContractTypes.length === 0">
+            <span class="text-warning fs-5 fw-bold mb-2">
               All Agreements Generated
-            </a>
+            </span>
+          </div>
+          <div v-else>
+            <span class="fs-5 fw-bold mb-2 text-muted">
+              Generate Agreements
+            </span>
           </div>
           <!--end::Link-->
 
           <!--begin::Description-->
-          <div class="fs-7 fw-semibold text-gray-500">
-            {{ availableContractTypes.length > 0 ? 'Generate legal agreements' : 'All agreements completed' }}
+          <div class="fs-7 fw-semibold" :class="{
+            'text-gray-500': hasQuote,
+            'text-muted': !hasQuote
+          }">
+            {{
+              !hasQuote
+                ? 'Create a quote first'
+                : availableContractTypes.length > 0
+                ? 'Generate legal agreements'
+                : 'All agreements completed'
+            }}
           </div>
           <!--end::Description-->
         </div>
@@ -295,6 +322,15 @@ const availableContractTypes = computed(() => {
 
 const hasAnyContracts = computed(() => {
   return documents.value.some(d => d.isContract);
+});
+
+const allRequiredAgreementsGenerated = computed(() => {
+  // Check if all contract types have been generated (no available contract types remaining)
+  return availableContractTypes.value.length === 0 && hasAnyContracts.value;
+});
+
+const hasQuote = computed(() => {
+  return !!(props.trip?.quote?.id);
 });
 
 const getDocumentIcon = (doc: Document) => {
