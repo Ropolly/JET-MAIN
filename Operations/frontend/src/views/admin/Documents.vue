@@ -17,7 +17,7 @@
         </div>
         <div class="d-flex flex-column">
           <a href="#" class="text-gray-800 text-hover-primary mb-1 fs-6 fw-bold">
-            {{ document.name || 'Unnamed Document' }}
+            {{ document.document_type_display || document.filename || 'Unnamed Document' }}
           </a>
           <span class="text-muted fs-7">{{ formatFileSize(document.file_size) }}</span>
         </div>

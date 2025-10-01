@@ -806,12 +806,9 @@ class Patient(BaseModel):
 
     passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients", db_column="passport_document_id")
     status = models.CharField(max_length=20, choices=[
-        ("pending", "Pending"),
-        ("confirmed", "Confirmed"),
-        ("active", "Active"),
-        ("completed", "Completed"),
-        ("cancelled", "Cancelled")
-    ], default="pending", db_index=True)
+        ("fit_to_fly", "Fit To Fly"),
+        ("not_fit_to_fly", "Not Fit To Fly")
+    ], default="fit_to_fly", db_index=True)
     letter_of_medical_necessity = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients", db_column="letter_of_medical_necessity_id")
     insurance_card = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="insurance_card_patients", db_column="insurance_card_id")
 
@@ -901,8 +898,8 @@ class Quote(BaseModel):
     pickup_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes", db_column="pickup_airport_id")
     dropoff_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes", db_column="dropoff_airport_id")
     aircraft_type = models.CharField(max_length=20, choices=[
-        ("65", "Learjet 65"),
-        ("35", "Learjet 35"),
+        ("60", "Learjet 60"),
+        ("30", "Learjet 30"),
         ("TBD", "To Be Determined")
     ])
     estimated_flight_time = models.DurationField()
@@ -1110,6 +1107,23 @@ class CrewLine(BaseModel):
     def __str__(self):
         return f"Crew: {self.primary_in_command} and {self.secondary_in_command}"
 
+# Trip Number Sequence model for atomic sequential numbering
+class TripNumberSequence(models.Model):
+    """
+    Dedicated table to manage trip number sequence for strict sequential numbering.
+    Used for immigration compliance to ensure no gaps or duplicates.
+    """
+    current_number = models.IntegerField(default=0, help_text="Current highest trip number")
+    last_updated = models.DateTimeField(auto_now=True, help_text="Last time sequence was incremented")
+
+    class Meta:
+        db_table = 'trip_number_sequence'
+        verbose_name = 'Trip Number Sequence'
+        verbose_name_plural = 'Trip Number Sequence'
+
+    def __str__(self):
+        return f"Current trip number: {str(self.current_number).zfill(5)}"
+
 # Trip model
 class Trip(BaseModel):
     # Legacy PHI fields (will be deprecated after migration)
@@ -1194,6 +1208,78 @@ class Trip(BaseModel):
             'progress_percentage': round(progress_percentage, 1),
             'remaining_minutes': round(remaining_time.total_seconds() / 60),
         }
+
+    def clean(self):
+        """
+        Validate trip number format.
+        - DRAFT numbers are allowed during creation
+        - Real numbers must be exactly 5 digits (00001-99999)
+        """
+        super().clean()
+        from django.core.exceptions import ValidationError
+        import re
+
+        if self.trip_number:
+            # Allow DRAFT numbers during creation
+            if self.trip_number.startswith('DRAFT'):
+                return
+
+            # Real trip numbers must be exactly 5 digits
+            if not re.match(r'^\d{5}$', self.trip_number):
+                raise ValidationError({
+                    'trip_number': 'Trip number must be exactly 5 digits (e.g., 00001) for immigration compliance.'
+                })
+
+            # Ensure it's within valid range
+            trip_num = int(self.trip_number)
+            if trip_num < 1 or trip_num > 99999:
+                raise ValidationError({
+                    'trip_number': 'Trip number must be between 00001 and 99999.'
+                })
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to handle trip number generation.
+        - New trips get DRAFT numbers initially
+        - Real numbers are assigned when legs are added
+        """
+        # Call clean to validate
+        self.clean()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_next_trip_number(cls):
+        """
+        Get the next available trip number using atomic operations.
+        Returns a 5-digit string (e.g., '00001').
+        """
+        from django.db import transaction
+        from django.db.models import F
+
+        with transaction.atomic():
+            # Get or create the sequence record
+            sequence, created = TripNumberSequence.objects.get_or_create(
+                id=1,
+                defaults={'current_number': 0}
+            )
+
+            # Atomically increment and get the new number
+            TripNumberSequence.objects.filter(id=1).update(
+                current_number=F('current_number') + 1
+            )
+
+            # Get the updated value
+            sequence.refresh_from_db()
+            return str(sequence.current_number).zfill(5)
+
+    def assign_real_trip_number(self):
+        """
+        Convert DRAFT trip number to real sequential number.
+        Called when trip legs are added.
+        """
+        if self.trip_number and self.trip_number.startswith('DRAFT'):
+            self.trip_number = self.get_next_trip_number()
+            self.save()
 
     # Helper methods for backward compatibility during migration
     def get_email_chain(self):
@@ -1538,3 +1624,48 @@ class SMSVerificationCode(models.Model):
 
     def can_attempt(self):
         return self.attempts < 5 and not self.verified and not self.is_expired()
+
+
+# Email Template model for managing email templates with WYSIWYG content
+class EmailTemplate(BaseModel):
+    """Model for managing email templates with rich text content."""
+
+    # Template identification
+    title = models.CharField(max_length=255, unique=True, help_text="Unique template title")
+    subject = models.CharField(max_length=255, blank=True, help_text="Email subject line")
+
+    # Content
+    content = models.TextField(help_text="HTML content from WYSIWYG editor")
+
+    # Categorization
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('quote', 'Quote'),
+        ('trip', 'Trip'),
+        ('invoice', 'Invoice'),
+        ('reminder', 'Reminder'),
+        ('notification', 'Notification'),
+        ('marketing', 'Marketing'),
+    ]
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='general')
+
+    # Status and tracking
+    is_published = models.BooleanField(default=False, help_text="Whether template is ready for use")
+    last_sent_at = models.DateTimeField(null=True, blank=True, help_text="Last time this template was used")
+    send_count = models.IntegerField(default=0, help_text="Number of times template has been sent")
+
+    # Template variables for dynamic content
+    variables = models.JSONField(default=list, blank=True, help_text="List of template variable names")
+
+    # Optional description for internal use
+    description = models.TextField(blank=True, help_text="Internal description of template purpose")
+
+    class Meta:
+        ordering = ['-created_on']
+        indexes = [
+            models.Index(fields=['category', 'is_published']),
+            models.Index(fields=['title']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_category_display()})"

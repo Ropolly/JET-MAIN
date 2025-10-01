@@ -28,8 +28,10 @@ router.register(r"staff-roles", views.StaffRoleViewSet, basename="staff-role")
 router.register(r"staff-role-memberships", views.StaffRoleMembershipViewSet, basename="staff-role-membership")
 router.register(r"trip-events", views.TripEventViewSet, basename="trip-event")
 router.register(r'comments', views.CommentViewSet, basename='comment')
+router.register(r'email-templates', views.EmailTemplateViewSet, basename='email-template')
 router.register(r'contracts', views.ContractViewSet, basename='contract')
 router.register(r'lost-reasons', views.LostReasonViewSet, basename='lost-reason')
+router.register(r'workflows', views.WorkflowViewSet, basename='workflow')
 
 urlpatterns = [
     path('', include(router.urls)),

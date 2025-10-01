@@ -1,4 +1,26 @@
 <template>
+  <!--begin::Floating Create Trip Button-->
+  <div class="position-fixed" style="top: 100px; right: 30px; z-index: 1000;">
+    <button
+      @click="showTripTypeModal"
+      class="btn btn-primary btn-sm"
+      :disabled="creatingTrip"
+    >
+      <span v-if="creatingTrip" class="spinner-border spinner-border-sm me-2"></span>
+      <KTIcon icon-name="plus" icon-class="fs-6 me-1" />
+      New Workflow
+    </button>
+  </div>
+  <!--end::Floating Create Trip Button-->
+
+  <!--begin::Trip Type Selection Modal-->
+  <TripTypeSelectionModal
+    :show="showTripTypeSelection"
+    @close="onModalClose"
+    @trip-type-selected="onTripTypeSelected"
+  />
+  <!--end::Trip Type Selection Modal-->
+
   <!--begin::Row-->
   <div class="row g-5 g-xl-10 mb-5 mb-xl-10">
     <!--begin::Col-->
@@ -75,10 +97,13 @@
   <!--end::Row-->
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { getAssetPath } from "@/core/helpers/assets";
-import { defineComponent, onMounted, computed } from "vue";
+import { onMounted, computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useDashboardStore } from "@/stores/dashboard";
+import ApiService from "@/core/services/ApiService";
+import Swal from "sweetalert2/dist/sweetalert2.js";
 
 // Import our custom widgets
 import TripsWidget from "@/components/dashboard-default-widgets/TripsWidget.vue";
@@ -91,42 +116,113 @@ import StatsWidget from "@/components/dashboard-default-widgets/StatsWidget.vue"
 // Import placeholder chart components (we'll keep these)
 import QuoteStatusChart from "@/components/dashboard-default-widgets/QuoteStatusChart.vue";
 
-export default defineComponent({
-  name: "jet-operations-dashboard",
-  components: {
-    TripsWidget,
-    QuotesWidget,
-    UpcomingTripsWidget,
-    RecentQuotesWidget,
-    RecentActivityWidget,
-    StatsWidget,
-    QuoteStatusChart,
-  },
-  setup() {
-    const dashboardStore = useDashboardStore();
+// Import modal components
+import TripTypeSelectionModal from "@/components/modals/TripTypeSelectionModal.vue";
 
-    const patientActivityPercentage = computed(() => {
-      const stats = dashboardStore.stats;
-      if (!stats?.patient_stats) return 0;
-      
-      const { active, total } = stats.patient_stats;
-      return total > 0 ? Math.round((active / total) * 100) : 0;
-    });
+const router = useRouter();
+const dashboardStore = useDashboardStore();
+const creatingTrip = ref(false);
+const showTripTypeSelection = ref(false);
 
-    // Fetch dashboard data on component mount
-    onMounted(async () => {
-      try {
-        await dashboardStore.fetchStats();
-      } catch (error) {
-        console.error("Failed to load dashboard data:", error);
-      }
-    });
+const patientActivityPercentage = computed(() => {
+  const stats = dashboardStore.stats;
+  if (!stats?.patient_stats) return 0;
 
-    return {
-      dashboardStore,
-      patientActivityPercentage,
-      getAssetPath,
+  const { active, total } = stats.patient_stats;
+  return total > 0 ? Math.round((active / total) * 100) : 0;
+});
+
+// Show trip type selection modal
+const showTripTypeModal = async () => {
+  showTripTypeSelection.value = true;
+  // Use showModal helper to show the modal
+  const modalElement = document.getElementById('kt_modal_select_trip_type');
+  if (modalElement) {
+    const { showModal } = await import('@/core/helpers/modal');
+    showModal(modalElement);
+  }
+};
+
+// Handle modal close
+const onModalClose = () => {
+  showTripTypeSelection.value = false;
+};
+
+// Create trip with selected type
+const onTripTypeSelected = async (tripType: string) => {
+  if (creatingTrip.value) return;
+
+  creatingTrip.value = true;
+  showTripTypeSelection.value = false;
+
+  // Ensure modal overlay is removed
+  const modalElement = document.getElementById('kt_modal_select_trip_type');
+  if (modalElement) {
+    const { hideModal } = await import('@/core/helpers/modal');
+    hideModal(modalElement);
+  }
+
+  // Clean up any lingering modal backdrops and restore body scroll
+  const backdrops = document.querySelectorAll('.modal-backdrop');
+  backdrops.forEach(backdrop => backdrop.remove());
+  document.body.classList.remove('modal-open');
+  document.body.style.overflow = '';
+  document.body.style.paddingRight = '';
+
+  try {
+    // Create a unique draft trip number using timestamp
+    const timestamp = Date.now();
+    const draftNumber = `DRAFT-${timestamp}`;
+
+    // Create a basic trip with selected type
+    const tripData = {
+      type: tripType,
+      status: 'pending',
+      trip_number: draftNumber // Unique draft number that can be updated later
     };
-  },
+
+    console.log('Sending trip data:', tripData);
+    const response = await ApiService.post('/trips/', tripData);
+    console.log('Trip created successfully:', response.data);
+
+    // Navigate to the complete trip view
+    if (response.data?.id) {
+      await router.push(`/admin/trips/${response.data.id}/complete`);
+    } else {
+      throw new Error('Trip created but no ID returned');
+    }
+
+  } catch (error) {
+    console.error('Error creating trip:', error);
+
+    let errorMessage = "Failed to create trip. Please try again.";
+    if (error.response?.data) {
+      if (typeof error.response.data === 'object') {
+        errorMessage = JSON.stringify(error.response.data);
+      } else {
+        errorMessage = error.response.data.detail || error.response.data.message || error.response.data.toString();
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    await Swal.fire({
+      title: "Error",
+      text: errorMessage,
+      icon: "error",
+      confirmButtonText: "OK"
+    });
+  } finally {
+    creatingTrip.value = false;
+  }
+};
+
+// Fetch dashboard data on component mount
+onMounted(async () => {
+  try {
+    await dashboardStore.fetchStats();
+  } catch (error) {
+    console.error("Failed to load dashboard data:", error);
+  }
 });
 </script>

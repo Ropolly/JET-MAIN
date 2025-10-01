@@ -1,8 +1,8 @@
 <template>
-  <!--begin::Modal - Create quote-->
+  <!--begin::Modal - Create quote for trip-->
   <div
     class="modal fade"
-    id="kt_modal_create_quote"
+    id="kt_modal_create_quote_for_trip"
     ref="modalRef"
     tabindex="-1"
     aria-hidden="true"
@@ -14,7 +14,7 @@
         <!--begin::Modal header-->
         <div class="modal-header">
           <!--begin::Title-->
-          <h2>Create New Quote</h2>
+          <h2>Add Quote to Trip</h2>
           <!--end::Title-->
 
           <!--begin::Close-->
@@ -32,8 +32,8 @@
         <!--begin::Modal body-->
         <div class="modal-body scroll-y mx-5 my-7">
           <!--begin::Form-->
-          <form id="kt_modal_create_quote_form" class="form" @submit.prevent="submitForm">
-            
+          <form id="kt_modal_create_quote_for_trip_form" class="form" @submit.prevent="submitForm">
+
             <!--begin::Basic Information-->
             <div class="separator separator-content my-14">
               <span class="w-250px fw-bold text-gray-600">Basic Information</span>
@@ -43,16 +43,27 @@
             <div class="row g-9 mb-8">
               <div class="col-md-6 fv-row">
                 <label class="required fs-6 fw-semibold mb-2">Contact</label>
-                <select
-                  class="form-select form-select-solid"
-                  v-model="formData.contact_id"
-                  :disabled="isSubmitting"
-                >
-                  <option value="">Select Contact</option>
-                  <option v-for="contact in availableContacts" :key="contact.id" :value="contact.id">
-                    {{ getContactDisplayName(contact) }}
-                  </option>
-                </select>
+                <div class="d-flex">
+                  <select
+                    class="form-select form-select-solid me-2"
+                    v-model="formData.contact_id"
+                    :disabled="isSubmitting"
+                  >
+                    <option value="">Select Contact</option>
+                    <option v-for="contact in availableContacts" :key="contact.id" :value="contact.id">
+                      {{ getContactDisplayName(contact) }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn btn-light-primary btn-sm"
+                    @click="showContactModal"
+                    :disabled="isSubmitting"
+                    title="Add New Contact"
+                  >
+                    <KTIcon icon-name="plus" icon-class="fs-6" />
+                  </button>
+                </div>
               </div>
               <div class="col-md-6 fv-row">
                 <label class="required fs-6 fw-semibold mb-2">Quoted Amount</label>
@@ -78,9 +89,13 @@
                 v-model="formData.patient_id"
                 label="Patient (Optional)"
                 placeholder="Search patients..."
-                :disabled="isSubmitting"
+                :disabled="isSubmitting || patientFromTrip"
                 @patientSelected="onPatientSelected"
+                @createPatient="showPatientModal"
               />
+              <div v-if="patientFromTrip" class="form-text text-info">
+                Patient auto-filled from trip
+              </div>
             </div>
             <!--end::Patient-->
 
@@ -113,9 +128,12 @@
                   placeholder="Search pickup airport..."
                   help-text="Search by airport name, IATA/ICAO code, or city"
                   required
-                  :disabled="isSubmitting"
+                  :disabled="isSubmitting || airportsFromTripLegs"
                   @airport-selected="onPickupAirportSelected"
                 />
+                <div v-if="airportsFromTripLegs" class="form-text text-info">
+                  Airport auto-filled from trip legs
+                </div>
               </div>
               <div class="col-md-6 fv-row">
                 <AirportSearchSelect
@@ -124,9 +142,12 @@
                   placeholder="Search dropoff airport..."
                   help-text="Search by airport name, IATA/ICAO code, or city"
                   required
-                  :disabled="isSubmitting"
+                  :disabled="isSubmitting || airportsFromTripLegs"
                   @airport-selected="onDropoffAirportSelected"
                 />
+                <div v-if="airportsFromTripLegs" class="form-text text-info">
+                  Airport auto-filled from trip legs
+                </div>
               </div>
             </div>
             <!--end::Airports-->
@@ -205,9 +226,9 @@
               <div class="col-md-4 fv-row">
                 <label class="fs-6 fw-semibold mb-2">Options</label>
                 <div class="form-check form-check-custom form-check-solid mt-3">
-                  <input 
-                    class="form-check-input" 
-                    type="checkbox" 
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
                     v-model="formData.includes_grounds"
                     id="includesGrounds"
                     :disabled="isSubmitting"
@@ -275,35 +296,19 @@
             </div>
             <!--end::Cruise Doctor-->
 
-            <!--begin::Email and Status-->
-            <div class="row g-9 mb-8">
-              <div class="col-md-6 fv-row">
-                <label class="required fs-6 fw-semibold mb-2">Quote PDF Email</label>
-                <input
-                  type="email"
-                  class="form-control form-control-solid"
-                  placeholder="email@example.com"
-                  v-model="formData.quote_pdf_email"
-                  :disabled="isSubmitting"
-                />
-              </div>
-              <div class="col-md-6 fv-row">
-                <label class="required fs-6 fw-semibold mb-2">Status</label>
-                <select
-                  class="form-select form-select-solid"
-                  v-model="formData.status"
-                  :disabled="isSubmitting"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="paid">Paid</option>
-                </select>
-              </div>
+            <!--begin::Email-->
+            <div class="fv-row mb-8">
+              <label class="required fs-6 fw-semibold mb-2">Quote PDF Email</label>
+              <input
+                type="email"
+                class="form-control form-control-solid"
+                placeholder="email@example.com"
+                v-model="formData.quote_pdf_email"
+                :disabled="isSubmitting"
+              />
+              <div class="form-text text-muted">Email will be auto-filled from selected contact but can be edited</div>
             </div>
-            <!--end::Email and Status-->
+            <!--end::Email-->
           </form>
           <!--end::Form-->
         </div>
@@ -343,7 +348,21 @@
     </div>
     <!--end::Modal dialog-->
   </div>
-  <!--end::Modal - Create quote-->
+  <!--end::Modal - Create quote for trip-->
+
+  <!--begin::Create Contact Modal-->
+  <CreateContactModal
+    @contactCreated="onContactCreated"
+    :show="showContactModalRef"
+  />
+  <!--end::Create Contact Modal-->
+
+  <!--begin::Create Patient Modal-->
+  <CreatePatientModal
+    @patientCreated="onPatientCreated"
+    @close="showPatientModalRef = false"
+  />
+  <!--end::Create Patient Modal-->
 </template>
 
 <script setup lang="ts">
@@ -353,8 +372,16 @@ import ApiService from "@/core/services/ApiService";
 import { Modal } from "bootstrap";
 import AirportSearchSelect from "@/components/form-controls/AirportSearchSelect.vue";
 import PatientSearchSelect from "@/components/form-controls/PatientSearchSelect.vue";
+import CreateContactModal from "@/components/modals/CreateContactModal.vue";
+import CreatePatientModal from "@/components/modals/CreatePatientModal.vue";
 
-const emit = defineEmits(['quoteCreated']);
+interface Props {
+  trip: any;
+  show: boolean;
+}
+
+const props = defineProps<Props>();
+const emit = defineEmits(['close', 'quote-created']);
 
 const modalRef = ref<HTMLElement | null>(null);
 const isSubmitting = ref(false);
@@ -367,6 +394,16 @@ const selectedPatient = ref<any>(null);
 // Selected airports for additional data and flight calculations
 const selectedPickupAirport = ref<any>(null);
 const selectedDropoffAirport = ref<any>(null);
+
+// Trip-specific flags
+const patientFromTrip = ref(false);
+const airportsFromTripLegs = ref(false);
+
+// Contact modal state
+const showContactModalRef = ref(false);
+
+// Patient modal state
+const showPatientModalRef = ref(false);
 
 // Form data
 const formData = reactive({
@@ -391,17 +428,35 @@ const formData = reactive({
 
 // Computed
 const isFormValid = computed(() => {
-  return !!(
-    formData.contact_id &&
-    formData.quoted_amount &&
-    formData.pickup_airport_id &&
-    formData.dropoff_airport_id &&
-    formData.aircraft_type &&
-    formData.medical_team &&
-    formData.estimated_flight_hours &&
-    formData.quote_pdf_email &&
-    formData.status
-  );
+  // Check all required fields (status removed as it's auto-set to pending)
+  if (!formData.contact_id ||
+      !formData.quoted_amount ||
+      !formData.pickup_airport_id ||
+      !formData.dropoff_airport_id ||
+      !formData.aircraft_type ||
+      !formData.medical_team ||
+      !formData.estimated_flight_hours ||
+      !formData.quote_pdf_email) {
+    return false;
+  }
+
+  // Validate data types and ranges
+  const quotedAmount = parseFloat(formData.quoted_amount);
+  if (isNaN(quotedAmount) || quotedAmount <= 0) {
+    return false;
+  }
+
+  const flightHours = parseFloat(formData.estimated_flight_hours);
+  if (isNaN(flightHours) || flightHours <= 0 || flightHours > 24) {
+    return false;
+  }
+
+  // Basic email validation
+  if (!formData.quote_pdf_email.includes('@') || !formData.quote_pdf_email.includes('.')) {
+    return false;
+  }
+
+  return true;
 });
 
 // Methods
@@ -425,12 +480,55 @@ const resetForm = () => {
     quote_pdf_email: '',
     status: 'pending',
   });
-  
+
   // Reset tracking variables and selected airports/patient
   userEditedFlightTime.value = false;
   selectedPickupAirport.value = null;
   selectedDropoffAirport.value = null;
   selectedPatient.value = null;
+  patientFromTrip.value = false;
+  airportsFromTripLegs.value = false;
+};
+
+const prefillFromTrip = () => {
+  if (!props.trip) return;
+
+  // Pre-fill patient if trip has one
+  if (props.trip.patient) {
+    formData.patient_id = props.trip.patient.id;
+    patientFromTrip.value = true;
+  }
+
+  // Pre-fill airports from trip legs (first origin and last destination)
+  const tripLines = props.trip.trip_lines || [];
+  if (tripLines.length > 0) {
+    const firstLeg = tripLines[0];
+    const lastLeg = tripLines[tripLines.length - 1];
+
+    if (firstLeg.origin_airport) {
+      formData.pickup_airport_id = firstLeg.origin_airport.id;
+      selectedPickupAirport.value = firstLeg.origin_airport;
+    }
+
+    if (lastLeg.destination_airport) {
+      formData.dropoff_airport_id = lastLeg.destination_airport.id;
+      selectedDropoffAirport.value = lastLeg.destination_airport;
+    }
+
+    if (firstLeg.origin_airport || lastLeg.destination_airport) {
+      airportsFromTripLegs.value = true;
+    }
+
+    // Set number of stops based on trip legs
+    if (tripLines.length > 1) {
+      formData.number_of_stops = tripLines.length - 1;
+    }
+  }
+
+  // Set medical team default for medical trips
+  if (props.trip.type === 'medical' && !formData.medical_team) {
+    formData.medical_team = 'RN/RN';
+  }
 };
 
 const fetchContacts = async () => {
@@ -438,18 +536,17 @@ const fetchContacts = async () => {
     // Fetch all contacts
     const contactsResponse = await ApiService.get("/contacts/?page_size=100");
     contacts.value = contactsResponse.data.results || contactsResponse.data || [];
-    
+
     // Fetch staff members to filter out their contacts
     const staffResponse = await ApiService.get("/staff/?page_size=100");
     const staffMembers = staffResponse.data.results || staffResponse.data || [];
     const staffContactIds = staffMembers.map((staff: any) => staff.contact_id);
-    
+
     // Filter out contacts that are staff members
-    availableContacts.value = contacts.value.filter(contact => 
+    availableContacts.value = contacts.value.filter(contact =>
       !staffContactIds.includes(contact.id)
     );
-    
-    console.log(`Loaded ${contacts.value.length} total contacts, ${availableContacts.value.length} available for quotes (${staffContactIds.length} staff filtered out)`);
+
   } catch (error) {
     console.error("Error fetching contacts:", error);
   }
@@ -458,11 +555,7 @@ const fetchContacts = async () => {
 // Patient selection handler
 const onPatientSelected = (patient: any) => {
   selectedPatient.value = patient;
-  console.log('Patient selected:', patient);
 };
-
-// Note: Airport fetching is now handled by AirportSearchSelect components
-
 
 const getContactDisplayName = (contact: any): string => {
   if (contact.business_name) {
@@ -474,27 +567,23 @@ const getContactDisplayName = (contact: any): string => {
   return `Contact ${contact.id.slice(0, 8)}`;
 };
 
-
 // Airport selection handlers
 const onPickupAirportSelected = (airport: any) => {
   selectedPickupAirport.value = airport;
-  console.log('Pickup airport selected:', airport);
 };
 
 const onDropoffAirportSelected = (airport: any) => {
   selectedDropoffAirport.value = airport;
-  console.log('Dropoff airport selected:', airport);
 };
-
 
 // Flight time calculation functions
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 3440.065; // Earth's radius in nautical miles
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c; // Distance in nautical miles
@@ -513,34 +602,34 @@ const getAircraftCruiseSpeed = (aircraftType: string): number => {
 const calculateFlightTime = (): number | null => {
   const pickupAirport = selectedPickupAirport.value;
   const dropoffAirport = selectedDropoffAirport.value;
-  
+
   if (!pickupAirport || !dropoffAirport || !formData.aircraft_type) {
     return null;
   }
-  
+
   // Get coordinates
   const lat1 = parseFloat(pickupAirport.latitude);
   const lon1 = parseFloat(pickupAirport.longitude);
   const lat2 = parseFloat(dropoffAirport.latitude);
   const lon2 = parseFloat(dropoffAirport.longitude);
-  
+
   if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
     return null;
   }
-  
+
   // Calculate distance
   const distanceNM = calculateDistance(lat1, lon1, lat2, lon2);
-  
+
   // Get aircraft speed
   const cruiseSpeed = getAircraftCruiseSpeed(formData.aircraft_type);
-  
+
   // Calculate flight time in hours (add 15% for taxi, climb, descent)
   const baseFlightTime = distanceNM / cruiseSpeed;
   const totalFlightTime = baseFlightTime * 1.15;
-  
+
   // Add time for stops (30 minutes per stop)
   const stopTime = (formData.number_of_stops || 0) * 0.5;
-  
+
   return Math.round((totalFlightTime + stopTime) * 2) / 2; // Round to nearest 0.5 hour
 };
 
@@ -550,11 +639,11 @@ const recalculateFlightTime = () => {
     // Reset the tracking so auto-calculation can work again
     userEditedFlightTime.value = false;
     formData.estimated_flight_hours = calculatedTime.toString();
-    
+
     // Show brief feedback
     const pickupAirport = selectedPickupAirport.value;
     const dropoffAirport = selectedDropoffAirport.value;
-    
+
     if (pickupAirport && dropoffAirport) {
       const distanceNM = calculateDistance(
         parseFloat(pickupAirport.latitude),
@@ -562,7 +651,7 @@ const recalculateFlightTime = () => {
         parseFloat(dropoffAirport.latitude),
         parseFloat(dropoffAirport.longitude)
       );
-      
+
       console.log(`Calculated flight time: ${calculatedTime} hours for ${Math.round(distanceNM)} NM`);
     }
   } else {
@@ -576,17 +665,77 @@ const recalculateFlightTime = () => {
   }
 };
 
+// Helper function to translate backend field names to user-friendly names
+const getFriendlyFieldName = (fieldName: string): string => {
+  const fieldMap: { [key: string]: string } = {
+    'contact': 'Contact',
+    'quoted_amount': 'Quoted Amount',
+    'pickup_airport': 'Pickup Airport',
+    'dropoff_airport': 'Dropoff Airport',
+    'aircraft_type': 'Aircraft Type',
+    'medical_team': 'Medical Team',
+    'estimated_flight_time': 'Flight Time',
+    'quote_pdf_email': 'Quote PDF Email',
+    'patient': 'Patient',
+    'cruise_line': 'Cruise Line',
+    'cruise_ship': 'Cruise Ship',
+    'cruise_doctor_first_name': 'Cruise Doctor First Name',
+    'cruise_doctor_last_name': 'Cruise Doctor Last Name',
+    'number_of_stops': 'Number of Stops',
+    'includes_grounds': 'Includes Ground Transportation'
+  };
+  return fieldMap[fieldName] || fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+};
+
 const submitForm = async () => {
   if (!isFormValid.value || isSubmitting.value) return;
-  
+
   isSubmitting.value = true;
-  
+
   try {
-    // Convert flight hours to Django duration format (HH:MM:SS)
-    const hours = Math.floor(parseFloat(formData.estimated_flight_hours));
-    const minutes = Math.round((parseFloat(formData.estimated_flight_hours) - hours) * 60);
+
+    // Validate and convert flight hours to Django duration format (HH:MM:SS)
+    const flightHours = parseFloat(formData.estimated_flight_hours);
+    if (isNaN(flightHours) || flightHours < 0) {
+      throw new Error('Invalid flight time. Please enter a valid number of hours.');
+    }
+
+    const hours = Math.floor(flightHours);
+    const minutes = Math.round((flightHours - hours) * 60);
+
+    // Ensure valid time ranges
+    if (hours > 23) {
+      throw new Error('Flight time cannot exceed 23 hours. Please check your calculation.');
+    }
+    if (minutes > 59) {
+      throw new Error('Invalid minute calculation in flight time.');
+    }
+
     const estimated_flight_time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-    
+
+    // Validate required fields
+    if (!formData.contact_id) {
+      throw new Error('Please select a contact for this quote.');
+    }
+    if (!formData.quoted_amount || isNaN(parseFloat(formData.quoted_amount))) {
+      throw new Error('Please enter a valid quoted amount.');
+    }
+    if (!formData.pickup_airport_id) {
+      throw new Error('Please select a pickup airport.');
+    }
+    if (!formData.dropoff_airport_id) {
+      throw new Error('Please select a dropoff airport.');
+    }
+    if (!formData.aircraft_type) {
+      throw new Error('Please select an aircraft type.');
+    }
+    if (!formData.medical_team) {
+      throw new Error('Please specify the medical team requirements.');
+    }
+    if (!formData.quote_pdf_email || !formData.quote_pdf_email.includes('@')) {
+      throw new Error('Please enter a valid email address for the quote PDF.');
+    }
+
     // Prepare quote data
     const quoteData: any = {
       contact: formData.contact_id,
@@ -596,12 +745,12 @@ const submitForm = async () => {
       aircraft_type: formData.aircraft_type,
       medical_team: formData.medical_team,
       estimated_flight_time: estimated_flight_time,
-      number_of_stops: formData.number_of_stops,
-      includes_grounds: formData.includes_grounds,
+      number_of_stops: formData.number_of_stops || 0,
+      includes_grounds: formData.includes_grounds || false,
       quote_pdf_email: formData.quote_pdf_email,
-      status: formData.status,
+      status: formData.status || 'pending',
     };
-    
+
     // Add optional fields
     if (formData.patient_id) {
       quoteData.patient = formData.patient_id;
@@ -618,63 +767,109 @@ const submitForm = async () => {
     if (formData.cruise_doctor_last_name) {
       quoteData.cruise_doctor_last_name = formData.cruise_doctor_last_name;
     }
-    
-    console.log('Creating quote:', quoteData);
-    
-    // Create the quote
+
+    // Step 1: Create the quote
     const response = await ApiService.post("/quotes/", quoteData);
     const newQuote = response.data;
-    
+
+    // Validate quote creation response
+    if (!newQuote || !newQuote.id) {
+      throw new Error('Quote was created but response is missing quote ID');
+    }
+
+    // Step 2: Connect quote to trip and assign patient if selected
+    const tripUpdateData: any = {
+      quote: newQuote.id,
+      type: props.trip.type // Include required type field for validation
+    };
+
+    // If a patient is selected in the quote, also assign it to the trip
+    if (formData.patient_id) {
+      tripUpdateData.patient = formData.patient_id;
+    }
+
+    await ApiService.patch(`/trips/${props.trip.id}/`, tripUpdateData);
+
+    // Step 3: Show success message
+    let successMessage = "Quote created and connected to trip successfully!";
+    if (formData.patient_id) {
+      successMessage = "Quote created, connected to trip, and patient assigned successfully!";
+    }
+
     Swal.fire({
       title: "Success!",
-      text: "Quote created successfully!",
+      text: successMessage,
       icon: "success",
       timer: 2000,
       showConfirmButton: false
     });
-    
-    emit('quoteCreated', newQuote);
+
+    emit('quote-created', newQuote);
     resetForm();
-    
-    // Close modal
-    const modalElement = document.getElementById('kt_modal_create_quote');
-    if (modalElement) {
-      try {
-        const modal = Modal.getInstance(modalElement);
-        if (modal) {
-          modal.hide();
-        }
-      } catch (error) {
-        console.error('Error closing modal:', error);
-      }
-    }
-    
+    closeModal();
+
   } catch (error: any) {
-    console.error('Error creating quote:', error);
+    console.error('=== ERROR IN QUOTE CREATION PROCESS ===');
+    console.error('Error details:', error);
     console.error('Error response:', error.response?.data);
-    
+    console.error('Error status:', error.response?.status);
+    console.error('Quote data that failed:', { quoteData: formData, tripId: props.trip.id });
+
+    // Determine if error occurred during quote creation or trip connection
+    let errorStage = 'Unknown';
+    if (error.message?.includes('Quote was created but response is missing quote ID')) {
+      errorStage = 'Quote creation response validation';
+    } else if (error.response?.config?.url?.includes('/quotes/')) {
+      errorStage = 'Quote creation';
+    } else if (error.response?.config?.url?.includes('/trips/')) {
+      errorStage = 'Trip connection';
+    } else if (error.message && !error.response) {
+      errorStage = 'Form validation';
+    }
+
+    console.error('Error occurred during:', errorStage);
+
     let errorMessage = "Failed to create quote. Please try again.";
-    
-    if (error.response?.data?.detail) {
+
+    // Handle validation errors from our own validation
+    if (error.message && !error.response) {
+      errorMessage = error.message;
+    }
+    // Handle API response errors
+    else if (error.response?.data?.detail) {
       errorMessage = error.response.data.detail;
     } else if (error.response?.data) {
-      // Handle field-specific errors
+      // Handle field-specific errors from Django
       const errors = error.response.data;
       const errorMessages = [];
-      
+
       for (const field in errors) {
         if (Array.isArray(errors[field])) {
-          errorMessages.push(`${field}: ${errors[field].join(', ')}`);
+          // Translate field names to user-friendly names
+          const friendlyFieldName = getFriendlyFieldName(field);
+          errorMessages.push(`${friendlyFieldName}: ${errors[field].join(', ')}`);
         } else {
-          errorMessages.push(`${field}: ${errors[field]}`);
+          const friendlyFieldName = getFriendlyFieldName(field);
+          errorMessages.push(`${friendlyFieldName}: ${errors[field]}`);
         }
       }
-      
+
       if (errorMessages.length > 0) {
         errorMessage = errorMessages.join('\n');
       }
+    } else if (error.response?.status === 400) {
+      errorMessage = "Invalid data submitted. Please check all fields and try again.";
+    } else if (error.response?.status === 401) {
+      errorMessage = "Authentication error. Please refresh the page and try again.";
+    } else if (error.response?.status >= 500) {
+      errorMessage = "Server error. Please contact support if this persists.";
     }
-    
+
+    // Add error stage information for debugging
+    if (errorStage !== 'Form validation') {
+      errorMessage += `\n\n(Error occurred during: ${errorStage})`;
+    }
+
     Swal.fire({
       title: "Error!",
       text: errorMessage,
@@ -684,6 +879,95 @@ const submitForm = async () => {
   } finally {
     isSubmitting.value = false;
   }
+};
+
+const closeModal = () => {
+  const modalElement = document.getElementById('kt_modal_create_quote_for_trip');
+  if (modalElement) {
+    try {
+      const modal = Modal.getInstance(modalElement);
+      if (modal) {
+        modal.hide();
+      }
+    } catch (error) {
+      console.error('Error closing modal:', error);
+    }
+  }
+  emit('close');
+};
+
+// Contact modal functions
+const showContactModal = () => {
+  showContactModalRef.value = true;
+  const modalElement = document.getElementById('kt_modal_create_contact');
+  if (modalElement) {
+    try {
+      const modal = new Modal(modalElement);
+      modal.show();
+    } catch (error) {
+      console.error('Error showing contact modal:', error);
+    }
+  }
+};
+
+const onContactCreated = async (newContact: any) => {
+  console.log('Contact created in quote form:', newContact);
+
+  // Add to available contacts list
+  availableContacts.value.push(newContact);
+
+  // Auto-select the new contact
+  formData.contact_id = newContact.id;
+
+  // Close contact modal
+  showContactModalRef.value = false;
+
+  // Show success message
+  Swal.fire({
+    title: "Contact Created!",
+    text: `${newContact.first_name} ${newContact.last_name} has been added and selected.`,
+    icon: "success",
+    timer: 2000,
+    showConfirmButton: false
+  });
+};
+
+// Patient modal functions
+const showPatientModal = () => {
+  showPatientModalRef.value = true;
+  const modalElement = document.getElementById('kt_modal_create_patient');
+  if (modalElement) {
+    try {
+      const modal = new Modal(modalElement);
+      modal.show();
+    } catch (error) {
+      console.error('Error showing patient modal:', error);
+    }
+  }
+};
+
+const onPatientCreated = async (newPatient: any) => {
+  console.log('Patient created in quote form:', newPatient);
+
+  // Auto-select the new patient
+  formData.patient_id = newPatient.id;
+  selectedPatient.value = newPatient;
+
+  // Close patient modal
+  showPatientModalRef.value = false;
+
+  // Show success message
+  const patientName = newPatient.info?.first_name && newPatient.info?.last_name
+    ? `${newPatient.info.first_name} ${newPatient.info.last_name}`
+    : 'Patient';
+
+  Swal.fire({
+    title: "Patient Created!",
+    text: `${patientName} has been created and selected for this quote.`,
+    icon: "success",
+    timer: 2000,
+    showConfirmButton: false
+  });
 };
 
 // Track if user has manually edited flight time
@@ -715,10 +999,30 @@ watch(() => formData.estimated_flight_hours, (newVal, oldVal) => {
   }
 });
 
+// Watch for show prop changes to prefill form
+watch(() => props.show, (newShow) => {
+  if (newShow) {
+    prefillFromTrip();
+  }
+});
+
 // Load data on component mount
 onMounted(async () => {
   await fetchContacts();
-  // Note: Airports and Patients are now handled by respective SearchSelect components
+  prefillFromTrip();
+});
+
+// Watch for contact selection to auto-fill email
+watch(() => formData.contact_id, (newContactId) => {
+  if (newContactId && availableContacts.value.length > 0) {
+    const selectedContact = availableContacts.value.find(contact => contact.id === newContactId);
+    if (selectedContact && selectedContact.email) {
+      // Only auto-fill if email field is empty to preserve user edits
+      if (!formData.quote_pdf_email.trim()) {
+        formData.quote_pdf_email = selectedContact.email;
+      }
+    }
+  }
 });
 </script>
 

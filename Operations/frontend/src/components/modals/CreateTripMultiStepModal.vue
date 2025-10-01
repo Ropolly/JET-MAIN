@@ -126,9 +126,10 @@
 
                 <!--begin::Step 2-->
                 <div v-if="currentStep === 2" class="current">
-                  <FlightLegsStep 
+                  <FlightLegsStep
                     v-model:legs="tripData.legs"
                     v-model:events="tripData.events"
+                    v-model:chronological-order="tripData.chronologicalOrder"
                     :trip-data="tripData"
                     :staff-members="staffMembers"
                     @step-validated="handleStepValidated"
@@ -278,14 +279,19 @@ const tripData = reactive({
   type: '',
   aircraft_id: '',
   notes: '',
-  
-  // Step 2: Flight Legs and Events  
+
+  // Step 2: Flight Legs and Events
   legs: [] as TripLeg[],
   events: [] as TripEvent[],
-  
+  chronologicalOrder: [] as string[],
+
   // Step 3: Passengers and Patient
   patient_id: '',
-  passengers: [] as TripPassenger[]
+  passengers: [] as TripPassenger[],
+
+  // Quote information for routing logic
+  quote_id: null as string | null,
+  quote: null as any
 });
 
 // Dropdown data
@@ -528,29 +534,54 @@ const updateTripLegsAndEvents = async (tripId: string) => {
 
 // Create trip legs and events
 const createTripLegsAndEvents = async (tripId: string) => {
-  // Sort legs and events by date/time
+  // Use the chronological order from the FlightLegsStep component instead of sorting by datetime
   const timeline = [];
-  
-  // Add legs to timeline
+
+  // Build a map of all items by ID for quick lookup
+  const itemMap = new Map();
+
+  // Add legs to map
   for (const leg of tripData.legs) {
-    timeline.push({
+    itemMap.set(leg.id, {
       type: 'leg',
       data: leg,
       datetime: `${leg.departure_date}T${leg.departure_time}`
     });
   }
-  
-  // Add events to timeline  
+
+  // Add events to map
   for (const event of tripData.events) {
-    timeline.push({
+    itemMap.set(event.id, {
       type: 'event',
       data: event,
       datetime: `${event.start_date}T${event.start_time}`
     });
   }
-  
-  // Sort chronologically
-  timeline.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+
+  // Use chronological order from drag-and-drop if available
+  if (tripData.chronologicalOrder && tripData.chronologicalOrder.length > 0) {
+    console.log('Using chronological order from drag-and-drop:', tripData.chronologicalOrder);
+
+    // Build timeline in the order specified by chronologicalOrder
+    for (const itemId of tripData.chronologicalOrder) {
+      const item = itemMap.get(itemId);
+      if (item) {
+        timeline.push(item);
+      }
+    }
+
+    // Add any items not in chronological order (fallback)
+    for (const [itemId, item] of itemMap) {
+      if (!tripData.chronologicalOrder.includes(itemId)) {
+        timeline.push(item);
+      }
+    }
+  } else {
+    // Fallback: sort by datetime (original behavior)
+    console.log('No chronological order available, sorting by datetime');
+    timeline.push(...itemMap.values());
+    timeline.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+  }
   
   // Track crew changes
   let currentCrewLineId: string | null = null;
@@ -831,14 +862,17 @@ const resetForm = () => {
   tripData.notes = '';
   tripData.legs = [];
   tripData.events = [];
+  tripData.chronologicalOrder = [];
   tripData.patient_id = '';
   tripData.passengers = [];
+  tripData.quote_id = null;
+  tripData.quote = null;
   quoteId.value = null;
-  
+
   // Reset edit mode state
   editMode.value = false;
   editTripId.value = null;
-  
+
   currentStep.value = 1;
   stepValidation.value = { 1: false, 2: false, 3: true };
   isCurrentStepValid.value = false;
@@ -929,39 +963,25 @@ const handlePrepopulateForm = async (event: any) => {
     
     // Quote conversion mode (existing logic)
     quoteId.value = data.quoteId;
-    
+    tripData.quote_id = data.quoteId;
+
+    // Store quote airport information for routing logic
+    if (data.departureAirport || data.arrivalAirport) {
+      tripData.quote = {
+        id: data.quoteId,
+        departure_airport: data.departureAirport,
+        arrival_airport: data.arrivalAirport
+      };
+      console.log('Stored quote airports for routing:', tripData.quote);
+    }
+
     // Populate Step 1: Trip Details
     if (data.tripType) tripData.type = data.tripType;
     if (data.patientId) tripData.patient_id = data.patientId;
     if (data.notes) tripData.notes = data.notes;
     
-    // Pre-configure first leg with quote data
-    if (data.departureAirport && data.arrivalAirport) {
-      // Set default departure date to today
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      
-      // Create initial leg from quote data
-      const initialLeg: TripLeg = {
-        id: `leg_${Date.now()}`,
-        origin_airport: data.departureAirport,
-        destination_airport: data.arrivalAirport,
-        departure_date: `${year}-${month}-${day}`,
-        departure_time: '09:00',
-        pre_flight_duty_hours: 1.0,
-        post_flight_duty_hours: 1.0,
-        pic_staff_id: '',
-        sic_staff_id: '',
-        medical_staff_ids: [],
-        departure_fbo_id: '',
-        arrival_fbo_id: '',
-        notes: ''
-      };
-      
-      tripData.legs = [initialLeg];
-    }
+    // Note: Initial legs will be created by the FlightLegsStep component's addLeg function
+    // which now has the quote routing logic built in
     
   }
 };

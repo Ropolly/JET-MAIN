@@ -55,6 +55,9 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://jeticuops.com')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
 
+# Disable APPEND_SLASH to prevent issues with query parameters
+APPEND_SLASH = False
+
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
 
 # Application definition
@@ -118,6 +121,10 @@ DATABASES = {
         # If Django is running on your Mac (outside Docker), use localhost:
         "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": 600,  # Keep connections alive for 10 minutes
+        "OPTIONS": {
+            "connect_timeout": 10,
+        },
     }
 }
 

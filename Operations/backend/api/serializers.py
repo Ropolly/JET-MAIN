@@ -4,7 +4,7 @@ from .models import (
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
     Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole,
     StaffRoleMembership, TripEvent, Comment, Contract, LostReason,
-    UserActivationToken
+    UserActivationToken, EmailTemplate
 )
 from django.contrib.auth.models import User
 
@@ -55,19 +55,32 @@ class CommentSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
     created_by_name = serializers.SerializerMethodField(read_only=True)
     content_type_name = serializers.CharField(source='content_type.model', read_only=True)
-    
+
     class Meta:
         model = Comment
-        fields = ['id', 'content_type', 'content_type_name', 'object_id', 'text', 
+        fields = ['id', 'content_type', 'content_type_name', 'object_id', 'text',
                  'created_on', 'created_by', 'created_by_username', 'created_by_name',
                  'modified_on', 'modified_by', 'status']
-    
+
     def get_created_by_name(self, obj):
         if obj.created_by:
             if hasattr(obj.created_by, 'profile'):
                 return f"{obj.created_by.profile.first_name} {obj.created_by.profile.last_name}".strip()
             return obj.created_by.username
         return None
+
+    def create(self, validated_data):
+        # Handle content_type as string if needed
+        content_type_data = validated_data.get('content_type')
+        if isinstance(content_type_data, str):
+            from django.contrib.contenttypes.models import ContentType
+            try:
+                content_type = ContentType.objects.get(model=content_type_data.lower())
+                validated_data['content_type'] = content_type
+            except ContentType.DoesNotExist:
+                raise serializers.ValidationError(f"ContentType '{content_type_data}' does not exist")
+
+        return super().create(validated_data)
 
 # Contact and location serializers
 class ContactReadSerializer(serializers.ModelSerializer):
@@ -1083,11 +1096,47 @@ class TripReadSerializer(serializers.ModelSerializer):
 
     def get_quote(self, obj):
         if obj.quote:
-            return {
+            quote_data = {
                 'id': obj.quote.id,
                 'quoted_amount': obj.quote.quoted_amount,
-                'status': obj.quote.status
+                'status': obj.quote.status,
+                'created_on': obj.quote.created_on,
+                'aircraft_type': obj.quote.aircraft_type,
+                'medical_team': obj.quote.get_medical_team(),
+                'estimated_flight_time': obj.quote.estimated_flight_time,
+                'includes_grounds': obj.quote.includes_grounds
             }
+
+            # Include pickup and dropoff airports for financials tab
+            if obj.quote.pickup_airport:
+                quote_data['pickup_airport'] = AirportSerializer(obj.quote.pickup_airport).data
+
+            if obj.quote.dropoff_airport:
+                quote_data['dropoff_airport'] = AirportSerializer(obj.quote.dropoff_airport).data
+
+            # Include customer contact information for the patients/PAX tab
+            if obj.quote.contact:
+                contact = obj.quote.contact
+                quote_data['customer_contact'] = {
+                    'id': contact.id,
+                    'first_name': contact.get_first_name(),
+                    'last_name': contact.get_last_name(),
+                    'business_name': contact.get_business_name(),
+                    'email': contact.get_email(),
+                    'phone': contact.get_phone(),
+                    'date_of_birth': contact.get_date_of_birth(),
+                    'nationality': contact.get_nationality(),
+                    # Also include the encrypted field getters for compatibility
+                    'get_first_name': contact.get_first_name(),
+                    'get_last_name': contact.get_last_name(),
+                    'get_business_name': contact.get_business_name(),
+                    'get_email': contact.get_email(),
+                    'get_phone': contact.get_phone(),
+                    'get_date_of_birth': contact.get_date_of_birth(),
+                    'get_nationality': contact.get_nationality()
+                }
+
+            return quote_data
         return None
 
     def get_patient(self, obj):
@@ -1095,6 +1144,9 @@ class TripReadSerializer(serializers.ModelSerializer):
             return {
                 'id': obj.patient.id,
                 'status': obj.patient.status,
+                'special_instructions': obj.patient.get_special_instructions(),
+                'bed_at_origin': obj.patient.bed_at_origin,
+                'bed_at_destination': obj.patient.bed_at_destination,
                 'info': ContactSerializer(obj.patient.info).data
             }
         return None
@@ -1118,6 +1170,18 @@ class TripWriteSerializer(serializers.ModelSerializer):
     )
     # Make trip_number optional - it will be auto-generated if not provided
     trip_number = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        """Add debug logging to see validation data and errors."""
+        print(f"DEBUG TRIP SERIALIZER: Initial attrs: {attrs}")
+        try:
+            validated_attrs = super().validate(attrs)
+            print(f"DEBUG TRIP SERIALIZER: Validated attrs: {validated_attrs}")
+            return validated_attrs
+        except Exception as e:
+            print(f"DEBUG TRIP SERIALIZER: Validation error: {e}")
+            print(f"DEBUG TRIP SERIALIZER: Error type: {type(e)}")
+            raise
 
     class Meta:
         model = Trip
@@ -1195,6 +1259,76 @@ class TripWriteSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class TripPartialUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for partial trip updates - allows updating individual fields without requiring all required fields"""
+    quote = serializers.PrimaryKeyRelatedField(
+        queryset=Quote.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    patient = serializers.PrimaryKeyRelatedField(
+        queryset=Patient.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    aircraft = serializers.PrimaryKeyRelatedField(
+        queryset=Aircraft.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    passenger_ids = serializers.PrimaryKeyRelatedField(
+        source='passengers', queryset=Passenger.objects.all(), many=True, write_only=True, required=False
+    )
+    # Make all fields optional for partial updates
+    type = serializers.CharField(required=False)
+    trip_number = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.CharField(required=False)
+
+    class Meta:
+        model = Trip
+        fields = [
+            'id', 'email_chain', 'quote', 'type', 'patient', 'estimated_departure_time',
+            'post_flight_duty_time', 'pre_flight_duty_time', 'aircraft', 'trip_number',
+            'passenger_ids', 'notes', 'status'
+        ]
+        # Allow partial updates for all fields
+        extra_kwargs = {
+            'type': {'required': False},
+            'trip_number': {'required': False}
+        }
+
+    def update(self, instance, validated_data):
+        """Update trip with encrypted notes for partial updates."""
+        from .encryption import FieldEncryption
+
+        # Extract PHI fields that need encryption
+        phi_fields = ['notes']
+        phi_data = {}
+        clean_validated_data = validated_data.copy()
+
+        for field_name in phi_fields:
+            if field_name in clean_validated_data:
+                phi_data[field_name] = clean_validated_data.pop(field_name)
+
+        # Extract passengers for many-to-many relationship
+        passengers = clean_validated_data.pop('passengers', None)
+
+        # Update non-PHI fields (only fields that were provided)
+        for attr, value in clean_validated_data.items():
+            setattr(instance, attr, value)
+
+        # Update passengers only if provided
+        if passengers is not None:
+            instance.passengers.set(passengers)
+
+        # Encrypt and store PHI fields
+        for field_name, value in phi_data.items():
+            if value:  # Only encrypt non-empty values
+                encrypted_value = FieldEncryption.encrypt(str(value))
+                setattr(instance, f"{field_name}_encrypted", encrypted_value)
+            else:
+                # Clear encrypted field if value is empty
+                setattr(instance, f"{field_name}_encrypted", None)
+
+        instance.save()
+        return instance
+
 
 # 6) Transactions
 class TransactionPublicReadSerializer(serializers.ModelSerializer):
@@ -1318,7 +1452,7 @@ class QuoteWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quote
         fields = [
-            'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
+            'id', 'quoted_amount', 'contact', 'pickup_airport', 'dropoff_airport',
             'patient', 'lost_reason', 'aircraft_type', 'medical_team', 'estimated_flight_time',
             'number_of_stops', 'includes_grounds', 'cruise_line', 'cruise_ship',
             'cruise_doctor_first_name', 'cruise_doctor_last_name', 'quote_pdf_email',
@@ -1488,18 +1622,19 @@ class PatientWriteSerializer(serializers.ModelSerializer):
     info = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(), write_only=True
     )
-    
+
     class Meta:
         model = Patient
         fields = [
-            'info', 
-            'date_of_birth', 
-            'nationality', 
-            'passport_number', 
-            'passport_expiration_date', 
-            'special_instructions', 
-            'status', 
-            'bed_at_origin', 
+            'id',  # Include ID in response after creation
+            'info',
+            'date_of_birth',
+            'nationality',
+            'passport_number',
+            'passport_expiration_date',
+            'special_instructions',
+            'status',
+            'bed_at_origin',
             'bed_at_destination',
             'letter_of_medical_necessity',
             'insurance_card'
@@ -1819,3 +1954,342 @@ class SetPasswordSerializer(serializers.Serializer):
 class ForgotPasswordSerializer(serializers.Serializer):
     """Serializer for forgot password request."""
     email = serializers.EmailField()
+
+
+# Email Template Serializers
+class EmailTemplateWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating email templates."""
+
+    class Meta:
+        model = EmailTemplate
+        fields = [
+            'id', 'title', 'subject', 'content', 'category',
+            'is_published', 'variables', 'description'
+        ]
+        read_only_fields = ['id']
+
+    def validate_title(self, value):
+        """Ensure title is unique (case-insensitive)."""
+        instance = self.instance
+        if EmailTemplate.objects.filter(title__iexact=value).exclude(pk=instance.pk if instance else None).exists():
+            raise serializers.ValidationError("An email template with this title already exists.")
+        return value
+
+
+class EmailTemplateReadSerializer(serializers.ModelSerializer):
+    """Serializer for reading email templates with additional details."""
+
+    created_by_name = serializers.SerializerMethodField()
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    created_on_formatted = serializers.SerializerMethodField()
+    last_sent_formatted = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmailTemplate
+        fields = [
+            'id', 'title', 'subject', 'content', 'category', 'category_display',
+            'is_published', 'last_sent_at', 'last_sent_formatted', 'send_count',
+            'variables', 'description', 'created_on', 'created_on_formatted',
+            'created_by', 'created_by_name', 'modified_on', 'status'
+        ]
+        read_only_fields = ['id', 'created_on', 'created_by', 'modified_on']
+
+    def get_created_by_name(self, obj):
+        """Get the name of the user who created this template."""
+        if obj.created_by:
+            if obj.created_by.first_name and obj.created_by.last_name:
+                return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return obj.created_by.username
+        return "System"
+
+    def get_created_on_formatted(self, obj):
+        """Format the creation date."""
+        if obj.created_on:
+            return obj.created_on.strftime("%b %d, %Y")
+        return None
+
+    def get_last_sent_formatted(self, obj):
+        """Format the last sent date."""
+        if obj.last_sent_at:
+            return obj.last_sent_at.strftime("%b %d, %Y at %I:%M %p")
+        return "Never"
+
+
+class WorkflowSerializer(serializers.ModelSerializer):
+    """
+    Optimized serializer for Workflow Dashboard.
+    Computes all required fields server-side for efficient display.
+    """
+    trip_number = serializers.CharField(read_only=True)
+    route = serializers.SerializerMethodField()
+    origin_flag = serializers.SerializerMethodField()
+    has_quote = serializers.SerializerMethodField()
+    has_trip_lines = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    has_patient = serializers.SerializerMethodField()
+    patient_name = serializers.SerializerMethodField()
+    crew_members = serializers.SerializerMethodField()
+    trip_status = serializers.CharField(source='status', read_only=True)
+    departure_datetime = serializers.SerializerMethodField()
+    trip_type = serializers.CharField(source='type', read_only=True)
+    trip_id = serializers.UUIDField(source='id', read_only=True)
+
+    class Meta:
+        model = Trip
+        fields = [
+            'trip_id', 'trip_number', 'route', 'origin_flag', 'has_quote',
+            'has_trip_lines', 'payment_status', 'has_patient', 'patient_name', 'crew_members',
+            'trip_status', 'departure_datetime', 'trip_type'
+        ]
+
+    def get_route(self, obj):
+        """
+        Get route with fallback logic:
+        1. Trip lines (first origin -> last destination)
+        2. Quote airports (pickup -> dropoff)
+        3. "TBD"
+        """
+        # Try trip lines first - use prefetched data and convert to list
+        if hasattr(obj, '_prefetched_objects_cache') and 'trip_lines' in obj._prefetched_objects_cache:
+            trip_lines = list(obj._prefetched_objects_cache['trip_lines'])
+        else:
+            trip_lines = list(obj.trip_lines.all())
+
+        if trip_lines:
+            first_line = trip_lines[0]
+            last_line = trip_lines[-1]
+            origin = first_line.origin_airport.ident if first_line and first_line.origin_airport else "???"
+            destination = last_line.destination_airport.ident if last_line and last_line.destination_airport else "???"
+            return f"{origin} → {destination}"
+
+        # Try quote airports
+        if obj.quote and obj.quote.pickup_airport and obj.quote.dropoff_airport:
+            return f"{obj.quote.pickup_airport.ident} → {obj.quote.dropoff_airport.ident}"
+
+        return "TBD"
+
+    def get_origin_flag(self, obj):
+        """
+        Determine origin airport for flag display.
+        Complex logic: If TPA is in the route, use the other airport.
+        Otherwise use the first airport in the route.
+        """
+        # Try trip lines first - use prefetched data and convert to list
+        if hasattr(obj, '_prefetched_objects_cache') and 'trip_lines' in obj._prefetched_objects_cache:
+            trip_lines = list(obj._prefetched_objects_cache['trip_lines'])
+        else:
+            trip_lines = list(obj.trip_lines.all())
+
+        if trip_lines:
+            first_line = trip_lines[0]
+            last_line = trip_lines[-1]
+
+            if first_line and first_line.origin_airport:
+                origin = first_line.origin_airport
+                destination = last_line.destination_airport if last_line else None
+
+                # If origin is TPA and we have a destination, use destination
+                if origin.ident == "KTPA" and destination:
+                    return {
+                        'code': destination.ident,
+                        'country': self._get_country_code(destination.ident)
+                    }
+
+                # Otherwise use origin
+                return {
+                    'code': origin.ident,
+                    'country': self._get_country_code(origin.ident)
+                }
+
+        # Try quote airports
+        if obj.quote:
+            pickup = obj.quote.pickup_airport
+            dropoff = obj.quote.dropoff_airport
+
+            if pickup:
+                # If pickup is TPA and we have dropoff, use dropoff
+                if pickup.ident == "KTPA" and dropoff:
+                    return {
+                        'code': dropoff.ident,
+                        'country': self._get_country_code(dropoff.ident)
+                    }
+
+                # Otherwise use pickup
+                return {
+                    'code': pickup.ident,
+                    'country': self._get_country_code(pickup.ident)
+                }
+
+        return {'code': 'TBD', 'country': 'us'}
+
+    def _get_country_code(self, ident):
+        """
+        Extract country code from airport ident.
+        ICAO codes: First letter indicates region
+        - K = United States
+        - C = Canada
+        - M = Mexico
+        - S = South America
+        - etc.
+        """
+        if not ident or len(ident) < 2:
+            return 'us'
+
+        first_letter = ident[0].upper()
+
+        # Map ICAO prefixes to ISO country codes
+        icao_country_map = {
+            'K': 'us',  # United States
+            'C': 'ca',  # Canada
+            'M': 'mx',  # Mexico (MM prefix)
+            'S': 'br',  # South America (simplified to Brazil)
+            'T': 'tt',  # Trinidad and Tobago, etc.
+            'E': 'gb',  # Europe (simplified)
+            'L': 'it',  # Europe (Italy, etc.)
+            'U': 'ru',  # Russia
+            'Z': 'cn',  # China
+            'R': 'kr',  # Korea, Japan (simplified)
+            'Y': 'au',  # Australia
+            'N': 'nz',  # New Zealand (some codes)
+            'V': 'in',  # India
+            'F': 'za',  # Africa (simplified to South Africa)
+        }
+
+        return icao_country_map.get(first_letter, 'us')
+
+    def get_has_quote(self, obj):
+        """Check if trip has an associated quote."""
+        return obj.quote is not None
+
+    def get_has_trip_lines(self, obj):
+        """Check if trip has any trip lines."""
+        # Use prefetched data to avoid forcing queryset evaluation
+        if hasattr(obj, '_prefetched_objects_cache') and 'trip_lines' in obj._prefetched_objects_cache:
+            return len(obj._prefetched_objects_cache['trip_lines']) > 0
+        return obj.trip_lines.exists()
+
+    def get_payment_status(self, obj):
+        """
+        Get payment status from quote, default to 'pending'.
+        """
+        if obj.quote:
+            return obj.quote.payment_status
+        return "pending"
+
+    def get_has_patient(self, obj):
+        """
+        Check if patient exists on trip or quote.
+        """
+        if obj.patient:
+            return True
+        if obj.quote and obj.quote.patient:
+            return True
+        return False
+
+    def get_patient_name(self, obj):
+        """
+        Get patient name with fallback logic:
+        1. Trip patient -> patient.info (first_name + last_name)
+        2. Quote patient -> patient.info (first_name + last_name)
+        3. Quote contact -> business_name or (first_name + last_name)
+        4. "No patient"
+        """
+        # Try trip patient first
+        if obj.patient and obj.patient.info:
+            first_name = obj.patient.info.get_first_name() or ""
+            last_name = obj.patient.info.get_last_name() or ""
+            name = f"{first_name} {last_name}".strip()
+            if name:
+                return name
+
+        # Try quote patient
+        if obj.quote and obj.quote.patient and obj.quote.patient.info:
+            first_name = obj.quote.patient.info.get_first_name() or ""
+            last_name = obj.quote.patient.info.get_last_name() or ""
+            name = f"{first_name} {last_name}".strip()
+            if name:
+                return name
+
+        # Try quote contact
+        if obj.quote and obj.quote.contact:
+            # Try business name first
+            business_name = obj.quote.contact.get_business_name()
+            if business_name:
+                return business_name
+
+            # Try first/last name
+            first_name = obj.quote.contact.get_first_name() or ""
+            last_name = obj.quote.contact.get_last_name() or ""
+            name = f"{first_name} {last_name}".strip()
+            if name:
+                return name
+
+        return "No patient"
+
+    def get_crew_members(self, obj):
+        """
+        Get all crew members from all crew lines with their roles.
+        Returns list of {id, name, role, avatar_url}
+        """
+        crew_members = []
+        crew_ids_seen = set()
+
+        # Get all trip lines with crew - use prefetched data and convert to list
+        if hasattr(obj, '_prefetched_objects_cache') and 'trip_lines' in obj._prefetched_objects_cache:
+            trip_lines = list(obj._prefetched_objects_cache['trip_lines'])
+        else:
+            trip_lines = list(obj.trip_lines.all())
+
+        for trip_line in trip_lines:
+            if not trip_line.crew_line:
+                continue
+
+            crew_line = trip_line.crew_line
+
+            # Add PIC
+            if crew_line.primary_in_command and crew_line.primary_in_command.id not in crew_ids_seen:
+                crew_ids_seen.add(crew_line.primary_in_command.id)
+                crew_members.append({
+                    'id': str(crew_line.primary_in_command.id),
+                    'name': f"{crew_line.primary_in_command.get_first_name()} {crew_line.primary_in_command.get_last_name()}",
+                    'role': 'PIC',
+                    'avatar_url': None  # Can add avatar logic later if needed
+                })
+
+            # Add SIC
+            if crew_line.secondary_in_command and crew_line.secondary_in_command.id not in crew_ids_seen:
+                crew_ids_seen.add(crew_line.secondary_in_command.id)
+                crew_members.append({
+                    'id': str(crew_line.secondary_in_command.id),
+                    'name': f"{crew_line.secondary_in_command.get_first_name()} {crew_line.secondary_in_command.get_last_name()}",
+                    'role': 'SIC',
+                    'avatar_url': None
+                })
+
+            # Add medics
+            for medic in crew_line.medic_ids.all():
+                if medic.id not in crew_ids_seen:
+                    crew_ids_seen.add(medic.id)
+                    crew_members.append({
+                        'id': str(medic.id),
+                        'name': f"{medic.get_first_name()} {medic.get_last_name()}",
+                        'role': 'MEDIC',
+                        'avatar_url': None
+                    })
+
+        return crew_members
+
+    def get_departure_datetime(self, obj):
+        """
+        Get departure date/time with fallback logic:
+        1. Trip scheduled/estimated departure time
+        2. Quote inquiry date
+        3. "TBD"
+        """
+        if obj.estimated_departure_time:
+            return obj.estimated_departure_time.isoformat()
+
+        if obj.quote and obj.quote.inquiry_date:
+            return obj.quote.inquiry_date.isoformat()
+
+        return "TBD"

@@ -51,9 +51,10 @@ def get_fuel_prices(request, airport_code):
         return JsonResponse({'error': str(e)}, status=500)
 
 from .models import (
-    Modification, Permission, Role, Department, UserProfile, Contact, 
+    Modification, Permission, Role, Department, UserProfile, Contact,
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract, LostReason
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract, LostReason,
+    EmailTemplate
 )
 from .utils import track_creation, track_deletion
 from .contact_service import ContactCreationService, ContactCreationSerializer
@@ -70,7 +71,7 @@ from .serializers import (
     CrewLineReadSerializer, CrewLineWriteSerializer,
     TripLineReadSerializer, TripLineWriteSerializer,
     TripEventReadSerializer, TripEventWriteSerializer,
-    TripReadSerializer, TripWriteSerializer,
+    TripReadSerializer, TripWriteSerializer, TripPartialUpdateSerializer,
     QuoteReadSerializer, QuoteWriteSerializer,
     DocumentReadSerializer, DocumentUploadSerializer,
     TransactionPublicReadSerializer, TransactionReadSerializer, TransactionProcessWriteSerializer,
@@ -79,6 +80,8 @@ from .serializers import (
     StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
     ContractReadSerializer, ContractWriteSerializer, ContractCreateFromTripSerializer,
     ContractDocuSealActionSerializer, DocuSealWebhookSerializer,
+    EmailTemplateReadSerializer, EmailTemplateWriteSerializer,
+    WorkflowSerializer,
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -211,6 +214,12 @@ class ContactViewSet(BaseViewSet):
     queryset = Contact.objects.all()
     search_fields = ['first_name', 'last_name', 'business_name', 'email']
     ordering_fields = ['first_name', 'last_name', 'business_name', 'created_on']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Exclude contacts that have associated staff or patient records
+        queryset = queryset.filter(staff__isnull=True, patients__isnull=True)
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -1282,83 +1291,95 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line')
+    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line').order_by('-created_on')
     search_fields = ['trip_number', 'type', 'patient__info__first_name', 'patient__info__last_name', 'passengers__info__first_name', 'passengers__info__last_name']
     ordering_fields = ['created_on', 'estimated_departure_time']
+    ordering = ['-created_on']  # Default ordering by created_on descending
     filterset_fields = ['status', 'type']  # Add filtering by status and type
     permission_classes = [
         permissions.IsAuthenticated,
         CanReadTrip | CanWriteTrip | CanModifyTrip | CanDeleteTrip
     ]
-    
-    def generate_trip_number(self):
-        """
-        Generate a unique five-digit auto-incrementing trip number.
-        Format: 00001, 00002, etc.
-        """
-        from django.db.models import Max
-        import re
-        
-        # Get the highest existing trip number
-        max_trip = Trip.objects.aggregate(max_num=Max('trip_number'))['max_num']
-        
-        if not max_trip:
-            # First trip
-            return '00001'
-        
-        # Extract numeric value from trip numbers (handle various formats)
+
+    def create(self, request, *args, **kwargs):
+        """Override create to add debug logging."""
+        print(f"DEBUG TRIP CREATE: Incoming request data: {request.data}")
         try:
-            # Try to extract numeric part from trip number
-            match = re.search(r'\d+', max_trip)
-            if match:
-                max_num = int(match.group())
-            else:
-                max_num = 0
-        except (ValueError, AttributeError):
-            # If we can't parse existing numbers, start fresh
-            max_num = 0
-        
-        # Increment and format as 5-digit number
-        new_num = max_num + 1
-        return str(new_num).zfill(5)
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            print(f"DEBUG TRIP CREATE: Exception during creation: {e}")
+            print(f"DEBUG TRIP CREATE: Exception type: {type(e)}")
+            raise
+    
+    def generate_draft_number(self):
+        """
+        Generate a unique DRAFT trip number for new trips.
+        Format: DRAFT-{timestamp}-{random}
+        """
+        import time
+        import random
+        timestamp = int(time.time())
+        random_part = random.randint(1000, 9999)
+        return f"DRAFT-{timestamp}-{random_part}"
     
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve', 'trip_lines'):
             return TripReadSerializer
+        elif self.action in ('update', 'partial_update'):
+            return TripPartialUpdateSerializer
         return TripWriteSerializer
     
     def perform_create(self, serializer):
         """
-        Override perform_create to automatically generate trip number if not provided.
+        Override perform_create to create trips without trip numbers initially.
+        Trip numbers will be generated when the first trip line is added.
         """
-        # Check if trip_number is provided in the validated data
-        if not serializer.validated_data.get('trip_number'):
-            # Generate a unique trip number
-            trip_number = self.generate_trip_number()
-            
-            # Ensure uniqueness (in case of race conditions)
-            while Trip.objects.filter(trip_number=trip_number).exists():
-                # If somehow the number exists, generate the next one
-                import re
-                match = re.search(r'\d+', trip_number)
-                if match:
-                    num = int(match.group()) + 1
-                    trip_number = str(num).zfill(5)
-                else:
-                    # Fallback to timestamp if we can't parse
-                    import time
-                    trip_number = f"T{int(time.time())}"
-            
-            # Save with the generated trip number
-            instance = serializer.save(created_by=self.request.user, trip_number=trip_number)
-        else:
-            # Trip number was provided, use it
+        print(f"DEBUG TRIP CREATE: Request data: {self.request.data}")
+        print(f"DEBUG TRIP CREATE: Validated data: {serializer.validated_data}")
+
+        # Only set trip number if explicitly provided in the request
+        if serializer.validated_data.get('trip_number'):
+            print(f"DEBUG TRIP CREATE: Using provided trip number: {serializer.validated_data.get('trip_number')}")
             instance = serializer.save(created_by=self.request.user)
-        
+        else:
+            # Do not generate trip number on creation - it will be generated when trip legs are added
+            print(f"DEBUG TRIP CREATE: Creating trip without trip number - will be assigned when trip legs are added")
+            instance = serializer.save(created_by=self.request.user, trip_number=None)
+
         # Track creation
         from .utils import track_creation
         track_creation(instance, self.request.user)
-    
+
+    def perform_update(self, serializer):
+        """
+        Override perform_update to generate trip number only when explicitly requested.
+        Trip numbers should only be generated when trip_number field is explicitly provided as empty.
+        This prevents unwanted generation during quote creation updates.
+        """
+        print(f"DEBUG TRIP UPDATE: Request data: {self.request.data}")
+        print(f"DEBUG TRIP UPDATE: Validated data: {serializer.validated_data}")
+
+        # Only generate trip number if trip_number field is explicitly provided but empty
+        # This prevents generation during quote creation (where trip_number is not in request)
+        if 'trip_number' in serializer.validated_data:
+            trip_number = serializer.validated_data.get('trip_number')
+            if not trip_number or trip_number == '':
+                # Use the atomic method from the model to get next sequential number
+                new_trip_number = Trip.get_next_trip_number()
+                print(f"DEBUG TRIP UPDATE: Generated sequential trip number: {new_trip_number}")
+                # Save with the generated sequential trip number
+                instance = serializer.save(modified_by=self.request.user, trip_number=new_trip_number)
+            else:
+                # Trip number was provided and is valid, use it
+                print(f"DEBUG TRIP UPDATE: Using provided trip number: {trip_number}")
+                instance = serializer.save(modified_by=self.request.user)
+        else:
+            # trip_number field not in request - normal update without trip number generation
+            print(f"DEBUG TRIP UPDATE: Normal update without trip number field")
+            instance = serializer.save(modified_by=self.request.user)
+
+        # Updates are automatically tracked by signals
+
     def get_permissions(self):
         """
         Instantiate and return the list of permissions that this view requires.
@@ -2209,11 +2230,30 @@ class TripViewSet(BaseViewSet):
         """
         List all documents associated with a trip.
         """
-        from .serializers import DocumentSerializer
-        
+        from rest_framework import serializers
+
+        # Create a full document serializer that includes all needed fields
+        class FullDocumentSerializer(serializers.ModelSerializer):
+            document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+            created_by_name = serializers.SerializerMethodField()
+
+            class Meta:
+                model = Document
+                fields = [
+                    'id', 'filename', 'file_path', 'document_type', 'document_type_display',
+                    'created_on', 'created_by', 'created_by_name', 'trip', 'contact',
+                    'patient', 'passenger'
+                ]
+                read_only_fields = ['id', 'created_on']
+
+            def get_created_by_name(self, obj):
+                if obj.created_by:
+                    return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+                return None
+
         trip = self.get_object()
         documents = trip.documents.all().order_by('-created_on')
-        serializer = DocumentSerializer(documents, many=True)
+        serializer = FullDocumentSerializer(documents, many=True)
         return Response(serializer.data)
 
 # Document ViewSet
@@ -2292,6 +2332,40 @@ class DocumentViewSet(BaseViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+    @action(detail=True, methods=['get'])
+    def view(self, request, pk=None):
+        """
+        View a document file in browser (without forcing download).
+        """
+        from django.http import FileResponse, HttpResponse
+        from pathlib import Path
+        import mimetypes
+
+        document = self.get_object()
+
+        # Determine the correct MIME type
+        mime_type, _ = mimetypes.guess_type(document.filename)
+        if not mime_type:
+            mime_type = 'application/octet-stream'
+
+        if document.file_path and Path(document.file_path).exists():
+            file_path = Path(document.file_path)
+            response = FileResponse(
+                open(file_path, 'rb'),
+                content_type=mime_type
+            )
+            # Don't set Content-Disposition to allow browser to display inline
+            return response
+        elif document.content:
+            # Fallback to binary content if stored in database
+            response = HttpResponse(document.content, content_type=mime_type)
+            return response
+        else:
+            return Response(
+                {'error': 'Document file not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 # TripLine ViewSet
 class TripLineViewSet(BaseViewSet):
     queryset = TripLine.objects.select_related('trip', 'origin_airport', 'destination_airport', 'crew_line')
@@ -2325,7 +2399,20 @@ class TripLineViewSet(BaseViewSet):
     def perform_create(self, serializer):
         trip_line = serializer.save(created_by=self.request.user)
         trip = trip_line.trip
-        
+
+        # Generate trip number if this trip doesn't have one yet
+        if not trip.trip_number:
+            # Check if this is the first trip line for this trip
+            trip_line_count = trip.trip_lines.count()
+            print(f"DEBUG TRIP LINE CREATE: Trip {trip.id} has {trip_line_count} trip lines")
+
+            if trip_line_count == 1:  # This is the first trip line
+                # Generate a real sequential trip number
+                new_trip_number = Trip.get_next_trip_number()
+                print(f"DEBUG TRIP LINE CREATE: Generated trip number {new_trip_number} for trip {trip.id}")
+                trip.trip_number = new_trip_number
+                trip.save(update_fields=['trip_number'])
+
         # Recalculate times for all trip lines in this trip
         if trip.estimated_departure_time:
             self.recalculate_trip_times(trip)
@@ -2483,7 +2570,7 @@ def dashboard_stats(request):
 
 class StaffViewSet(BaseViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = Staff.objects.select_related("contact").all().order_by("-created_on")
+    queryset = Staff.objects.select_related("contact").prefetch_related("role_memberships__role").all().order_by("-created_on")
     search_fields = ['contact__first_name', 'contact__last_name', 'contact__business_name', 'contact__email']
 
     def get_serializer_class(self):
@@ -2714,6 +2801,33 @@ class CommentViewSet(viewsets.ModelViewSet):
                 {'error': f'Model {model_name} not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class EmailTemplateViewSet(BaseViewSet):
+    """
+    ViewSet for managing email templates with CRUD operations.
+    Supports creating, reading, updating, and deleting email templates.
+    """
+    queryset = EmailTemplate.objects.all()
+    search_fields = ['title', 'subject', 'category']
+    ordering_fields = ['title', 'category', 'is_published', 'last_sent_at', 'created_on']
+    filterset_fields = ['category', 'is_published']
+
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return EmailTemplateReadSerializer
+        return EmailTemplateWriteSerializer
+
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        track_creation(instance, self.request.user)
+
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        track_deletion(instance, self.request.user)
+        instance.delete()
 
 
 # Timezone utility API endpoints
@@ -3987,3 +4101,114 @@ def login_with_mfa(request):
         return Response({
             'error': 'An error occurred during login'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Workflow Dashboard ViewSet
+class WorkflowViewSet(BaseViewSet):
+    """
+    Optimized read-only endpoint for Workflow Dashboard.
+    Returns all trips with pre-computed fields for efficient display.
+    """
+    serializer_class = WorkflowSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination  # Explicitly set pagination
+    ordering = ['-created_on']  # Explicit ordering like TripViewSet
+    # Remove SearchFilter - we'll implement custom search in filter_queryset
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    ordering_fields = ['created_on']
+    filterset_fields = ['status', 'type']  # Add filtering by status and type
+
+    # Make it read-only by restricting HTTP methods
+    http_method_names = ['get', 'head', 'options']
+
+    def get_queryset(self):
+        """
+        Get base queryset with optimized related data loading.
+        Also handles search if provided.
+        """
+        from django.db.models import Q
+
+        queryset = Trip.objects.select_related(
+            'quote',
+            'quote__contact',
+            'quote__pickup_airport',
+            'quote__dropoff_airport',
+            'patient',
+            'patient__info',
+            'quote__patient'
+        ).prefetch_related(
+            'trip_lines__origin_airport',
+            'trip_lines__destination_airport',
+            'trip_lines__crew_line__primary_in_command',
+            'trip_lines__crew_line__secondary_in_command',
+            'trip_lines__crew_line__medic_ids'
+        ).order_by('-created_on')
+
+        # Handle search
+        search_term = self.request.query_params.get('search', '').strip().rstrip('/')
+        if search_term:
+            print(f"DEBUG WORKFLOW: Searching for: '{search_term}'")
+
+            # Build search query
+            search_query = Q(
+                Q(trip_number__icontains=search_term) |
+                Q(type__icontains=search_term) |
+                # Airport fields
+                Q(quote__pickup_airport__ident__icontains=search_term) |
+                Q(quote__pickup_airport__name__icontains=search_term) |
+                Q(quote__pickup_airport__icao_code__icontains=search_term) |
+                Q(quote__pickup_airport__iata_code__icontains=search_term) |
+                Q(quote__dropoff_airport__ident__icontains=search_term) |
+                Q(quote__dropoff_airport__name__icontains=search_term) |
+                Q(quote__dropoff_airport__icao_code__icontains=search_term) |
+                Q(quote__dropoff_airport__iata_code__icontains=search_term) |
+                # Legacy contact name fields
+                Q(patient__info__first_name__icontains=search_term) |
+                Q(patient__info__last_name__icontains=search_term) |
+                Q(quote__contact__first_name__icontains=search_term) |
+                Q(quote__contact__last_name__icontains=search_term) |
+                Q(quote__contact__business_name__icontains=search_term)
+            )
+
+            queryset = queryset.filter(search_query)
+            print(f"DEBUG WORKFLOW: After search filter, queryset count: {queryset.count()}")
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        """Override list to debug pagination."""
+        search_param = request.query_params.get('search')
+        print(f"DEBUG WORKFLOW: list() called with page={request.query_params.get('page')}, page_size={request.query_params.get('page_size')}, search={search_param}")
+        if search_param:
+            print(f"DEBUG WORKFLOW: Search param repr: {repr(search_param)}")
+            print(f"DEBUG WORKFLOW: Search param length: {len(search_param)}")
+            print(f"DEBUG WORKFLOW: Search param bytes: {search_param.encode('utf-8')}")
+        queryset = self.get_queryset()
+        print(f"DEBUG WORKFLOW: Base queryset count: {queryset.count()}")
+        queryset = self.filter_queryset(queryset)
+        print(f"DEBUG WORKFLOW: After filter_queryset, count: {queryset.count()}")
+        if request.query_params.get('search'):
+            print(f"DEBUG WORKFLOW: Search term: '{request.query_params.get('search')}'")
+            print(f"DEBUG WORKFLOW: SQL Query: {queryset.query}")
+
+        # Check if paginator exists
+        paginator = self.paginator
+        print(f"DEBUG WORKFLOW: self.paginator = {paginator}")
+        print(f"DEBUG WORKFLOW: self.pagination_class = {self.pagination_class}")
+
+        # Manually instantiate paginator to debug
+        if self.pagination_class:
+            manual_paginator = self.pagination_class()
+            print(f"DEBUG WORKFLOW: Manual paginator page_size = {manual_paginator.page_size}")
+            print(f"DEBUG WORKFLOW: Manual paginator page_size_query_param = {manual_paginator.page_size_query_param}")
+            print(f"DEBUG WORKFLOW: Request page_size param = {request.query_params.get('page_size')}")
+
+        page = self.paginate_queryset(queryset)
+        print(f"DEBUG WORKFLOW: After paginate_queryset, page has {len(page) if page else 'None'} items")
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

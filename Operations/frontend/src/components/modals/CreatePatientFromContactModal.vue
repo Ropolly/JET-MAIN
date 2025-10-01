@@ -55,20 +55,18 @@
 
             <!--begin::Patient Status-->
             <div class="fv-row mb-8">
-              <label class="required fs-6 fw-semibold mb-2">Patient Status</label>
-              <select 
-                name="status" 
-                class="form-select form-select-solid" 
+              <label class="fs-6 fw-semibold mb-2">Patient Status</label>
+              <select
+                name="status"
+                class="form-select form-select-solid"
                 v-model="formData.status"
                 :disabled="isSubmitting"
               >
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="">Select Patient Status</option>
+                <option value="fit_to_fly">Fit To Fly</option>
+                <option value="not_fit_to_fly">Not Fit To Fly</option>
               </select>
-              <div class="form-text">Current status of this patient in the system</div>
+              <div class="form-text">Medical fitness status for flight</div>
             </div>
             <!--end::Patient Status-->
 
@@ -196,7 +194,7 @@ const contact = ref<Contact | null>(null);
 
 // Form data
 const formData = reactive({
-  status: 'pending',
+  status: '',
   bed_at_origin: false,
   bed_at_destination: false,
   special_instructions: '',
@@ -222,7 +220,7 @@ const setContact = (contactData: Contact) => {
 
 const resetForm = () => {
   Object.assign(formData, {
-    status: 'pending',
+    status: '',
     bed_at_origin: false,
     bed_at_destination: false,
     special_instructions: '',
@@ -240,7 +238,7 @@ const submitForm = async () => {
     // Use contact data to fill patient requirements
     const patientData = {
       info: contact.value.id,
-      status: formData.status,
+      status: formData.status || 'fit_to_fly',
       bed_at_origin: formData.bed_at_origin,
       bed_at_destination: formData.bed_at_destination,
       special_instructions: formData.special_instructions?.trim() || null,
