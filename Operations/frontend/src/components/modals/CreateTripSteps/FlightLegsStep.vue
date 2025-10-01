@@ -95,7 +95,7 @@
               :class="{ show: activeAccordion === index }"
             >
               <div class="accordion-body">
-                <FlightLegForm 
+                <FlightLegForm
                   v-if="item.type === 'leg'"
                   v-model="item.data"
                   :staff-members="staffMembers"
@@ -232,6 +232,9 @@ const autoCreationInProgress = ref(false);
 const timeUpdateInProgress = ref(false);
 const crewPropagationInProgress = ref(false);
 
+// Track which legs have been initialized with crew data (for first-open auto-copy)
+const initializedLegIds = ref<Set<string>>(new Set());
+
 // Maintain chronological order of items - initialize from props if available
 const chronologicalOrder = ref<string[]>(props.chronologicalOrder?.slice() || []);
 
@@ -303,6 +306,95 @@ const combinedItemsArray = computed({
 
 // Accordion controls
 const toggleAccordion = (index: number) => {
+  const isOpening = activeAccordion.value !== index;
+  const item = combinedItems.value[index];
+
+  console.log('🔷 Accordion clicked:', {
+    index,
+    isOpening,
+    itemType: item?.type,
+    itemId: item?.id
+  });
+
+  // If opening a leg for the first time, auto-copy crew from previous leg
+  if (isOpening && item && item.type === 'leg') {
+    const legId = item.id;
+    const legIndex = legs.findIndex(l => l.id === legId);
+
+    console.log('📋 Leg details:', {
+      legIndex,
+      legId,
+      isInitialized: initializedLegIds.value.has(legId),
+      initializedSet: Array.from(initializedLegIds.value)
+    });
+
+    if (legIndex >= 0) {
+      const currentLeg = legs[legIndex];
+      console.log('📊 Current leg crew:', {
+        legNumber: legIndex + 1,
+        pic_staff_id: currentLeg.pic_staff_id,
+        sic_staff_id: currentLeg.sic_staff_id,
+        medical_staff_ids: currentLeg.medical_staff_ids
+      });
+
+      if (legIndex > 0) {
+        const previousLeg = legs[legIndex - 1];
+        console.log('📊 Previous leg crew:', {
+          legNumber: legIndex,
+          pic_staff_id: previousLeg.pic_staff_id,
+          sic_staff_id: previousLeg.sic_staff_id,
+          medical_staff_ids: previousLeg.medical_staff_ids
+        });
+      }
+    }
+  }
+
+  // If opening a leg for the first time, auto-copy crew from previous leg
+  if (isOpening) {
+    if (item && item.type === 'leg') {
+      const legId = item.id;
+      const legIndex = legs.findIndex(l => l.id === legId);
+
+      // Check if this leg hasn't been initialized yet
+      if (legIndex > 0 && !initializedLegIds.value.has(legId)) {
+        const currentLeg = legs[legIndex];
+        const previousLeg = legs[legIndex - 1];
+
+        // Only copy if current leg has no crew assigned and previous leg has crew
+        const hasNoCrew = !currentLeg.pic_staff_id && !currentLeg.sic_staff_id &&
+                         (!currentLeg.medical_staff_ids || currentLeg.medical_staff_ids.length === 0);
+
+        const previousHasCrew = previousLeg.pic_staff_id || previousLeg.sic_staff_id ||
+                               (previousLeg.medical_staff_ids && previousLeg.medical_staff_ids.length > 0);
+
+        if (hasNoCrew && previousHasCrew) {
+          console.log(`👥 Auto-copying crew from leg ${legIndex} to leg ${legIndex + 1} on first open`, {
+            previousCrew: {
+              pic: previousLeg.pic_staff_id,
+              sic: previousLeg.sic_staff_id,
+              medical: previousLeg.medical_staff_ids
+            }
+          });
+
+          // Directly mutate the leg object (since legs is a reference to props)
+          currentLeg.pic_staff_id = previousLeg.pic_staff_id;
+          currentLeg.sic_staff_id = previousLeg.sic_staff_id;
+          currentLeg.medical_staff_ids = [...(previousLeg.medical_staff_ids || [])];
+
+          console.log(`✅ Crew copied to leg ${legIndex + 1}:`, {
+            pic: currentLeg.pic_staff_id,
+            sic: currentLeg.sic_staff_id,
+            medical: currentLeg.medical_staff_ids
+          });
+        }
+
+        // Mark leg as initialized (whether we copied crew or not)
+        initializedLegIds.value.add(legId);
+      }
+    }
+  }
+
+  // Toggle the accordion
   activeAccordion.value = activeAccordion.value === index ? -1 : index;
 };
 
@@ -847,105 +939,30 @@ const shouldShowCrewChangeWarning = (legIndex: number): boolean => {
   return crewChanged;
 };
 
-// Propagate crew from specified leg to all subsequent legs
-const propagateCrewToSubsequentLegs = (fromLegIndex: number) => {
-  const sourceLeg = legs[fromLegIndex];
-  if (!sourceLeg || fromLegIndex >= legs.length - 1) {
-    console.log('No crew propagation needed - source leg not found or no subsequent legs');
-    return;
-  }
-
-  console.log(`🔄 Propagating crew from leg ${fromLegIndex + 1} to subsequent legs...`, {
-    sourceCrew: {
-      pic: sourceLeg.pic_staff_id,
-      sic: sourceLeg.sic_staff_id,
-      medical: sourceLeg.medical_staff_ids
-    },
-    targetLegs: legs.length - fromLegIndex - 1
+// Update a single leg in the array and emit to parent
+const updateLeg = (legIndex: number, updatedLegData: TripLeg) => {
+  const updatedLegs = legs.map((leg, index) => {
+    if (index === legIndex) {
+      return updatedLegData;
+    }
+    return leg;
   });
 
-  // Update all subsequent legs with the source leg's crew
-  for (let i = fromLegIndex + 1; i < legs.length; i++) {
-    const targetLeg = legs[i];
-    const previousCrew = {
-      pic: targetLeg.pic_staff_id,
-      sic: targetLeg.sic_staff_id,
-      medical: [...targetLeg.medical_staff_ids]
-    };
-
-    // Copy crew from source leg
-    targetLeg.pic_staff_id = sourceLeg.pic_staff_id;
-    targetLeg.sic_staff_id = sourceLeg.sic_staff_id;
-    targetLeg.medical_staff_ids = [...sourceLeg.medical_staff_ids];
-
-    console.log(`✅ Updated leg ${i + 1} crew:`, {
-      previous: previousCrew,
-      new: {
-        pic: targetLeg.pic_staff_id,
-        sic: targetLeg.sic_staff_id,
-        medical: targetLeg.medical_staff_ids
-      }
-    });
-  }
-
-  // Trigger reactivity and crew change detection
-  emit('update:legs', legs);
-
-  console.log(`🎯 Crew propagation complete - updated ${legs.length - fromLegIndex - 1} subsequent legs`);
-
-  // Show user feedback for crew propagation
-  const updatedLegsCount = legs.length - fromLegIndex - 1;
-  if (updatedLegsCount > 0) {
-    // Create a temporary notification element (you could replace this with a proper toast system)
-    console.log(`📢 Crew propagated to ${updatedLegsCount} subsequent leg${updatedLegsCount > 1 ? 's' : ''}`);
-  }
+  emit('update:legs', updatedLegs);
 };
 
-// Handle crew change
+// Handle crew change - manages crew change events in timeline
 const handleCrewChange = (legIndex: number, crewChanged: boolean) => {
+  // First leg doesn't need crew change events
+  if (legIndex === 0) return;
+
   const leg = legs[legIndex];
-
-  // Special handling for leg 1 (index 0) - no previous leg to compare against
-  if (legIndex === 0) {
-    if (crewChanged && !crewPropagationInProgress.value && legs.length > 1) {
-      console.log(`👥 User changed crew on leg 1, propagating to all subsequent legs...`);
-
-      // Set flag to prevent infinite loops
-      crewPropagationInProgress.value = true;
-
-      // Propagate crew changes from leg 1 to all subsequent legs
-      propagateCrewToSubsequentLegs(0);
-
-      // Reset flag after a short delay
-      setTimeout(() => {
-        crewPropagationInProgress.value = false;
-      }, 100);
-    }
-    return; // No crew change events needed for first leg
-  }
-
   const previousLeg = legs[legIndex - 1];
   if (!leg || !previousLeg) return;
 
-  // If this is a user-initiated crew change (not from propagation), trigger cascade
-  if (crewChanged && !crewPropagationInProgress.value) {
-    console.log(`👥 User changed crew on leg ${legIndex + 1}, triggering propagation...`);
-
-    // Set flag to prevent infinite loops
-    crewPropagationInProgress.value = true;
-
-    // Propagate crew changes to subsequent legs
-    propagateCrewToSubsequentLegs(legIndex);
-
-    // Reset flag after a short delay
-    setTimeout(() => {
-      crewPropagationInProgress.value = false;
-    }, 100);
-  }
-  
   // Check if crew change event already exists for this transition
-  const existingEventIndex = events.findIndex(e => 
-    e.event_type === 'CREW_CHANGE' && 
+  const existingEventIndex = events.findIndex(e =>
+    e.event_type === 'CREW_CHANGE' &&
     e.before_leg_id === leg.id
   );
   

@@ -6,22 +6,6 @@
       <KTSearch />
     </div>
     <!--end::Search-->
-    <!--begin::Notifications-->
-    <div class="app-navbar-item ms-1 ms-md-4">
-      <!--begin::Menu- wrapper-->
-      <div
-        class="btn btn-icon btn-custom btn-icon-muted btn-active-light btn-active-color-primary w-35px h-35px"
-        data-kt-menu-trigger="{default: 'click', lg: 'hover'}"
-        data-kt-menu-attach="parent"
-        data-kt-menu-placement="bottom-end"
-        id="kt_menu_item_wow"
-      >
-        <KTIcon icon-name="notification-status" icon-class="fs-2" />
-      </div>
-      <KTNotificationMenu />
-      <!--end::Menu wrapper-->
-    </div>
-    <!--end::Notifications-->
     <!--begin::Theme mode-->
     <div class="app-navbar-item ms-1 ms-md-3">
       <!--begin::Menu toggle-->
@@ -80,7 +64,6 @@
 import { getAssetPath } from "@/core/helpers/assets";
 import { computed, defineComponent } from "vue";
 import KTSearch from "@/layouts/default-layout/components/search/Search.vue";
-import KTNotificationMenu from "@/layouts/default-layout/components/menus/NotificationsMenu.vue";
 import KTUserMenu from "@/layouts/default-layout/components/menus/UserAccountMenu.vue";
 import KTThemeModeSwitcher from "@/layouts/default-layout/components/theme-mode/ThemeModeSwitcher.vue";
 import { ThemeModeComponent } from "@/assets/ts/layout";
@@ -91,7 +74,6 @@ export default defineComponent({
   name: "header-navbar",
   components: {
     KTSearch,
-    KTNotificationMenu,
     KTUserMenu,
     KTThemeModeSwitcher,
   },

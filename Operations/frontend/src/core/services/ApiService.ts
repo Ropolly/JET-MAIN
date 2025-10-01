@@ -120,7 +120,19 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static query(resource: string, params: any): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.get(resource, { params });
+    // Ensure trailing slash is before query parameters, not after
+    let url = resource;
+    const queryIndex = url.indexOf('?');
+    if (queryIndex > 0) {
+      // URL has query parameters - insert slash before them
+      const path = url.substring(0, queryIndex);
+      const query = url.substring(queryIndex);
+      url = path.endsWith('/') ? resource : `${path}/${query}`;
+    } else {
+      // No query parameters - just append slash if needed
+      url = url.endsWith('/') ? url : `${url}/`;
+    }
+    return ApiService.vueInstance.axios.get(url, { params });
   }
 
   /**
@@ -133,7 +145,20 @@ class ApiService {
     resource: string,
     slug = "" as string
   ): Promise<AxiosResponse> {
-    const url = slug ? `${resource}/${slug}` : resource;
+    let url = slug ? `${resource}/${slug}` : resource;
+
+    // Ensure trailing slash is before query parameters, not after
+    const queryIndex = url.indexOf('?');
+    if (queryIndex > 0) {
+      // URL has query parameters - insert slash before them
+      const path = url.substring(0, queryIndex);
+      const query = url.substring(queryIndex);
+      url = path.endsWith('/') ? url : `${path}/${query}`;
+    } else {
+      // No query parameters - just append slash if needed
+      url = url.endsWith('/') ? url : `${url}/`;
+    }
+
     return ApiService.vueInstance.axios.get(url);
   }
 
@@ -144,7 +169,8 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static post(resource: string, params: any): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.post(resource, params);
+    const url = resource.endsWith('/') ? resource : `${resource}/`;
+    return ApiService.vueInstance.axios.post(url, params);
   }
 
   /**
@@ -159,7 +185,9 @@ class ApiService {
     slug: string,
     params: any
   ): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.put(`${resource}/${slug}`, params);
+    let url = `${resource}/${slug}`;
+    url = url.endsWith('/') ? url : `${url}/`;
+    return ApiService.vueInstance.axios.put(url, params);
   }
 
   /**
@@ -169,7 +197,8 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static put(resource: string, params: any): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.put(resource, params);
+    const url = resource.endsWith('/') ? resource : `${resource}/`;
+    return ApiService.vueInstance.axios.put(url, params);
   }
 
   /**
@@ -179,7 +208,8 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static patch(resource: string, params: any): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.patch(resource, params);
+    const url = resource.endsWith('/') ? resource : `${resource}/`;
+    return ApiService.vueInstance.axios.patch(url, params);
   }
 
   /**
@@ -188,7 +218,8 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static delete(resource: string): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.delete(resource);
+    const url = resource.endsWith('/') ? resource : `${resource}/`;
+    return ApiService.vueInstance.axios.delete(url);
   }
 
   /**
@@ -198,7 +229,8 @@ class ApiService {
    * @returns Promise<AxiosResponse>
    */
   public static upload(resource: string, formData: FormData): Promise<AxiosResponse> {
-    return ApiService.vueInstance.axios.post(resource, formData, {
+    const url = resource.endsWith('/') ? resource : `${resource}/`;
+    return ApiService.vueInstance.axios.post(url, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },

@@ -81,65 +81,138 @@
       </div>
       <!--end::Financial Summary-->
 
-      <!--begin::Quote Info-->
-      <div v-if="!loading && trip?.quote" class="mb-8">
-        <h3 class="fw-bold text-gray-900 mb-5">
-          <KTIcon icon-name="price-tag" icon-class="fs-3 text-warning me-2" />
-          <span v-if="trip?.quote">
-            Quote #{{ trip.quote.id?.slice(0, 8) }}
-            <span :class="`badge badge-light-${getQuoteStatusColor()} ms-3`">{{ trip.quote.status }}</span>
-          </span>
-          <span v-else>Quote Info</span>
-        </h3>
+      <!--begin::Quote Details Card-->
+      <div v-if="!loading && trip?.quote" class="card mb-8">
+        <div class="card-body">
+          <!--begin::Header-->
+          <div class="d-flex justify-content-between align-items-center mb-8">
+            <div class="fw-bold fs-3 text-gray-800">
+              Quote #{{ trip.quote.id?.slice(0, 8) }}
+            </div>
+            <select
+              v-if="trip.quote.status"
+              :value="trip.quote.status"
+              @change="updateQuoteStatus(($event.target as HTMLSelectElement).value)"
+              class="form-select form-select-sm"
+              :class="`text-${getQuoteStatusColor()}`"
+              style="max-width: 150px;"
+            >
+              <option value="pending">Pending</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+          <!--end::Header-->
 
-        <div class="card border border-dashed border-gray-300">
-          <div class="card-body">
-            <div class="table-responsive">
-              <table class="table table-row-bordered">
-                <thead>
-                  <tr class="fw-bold fs-6 text-gray-800 border-bottom-2 border-gray-200">
-                    <th>Item</th>
-                    <th>Description</th>
-                    <th class="text-end">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="trip?.quote?.created_on" class="border-bottom-2 border-gray-200">
-                    <td class="fw-bold text-gray-600">Quote Date</td>
-                    <td class="text-gray-600">{{ formatDate(trip.quote.created_on) }}</td>
-                    <td class="text-end fw-bold">${{ formatAmount(trip.quote.quoted_amount) }}</td>
-                  </tr>
-                  <tr>
-                    <td class="fw-bold text-gray-800">Base Flight Cost</td>
-                    <td class="text-gray-600">{{ getFlightDescription() }}</td>
-                    <td class="text-end fw-bold">${{ getBaseCost() }}</td>
-                  </tr>
-                  <tr v-if="hasMedicalTeamCost()">
-                    <td class="fw-bold text-gray-800">Medical Team</td>
-                    <td class="text-gray-600">{{ getMedicalTeamDescription() }}</td>
-                    <td class="text-end fw-bold">${{ getMedicalTeamCost() }}</td>
-                  </tr>
-                  <tr v-if="hasGroundTransportCost()">
-                    <td class="fw-bold text-gray-800">Ground Transportation</td>
-                    <td class="text-gray-600">Airport transfers and ground support</td>
-                    <td class="text-end fw-bold">${{ getGroundTransportCost() }}</td>
-                  </tr>
-                  <tr v-if="hasAdditionalCosts()">
-                    <td class="fw-bold text-gray-800">Additional Services</td>
-                    <td class="text-gray-600">{{ getAdditionalServicesDescription() }}</td>
-                    <td class="text-end fw-bold">${{ getAdditionalCosts() }}</td>
-                  </tr>
-                  <tr class="border-top-2 border-gray-200">
-                    <td colspan="2" class="fw-bold text-gray-900 fs-5">Total</td>
-                    <td class="text-end fw-bold text-gray-900 fs-4">${{ getTotalCost() }}</td>
-                  </tr>
-                </tbody>
-              </table>
+          <!--begin::Quote Details Row-->
+          <div class="row g-5 mb-11">
+            <!--begin::Issue Date-->
+            <div class="col-sm-6">
+              <div class="fw-semibold fs-7 text-gray-600 mb-1">Issue Date:</div>
+              <div class="fw-bold fs-6 text-gray-800">{{ formatDate(trip.quote.created_on) }}</div>
+            </div>
+            <!--end::Issue Date-->
+
+            <!--begin::Valid Until-->
+            <div class="col-sm-6">
+              <div class="fw-semibold fs-7 text-gray-600 mb-1">Valid Until:</div>
+              <div class="fw-bold fs-6 text-gray-800 d-flex align-items-center flex-wrap">
+                <span class="pe-2">{{ getValidUntilDate() }}</span>
+                <span v-if="isExpiringSoon()" class="fs-7 text-warning d-flex align-items-center">
+                  <span class="bullet bullet-dot bg-warning me-2"></span>
+                  Expires soon
+                </span>
+                <span v-else-if="isExpired()" class="fs-7 text-danger d-flex align-items-center">
+                  <span class="bullet bullet-dot bg-danger me-2"></span>
+                  Expired
+                </span>
+              </div>
+            </div>
+            <!--end::Valid Until-->
+          </div>
+          <!--end::Quote Details Row-->
+
+          <!--begin::Customer & Company Info Row-->
+          <div class="row g-5 mb-12">
+            <!--begin::Customer Info-->
+            <div class="col-sm-6">
+              <div class="fw-semibold fs-7 text-gray-600 mb-1">Quote For:</div>
+              <div class="fw-bold fs-6 text-gray-800">{{ getCustomerName() }}</div>
+              <div class="fw-semibold fs-7 text-gray-600">{{ getCustomerAddress() }}</div>
+              <div class="fw-semibold fs-7 text-gray-600 mt-2">
+                <div v-if="getCustomerEmail()">Email: {{ getCustomerEmail() }}</div>
+                <div v-if="getCustomerPhone()">Phone: {{ getCustomerPhone() }}</div>
+              </div>
+            </div>
+            <!--end::Customer Info-->
+
+            <!--begin::Company Info-->
+            <div class="col-sm-6">
+              <div class="fw-semibold fs-7 text-gray-600 mb-1">Issued By:</div>
+              <div class="fw-bold fs-6 text-gray-800">JET ICU Medical Transport</div>
+              <div class="fw-semibold fs-7 text-gray-600">
+                1511 N Westshore Blvd #650<br>
+                Tampa, FL 33607<br>
+                Phone: (352) 796-2540<br>
+                Email: info@jeticu.com
+              </div>
+            </div>
+            <!--end::Company Info-->
+          </div>
+          <!--end::Customer & Company Info Row-->
+
+          <!--begin::Line Items Table-->
+          <div class="table-responsive border-bottom mb-9">
+            <table class="table mb-3">
+              <thead>
+                <tr class="border-bottom fs-6 fw-bold text-muted">
+                  <th class="min-w-175px pb-2 text-start">Item</th>
+                  <th class="min-w-200px pb-2 text-start">Description</th>
+                  <th class="min-w-70px text-end pb-2">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="fw-bold text-gray-700 fs-5">
+                  <td class="pt-6 text-start">
+                    <div class="d-flex align-items-center">
+                      <KTIcon icon-name="airplane" icon-class="fs-2 me-2 text-primary" />
+                      Flight Cost
+                    </div>
+                  </td>
+                  <td class="pt-6 text-start">
+                    <div class="fs-7 fw-normal text-gray-600">{{ getRouteDescriptionSimple() }}</div>
+                  </td>
+                  <td class="pt-6 text-end">${{ formatAmount(trip.quote.quoted_amount) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!--end::Line Items Table-->
+
+          <!--begin::Route Info-->
+          <div v-if="getRouteDescription()" class="mb-5">
+            <div class="fw-semibold fs-7 text-gray-600 mb-1">Route:</div>
+            <div class="fw-bold fs-6 text-gray-800">{{ getRouteDescription() }}</div>
+          </div>
+          <!--end::Route Info-->
+
+          <!--begin::Notes-->
+          <div class="d-flex flex-stack">
+            <div class="fw-semibold pe-10 text-gray-600 fs-7">
+              <div v-if="trip?.quote?.aircraft_type">Aircraft Type: {{ trip.quote.aircraft_type }}</div>
+              <div v-if="trip?.quote?.medical_team">Medical Team: {{ trip.quote.medical_team }}</div>
+              <div v-if="trip?.quote?.estimated_flight_time">Estimated Flight Time: {{ formatDuration(trip.quote.estimated_flight_time) }}</div>
+            </div>
+            <div class="text-end">
+              <div class="fs-5 fw-bold text-gray-800">Quoted Amount</div>
+              <div class="fs-3 fw-bolder text-primary">${{ getTotalCost() }}</div>
             </div>
           </div>
+          <!--end::Notes-->
         </div>
       </div>
-      <!--end::Quote Info-->
+      <!--end::Quote Details Card-->
 
       <!--begin::Payment History-->
       <div v-if="!loading && trip?.quote" class="mb-8">
@@ -218,12 +291,21 @@
     @quote-created="onQuoteCreated"
   />
   <!--end::Quote Modal-->
+
+  <!-- Lost Reason Modal -->
+  <LostReasonModal
+    ref="lostReasonModalRef"
+    @confirmed="onLostReasonConfirmed"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import CreateQuoteForTripModal from '@/components/modals/CreateQuoteForTripModal.vue';
+import LostReasonModal from '@/components/modals/LostReasonModal.vue';
 import { showModal } from '@/core/helpers/modal';
+import ApiService from '@/core/services/ApiService';
+import Swal from 'sweetalert2';
 
 interface Props {
   trip: any;
@@ -235,6 +317,7 @@ const emit = defineEmits(['trip-updated']);
 
 // Modal state
 const showQuoteModalRef = ref(false);
+const lostReasonModalRef = ref<any>(null);
 
 // Quote helper functions
 const getQuoteStatusColor = (): string => {
@@ -417,6 +500,138 @@ const formatDuration = (duration?: string | number): string => {
   return `${hours}h ${minutes}m`;
 };
 
+// Quote detail helper functions
+const getRouteDescription = (): string => {
+  const quote = props.trip?.quote;
+  if (!quote) return '';
+
+  const pickup = quote.pickup_airport;
+  const dropoff = quote.dropoff_airport;
+
+  if (!pickup || !dropoff) return '';
+
+  const pickupCode = pickup.icao_code || pickup.iata_code || pickup.ident;
+  const pickupName = pickup.name || '';
+  const dropoffCode = dropoff.icao_code || dropoff.iata_code || dropoff.ident;
+  const dropoffName = dropoff.name || '';
+
+  return `${pickupCode} (${pickupName}) → ${dropoffCode} (${dropoffName})`;
+};
+
+const getRouteDescriptionSimple = (): string => {
+  const quote = props.trip?.quote;
+  if (!quote) return 'N/A';
+
+  const pickup = quote.pickup_airport;
+  const dropoff = quote.dropoff_airport;
+
+  if (!pickup || !dropoff) return 'N/A';
+
+  const pickupCode = pickup.icao_code || pickup.iata_code || pickup.ident || 'UNK';
+  const dropoffCode = dropoff.icao_code || dropoff.iata_code || dropoff.ident || 'UNK';
+
+  return `${pickupCode} → ${dropoffCode}`;
+};
+
+const getCustomerName = (): string => {
+  // Use customer_contact if available, otherwise fall back to contact
+  const contact = props.trip?.quote?.customer_contact || props.trip?.quote?.contact;
+  if (!contact) return 'N/A';
+
+  // Try decrypted fields first (get_*), then fall back to regular fields
+  const business = contact.get_business_name || contact.business_name;
+  if (business) {
+    return business;
+  }
+
+  const firstName = contact.get_first_name || contact.first_name || '';
+  const lastName = contact.get_last_name || contact.last_name || '';
+  return `${firstName} ${lastName}`.trim() || 'N/A';
+};
+
+const getCustomerAddress = (): string => {
+  // Use customer_contact if available, otherwise fall back to contact
+  const contact = props.trip?.quote?.customer_contact || props.trip?.quote?.contact;
+  if (!contact) return '';
+
+  // Try decrypted address first, then fall back to regular address
+  const address = contact.get_address || contact.address;
+  if (!address) return '';
+
+  return address;
+};
+
+const getCustomerEmail = (): string => {
+  // Use customer_contact if available, otherwise fall back to contact
+  const contact = props.trip?.quote?.customer_contact || props.trip?.quote?.contact;
+  if (!contact) return '';
+
+  // Try decrypted email first, then fall back to regular email
+  return contact.get_email || contact.email || '';
+};
+
+const getCustomerPhone = (): string => {
+  // Use customer_contact if available, otherwise fall back to contact
+  const contact = props.trip?.quote?.customer_contact || props.trip?.quote?.contact;
+  if (!contact) return '';
+
+  // Try decrypted phone first, then fall back to regular phone
+  return contact.get_phone || contact.phone || '';
+};
+
+const getValidUntilDate = (): string => {
+  const createdOn = props.trip?.quote?.created_on;
+  if (!createdOn) return 'N/A';
+
+  try {
+    const issueDate = new Date(createdOn);
+    const validUntilDate = new Date(issueDate);
+    validUntilDate.setDate(validUntilDate.getDate() + 10); // 10 days validity
+
+    return validUntilDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (error) {
+    return 'N/A';
+  }
+};
+
+const isExpiringSoon = (): boolean => {
+  const createdOn = props.trip?.quote?.created_on;
+  if (!createdOn) return false;
+
+  try {
+    const issueDate = new Date(createdOn);
+    const validUntilDate = new Date(issueDate);
+    validUntilDate.setDate(validUntilDate.getDate() + 10);
+
+    const now = new Date();
+    const daysUntilExpiration = Math.floor((validUntilDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    return daysUntilExpiration > 0 && daysUntilExpiration <= 3;
+  } catch (error) {
+    return false;
+  }
+};
+
+const isExpired = (): boolean => {
+  const createdOn = props.trip?.quote?.created_on;
+  if (!createdOn) return false;
+
+  try {
+    const issueDate = new Date(createdOn);
+    const validUntilDate = new Date(issueDate);
+    validUntilDate.setDate(validUntilDate.getDate() + 10);
+
+    const now = new Date();
+    return now > validUntilDate;
+  } catch (error) {
+    return false;
+  }
+};
+
 // Modal functions
 const showQuoteModal = async () => {
   showQuoteModalRef.value = true;
@@ -436,6 +651,125 @@ const onQuoteCreated = (quote: any) => {
   showQuoteModalRef.value = false;
   // Emit event to parent to refresh trip data
   emit('trip-updated');
+};
+
+// Quote status update functions
+const updateQuoteStatus = async (newStatus: string) => {
+  if (!props.trip?.quote || props.trip.quote.status === newStatus) return;
+
+  // If changing to lost, show the lost reason modal
+  if (newStatus === 'lost') {
+    // Reset dropdown to current status while modal is shown
+    const currentStatus = props.trip.quote.status;
+    props.trip.quote.status = '';
+    nextTick(() => {
+      props.trip.quote.status = currentStatus;
+    });
+
+    // Show the lost reason modal
+    if (lostReasonModalRef.value) {
+      lostReasonModalRef.value.show();
+    }
+    return;
+  }
+
+  try {
+    await ApiService.patch(`/quotes/${props.trip.quote.id}/`, { status: newStatus });
+
+    // Update the local quote status
+    props.trip.quote.status = newStatus;
+
+    // Show success notification
+    Swal.fire({
+      title: "Status Updated!",
+      text: `Quote status changed to ${newStatus}`,
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+
+    // Emit event to parent to refresh trip data
+    emit('trip-updated');
+
+  } catch (error: any) {
+    console.error('Error updating quote status:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to update status. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+  }
+};
+
+const onLostReasonConfirmed = async (reasonId: string, comment: string) => {
+  if (!props.trip?.quote) return;
+
+  try {
+    // Update quote with lost reason and status
+    await ApiService.patch(`/quotes/${props.trip.quote.id}/`, {
+      status: 'lost',
+      lost_reason: reasonId
+    });
+
+    // Update local quote object
+    props.trip.quote.status = 'lost';
+
+    // Update associated trip status to cancelled
+    try {
+      await ApiService.patch(`/trips/${props.trip.id}/`, {
+        status: 'cancelled'
+      });
+
+      // Update local trip object
+      props.trip.status = 'cancelled';
+    } catch (tripError) {
+      console.error('Error updating trip status:', tripError);
+      // Continue even if trip update fails - quote is still marked as lost
+    }
+
+    // If there's a comment, save it
+    if (comment.trim()) {
+      try {
+        await ApiService.post('/comments/', {
+          content_type: 'quote',
+          object_id: props.trip.quote.id,
+          text: `Quote marked as lost: ${comment.trim()}`
+        });
+      } catch (commentError) {
+        console.error('Error saving lost reason comment:', commentError);
+        // Continue even if comment fails
+      }
+    }
+
+    // Show success notification
+    Swal.fire({
+      title: "Quote Marked as Lost!",
+      text: "Quote status updated to Lost and Trip status updated to Cancelled",
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+
+    // Emit event to parent to refresh trip data
+    emit('trip-updated');
+
+  } catch (error: any) {
+    console.error('Error updating quote status:', error);
+    Swal.fire({
+      title: 'Error!',
+      text: error.response?.data?.detail || 'Failed to update quote status. Please try again.',
+      icon: 'error',
+      confirmButtonText: 'OK'
+    });
+
+    // Reset dropdown back to current status
+    const currentStatus = props.trip.quote.status;
+    props.trip.quote.status = '';
+    nextTick(() => {
+      props.trip.quote.status = currentStatus;
+    });
+  }
 };
 </script>
 

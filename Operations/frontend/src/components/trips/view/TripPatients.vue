@@ -90,6 +90,15 @@
 
               <!--begin::Info-->
               <div class="d-flex flex-center flex-wrap">
+                <!--begin::Patient Status-->
+                <div class="border border-gray-300 border-dashed rounded min-w-100px py-3 px-4 mx-2 mb-3">
+                  <div class="fs-7 fw-bold text-gray-800">
+                    {{ getPatientStatus() }}
+                  </div>
+                  <div class="fw-semibold text-gray-500">Status</div>
+                </div>
+                <!--end::Patient Status-->
+
                 <!--begin::Origin Bed-->
                 <div class="border border-gray-300 border-dashed rounded min-w-80px py-3 px-4 mx-2 mb-3">
                   <div class="fs-6 fw-bold">
@@ -497,6 +506,16 @@ const getPatientInitials = (): string => {
   const last = props.trip.patient.info.get_last_name || props.trip.patient.info.last_name || '';
 
   return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || '?';
+};
+
+const getPatientStatus = (): string => {
+  if (!props.trip?.patient?.status) return 'N/A';
+
+  const status = props.trip.patient.status;
+  if (status === 'fit_to_fly') return 'Fit To Fly';
+  if (status === 'not_fit_to_fly') return 'Not Fit To Fly';
+
+  return status;
 };
 
 const getPatientAddress = (): string => {

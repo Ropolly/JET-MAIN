@@ -211,6 +211,21 @@
               <span class="w-250px fw-bold text-gray-600">Medical Information</span>
             </div>
 
+            <!--begin::Patient Status-->
+            <div class="fv-row mb-8">
+              <label class="fs-6 fw-semibold mb-2">Patient Status</label>
+              <select
+                class="form-select form-select-solid"
+                v-model="formData.patient.status"
+                :disabled="isSubmitting"
+              >
+                <option value="">Select Patient Status</option>
+                <option value="fit_to_fly">Fit To Fly</option>
+                <option value="not_fit_to_fly">Not Fit To Fly</option>
+              </select>
+            </div>
+            <!--end::Patient Status-->
+
             <!--begin::Bed Requirements-->
             <div class="row g-9 mb-8">
               <div class="col-md-6 fv-row">
@@ -325,10 +340,10 @@ const formData = reactive({
     country: ''
   },
   patient: {
+    status: '',
     bed_at_origin: '',
     bed_at_destination: '',
-    special_instructions: '',
-    status: 'active'
+    special_instructions: ''
   }
 });
 
@@ -361,10 +376,10 @@ const resetForm = () => {
   });
 
   Object.assign(formData.patient, {
+    status: '',
     bed_at_origin: '',
     bed_at_destination: '',
-    special_instructions: '',
-    status: 'active'
+    special_instructions: ''
   });
 };
 
@@ -395,10 +410,10 @@ const submitForm = async () => {
     // Step 2: Create the patient using the contact ID
     const patientData = {
       info: newContact.id,
+      status: formData.patient.status || 'fit_to_fly',
       bed_at_origin: formData.patient.bed_at_origin || null,
       bed_at_destination: formData.patient.bed_at_destination || null,
-      special_instructions: formData.patient.special_instructions || '',
-      status: 'active' // Always default to active
+      special_instructions: formData.patient.special_instructions || ''
     };
 
     const patientResponse = await ApiService.post("/patients/", patientData);

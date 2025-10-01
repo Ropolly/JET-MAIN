@@ -9,6 +9,12 @@ const MainMenuConfig: Array<MenuItem> = [
         keenthemesIcon: "element-11",
         bootstrapIcon: "bi-app-indicator",
       },
+      {
+        heading: "Workflow Dashboard",
+        route: "/admin/workflows",
+        keenthemesIcon: "grid-2",
+        bootstrapIcon: "bi-diagram-3",
+      },
     ],
   },
   {
@@ -112,6 +118,26 @@ const MainMenuConfig: Array<MenuItem> = [
           {
             heading: "Staff Roles",
             route: "/admin/staff-roles",
+          },
+        ],
+      },
+      {
+        sectionTitle: "System",
+        route: "/system",
+        keenthemesIcon: "setting-2",
+        bootstrapIcon: "bi-gear",
+        sub: [
+          {
+            heading: "Email Templates",
+            route: "/admin/email-templates",
+          },
+          {
+            heading: "Documents",
+            route: "/admin/documents",
+          },
+          {
+            heading: "Audit Log",
+            route: "/admin/modifications",
           },
         ],
       },

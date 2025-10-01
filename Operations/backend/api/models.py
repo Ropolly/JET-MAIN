@@ -806,12 +806,9 @@ class Patient(BaseModel):
 
     passport_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="passport_patients", db_column="passport_document_id")
     status = models.CharField(max_length=20, choices=[
-        ("pending", "Pending"),
-        ("confirmed", "Confirmed"),
-        ("active", "Active"),
-        ("completed", "Completed"),
-        ("cancelled", "Cancelled")
-    ], default="pending", db_index=True)
+        ("fit_to_fly", "Fit To Fly"),
+        ("not_fit_to_fly", "Not Fit To Fly")
+    ], default="fit_to_fly", db_index=True)
     letter_of_medical_necessity = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="medical_necessity_patients", db_column="letter_of_medical_necessity_id")
     insurance_card = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="insurance_card_patients", db_column="insurance_card_id")
 
@@ -901,8 +898,8 @@ class Quote(BaseModel):
     pickup_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="pickup_quotes", db_column="pickup_airport_id")
     dropoff_airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name="dropoff_quotes", db_column="dropoff_airport_id")
     aircraft_type = models.CharField(max_length=20, choices=[
-        ("65", "Learjet 65"),
-        ("35", "Learjet 35"),
+        ("60", "Learjet 60"),
+        ("30", "Learjet 30"),
         ("TBD", "To Be Determined")
     ])
     estimated_flight_time = models.DurationField()
@@ -1627,3 +1624,48 @@ class SMSVerificationCode(models.Model):
 
     def can_attempt(self):
         return self.attempts < 5 and not self.verified and not self.is_expired()
+
+
+# Email Template model for managing email templates with WYSIWYG content
+class EmailTemplate(BaseModel):
+    """Model for managing email templates with rich text content."""
+
+    # Template identification
+    title = models.CharField(max_length=255, unique=True, help_text="Unique template title")
+    subject = models.CharField(max_length=255, blank=True, help_text="Email subject line")
+
+    # Content
+    content = models.TextField(help_text="HTML content from WYSIWYG editor")
+
+    # Categorization
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('quote', 'Quote'),
+        ('trip', 'Trip'),
+        ('invoice', 'Invoice'),
+        ('reminder', 'Reminder'),
+        ('notification', 'Notification'),
+        ('marketing', 'Marketing'),
+    ]
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='general')
+
+    # Status and tracking
+    is_published = models.BooleanField(default=False, help_text="Whether template is ready for use")
+    last_sent_at = models.DateTimeField(null=True, blank=True, help_text="Last time this template was used")
+    send_count = models.IntegerField(default=0, help_text="Number of times template has been sent")
+
+    # Template variables for dynamic content
+    variables = models.JSONField(default=list, blank=True, help_text="List of template variable names")
+
+    # Optional description for internal use
+    description = models.TextField(blank=True, help_text="Internal description of template purpose")
+
+    class Meta:
+        ordering = ['-created_on']
+        indexes = [
+            models.Index(fields=['category', 'is_published']),
+            models.Index(fields=['title']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_category_display()})"

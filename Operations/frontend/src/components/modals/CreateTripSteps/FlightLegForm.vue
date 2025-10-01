@@ -163,8 +163,8 @@
     <div class="row g-9 mb-6">
       <div class="col-md-6 fv-row">
         <label class="required fs-6 fw-semibold mb-2">Pilot in Command (PIC)</label>
-        <select 
-          v-model="legData.pic_staff_id" 
+        <select
+          v-model="legData.pic_staff_id"
           @change="emitCrewChange"
           class="form-select form-select-solid"
         >
@@ -177,8 +177,8 @@
       </div>
       <div class="col-md-6 fv-row">
         <label class="required fs-6 fw-semibold mb-2">Second in Command (SIC)</label>
-        <select 
-          v-model="legData.sic_staff_id" 
+        <select
+          v-model="legData.sic_staff_id"
           @change="emitCrewChange"
           class="form-select form-select-solid"
         >
@@ -194,18 +194,17 @@
     <!--begin::Medical Crew Section-->
     <div class="fv-row mb-6">
       <label class="fs-6 fw-semibold mb-2">Medical Crew</label>
-      <select 
-        v-model="legData.medical_staff_ids" 
+      <Multiselect
+        v-model="legData.medical_staff_ids"
         @change="emitCrewChange"
-        class="form-select form-select-solid" 
-        multiple
-      >
-        <option v-for="staff in medicalStaff" :key="staff.id" :value="staff.id">
-          {{ getStaffDisplayName(staff) }} 
-          <span class="text-muted">({{ getMedicalRoles(staff).join(', ') }})</span>
-        </option>
-      </select>
-      <div class="form-text">Hold Ctrl/Cmd to select multiple medical crew members. Only staff with medical roles (RN, MD, Paramedic, RT) are shown.</div>
+        :options="medicalStaffOptions"
+        mode="tags"
+        :searchable="true"
+        :close-on-select="false"
+        placeholder="Select medical crew members..."
+        :class="'multiselect-solid'"
+      />
+      <div class="form-text">Search and select multiple medical crew members. Only staff with medical roles (RN, MD, Paramedic, RT) are shown.</div>
     </div>
     <!--end::Medical Crew Section-->
 
@@ -252,7 +251,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import Multiselect from '@vueform/multiselect';
 import AirportSearchSelect from '@/components/form-controls/AirportSearchSelect.vue';
 import ApiService from '@/core/services/ApiService';
 import { calculateAirportDistance, calculateFlightTime } from '@/core/helpers/distanceCalculator';
@@ -299,6 +299,21 @@ const sicEligibleStaff = computed(() => {
 
 const medicalStaff = computed(() => {
   return props.staffMembers.filter(staff => hasAnyMedicalRole(staff, today));
+});
+
+const medicalStaffOptions = computed(() => {
+  return medicalStaff.value.map(staff => {
+    const displayName = getStaffDisplayName(staff);
+    const roles = getMedicalRoles(staff);
+    const label = roles.length > 0
+      ? `${displayName} (${roles.join(', ')})`
+      : displayName;
+
+    return {
+      value: staff.id,
+      label: label
+    };
+  });
 });
 
 // Role checking functions
@@ -609,26 +624,64 @@ watch(() => [originTimezoneInfo.value, destinationTimezoneInfo.value], () => {
   }
 });
 
-// Emit crew change detection
+// Emit crew change notification to parent
+// Called by @change handlers on crew selection fields
 const emitCrewChange = () => {
-  // This will be handled by the parent component to detect crew changes
-  emit('crew-changed', true);
-};
-
-// Watch for crew changes
-let previousCrewSignature = '';
-
-watch(() => [
-  legData.pic_staff_id, 
-  legData.sic_staff_id, 
-  legData.medical_staff_ids
-], () => {
-  const currentCrewSignature = `${legData.pic_staff_id}:${legData.sic_staff_id}:${legData.medical_staff_ids.sort().join(',')}`;
-  
-  if (previousCrewSignature && previousCrewSignature !== currentCrewSignature) {
+  // Use nextTick to ensure v-model update completes before parent reads the data
+  nextTick(() => {
     emit('crew-changed', true);
-  }
-  
-  previousCrewSignature = currentCrewSignature;
-}, { deep: true });
+  });
+};
 </script>
+
+<style scoped>
+/* Style multiselect to match Bootstrap form-select-solid */
+:deep(.multiselect-solid) {
+  --ms-font-size: 1rem;
+  --ms-line-height: 1.5;
+  --ms-bg: #f5f8fa;
+  --ms-bg-disabled: #e9ecef;
+  --ms-border-color: #f5f8fa;
+  --ms-border-width: 1px;
+  --ms-radius: 0.475rem;
+  --ms-py: 0.75rem;
+  --ms-px: 1rem;
+  --ms-ring-width: 0;
+  --ms-ring-color: transparent;
+  --ms-placeholder-color: #a1a5b7;
+  --ms-max-height: 15rem;
+
+  --ms-tag-bg: #009ef7;
+  --ms-tag-color: #ffffff;
+  --ms-tag-radius: 0.375rem;
+  --ms-tag-font-size: 0.875rem;
+  --ms-tag-line-height: 1.5;
+  --ms-tag-font-weight: 500;
+  --ms-tag-py: 0.25rem;
+  --ms-tag-px: 0.65rem;
+  --ms-tag-my: 0.25rem;
+
+  --ms-option-bg-pointed: #f5f8fa;
+  --ms-option-bg-selected: #009ef7;
+  --ms-option-bg-selected-pointed: #0095e8;
+  --ms-option-color-pointed: #181c32;
+  --ms-option-color-selected: #ffffff;
+  --ms-option-color-selected-pointed: #ffffff;
+  --ms-option-font-size: 1rem;
+  --ms-option-py: 0.5rem;
+  --ms-option-px: 1rem;
+
+  --ms-dropdown-bg: #ffffff;
+  --ms-dropdown-border-color: #e4e6ef;
+  --ms-dropdown-border-width: 1px;
+  --ms-dropdown-radius: 0.475rem;
+}
+
+:deep(.multiselect-solid .multiselect-wrapper) {
+  min-height: calc(1.5em + 1.5rem + 2px);
+}
+
+:deep(.multiselect-solid .multiselect-tags-search) {
+  background: #f5f8fa;
+}
+</style>

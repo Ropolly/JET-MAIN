@@ -73,34 +73,6 @@
               <KTIcon icon-name="cross" icon-class="fs-2 fs-lg-1 me-0" />
             </span>
             <!--end::Reset-->
-
-            <!--begin::Toolbar-->
-            <div class="position-absolute top-50 end-0 translate-middle-y">
-              <!--begin::Preferences toggle-->
-              <div
-                v-if="!search && !loading"
-                @click="state = 'preferences'"
-                class="btn btn-icon w-20px btn-sm btn-active-color-primary me-1"
-                data-bs-toggle="tooltip"
-                title="Show search preferences"
-              >
-                <KTIcon icon-name="setting-2" icon-class="fs-1" />
-              </div>
-              <!--end::Preferences toggle-->
-
-              <!--begin::Advanced search toggle-->
-              <div
-                v-if="!search && !loading"
-                @click="state = 'advanced-options'"
-                class="btn btn-icon w-20px btn-sm btn-active-color-primary"
-                data-bs-toggle="tooltip"
-                title="Show more search options"
-              >
-                <KTIcon icon-name="down" icon-class="fs-2" />
-              </div>
-              <!--end::Advanced search toggle-->
-            </div>
-            <!--end::Toolbar-->
           </form>
           <!--end::Form-->
 
@@ -112,333 +84,6 @@
           <Empty v-else-if="state === 'empty'"></Empty>
         </div>
         <!--end::Wrapper-->
-
-        <form v-if="state === 'advanced-options'" class="pt-1">
-          <!--begin::Heading-->
-          <h3 class="fw-semibold text-dark mb-7">Advanced Search</h3>
-          <!--end::Heading-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <input
-              type="text"
-              class="form-control form-control-sm form-control-solid"
-              placeholder="Contains the word"
-              name="query"
-            />
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <!--begin::Radio group-->
-            <div class="nav-group nav-group-fluid">
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="type"
-                  value="has"
-                  checked
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary"
-                >
-                  All
-                </span>
-              </label>
-              <!--end::Option-->
-
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="type"
-                  value="users"
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary px-4"
-                >
-                  Users
-                </span>
-              </label>
-              <!--end::Option-->
-
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="type"
-                  value="orders"
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary px-4"
-                >
-                  Orders
-                </span>
-              </label>
-              <!--end::Option-->
-
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="type"
-                  value="projects"
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary px-4"
-                >
-                  Projects
-                </span>
-              </label>
-              <!--end::Option-->
-            </div>
-            <!--end::Radio group-->
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <input
-              type="text"
-              name="assignedto"
-              class="form-control form-control-sm form-control-solid"
-              placeholder="Assigned to"
-              value=""
-            />
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <input
-              type="text"
-              name="collaborators"
-              class="form-control form-control-sm form-control-solid"
-              placeholder="Collaborators"
-              value=""
-            />
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <!--begin::Radio group-->
-            <div class="nav-group nav-group-fluid">
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="attachment"
-                  value="has"
-                  checked
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary"
-                >
-                  Has attachment
-                </span>
-              </label>
-              <!--end::Option-->
-
-              <!--begin::Option-->
-              <label>
-                <input
-                  type="radio"
-                  class="btn-check"
-                  name="attachment"
-                  value="any"
-                />
-                <span
-                  class="btn btn-sm btn-color-muted btn-active btn-active-primary px-4"
-                >
-                  Any
-                </span>
-              </label>
-              <!--end::Option-->
-            </div>
-            <!--end::Radio group-->
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="mb-5">
-            <select
-              name="timezone"
-              aria-label="Select a Timezone"
-              data-control="select2"
-              data-placeholder="date_period"
-              class="form-select form-select-sm form-select-solid"
-            >
-              <option value="next">Within the next</option>
-              <option value="last">Within the last</option>
-              <option value="between">Between</option>
-              <option value="on">On</option>
-            </select>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="row mb-8">
-            <!--begin::Col-->
-            <div class="col-6">
-              <input
-                type="number"
-                name="date_number"
-                class="form-control form-control-sm form-control-solid"
-                placeholder="Lenght"
-                value=""
-              />
-            </div>
-            <!--end::Col-->
-
-            <!--begin::Col-->
-            <div class="col-6">
-              <select
-                name="date_typer"
-                aria-label="Select a Timezone"
-                data-control="select2"
-                data-placeholder="Period"
-                class="form-select form-select-sm form-select-solid"
-              >
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-                <option value="months">Months</option>
-                <option value="years">Years</option>
-              </select>
-            </div>
-            <!--end::Col-->
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Actions-->
-          <div class="d-flex justify-content-end">
-            <button
-              @click="state = 'main'"
-              class="btn btn-sm btn-light fw-bold btn-active-light-primary me-2"
-            >
-              Cancel
-            </button>
-
-            <a href="#" class="btn btn-sm fw-bold btn-primary">Search</a>
-          </div>
-          <!--end::Actions-->
-        </form>
-
-        <form v-if="state === 'preferences'" class="pt-1">
-          <!--begin::Heading-->
-          <h3 class="fw-semibold text-dark mb-7">Search Preferences</h3>
-          <!--end::Heading-->
-
-          <!--begin::Input group-->
-          <div class="pb-4 border-bottom">
-            <label
-              class="form-check form-switch form-switch-sm form-check-custom form-check-solid flex-stack"
-            >
-              <span
-                class="form-check-label text-gray-700 fs-6 fw-semibold ms-0 me-2"
-              >
-                Projects
-              </span>
-
-              <input
-                class="form-check-input"
-                type="checkbox"
-                value="1"
-                checked
-              />
-            </label>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="py-4 border-bottom">
-            <label
-              class="form-check form-switch form-switch-sm form-check-custom form-check-solid flex-stack"
-            >
-              <span
-                class="form-check-label text-gray-700 fs-6 fw-semibold ms-0 me-2"
-              >
-                Targets
-              </span>
-              <input
-                class="form-check-input"
-                type="checkbox"
-                value="1"
-                checked
-              />
-            </label>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="py-4 border-bottom">
-            <label
-              class="form-check form-switch form-switch-sm form-check-custom form-check-solid flex-stack"
-            >
-              <span
-                class="form-check-label text-gray-700 fs-6 fw-semibold ms-0 me-2"
-              >
-                Affiliate Programs
-              </span>
-              <input class="form-check-input" type="checkbox" value="1" />
-            </label>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="py-4 border-bottom">
-            <label
-              class="form-check form-switch form-switch-sm form-check-custom form-check-solid flex-stack"
-            >
-              <span
-                class="form-check-label text-gray-700 fs-6 fw-semibold ms-0 me-2"
-              >
-                Referrals
-              </span>
-              <input
-                class="form-check-input"
-                type="checkbox"
-                value="1"
-                checked
-              />
-            </label>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Input group-->
-          <div class="py-4 border-bottom">
-            <label
-              class="form-check form-switch form-switch-sm form-check-custom form-check-solid flex-stack"
-            >
-              <span
-                class="form-check-label text-gray-700 fs-6 fw-semibold ms-0 me-2"
-              >
-                Users
-              </span>
-              <input class="form-check-input" type="checkbox" value="1" />
-            </label>
-          </div>
-          <!--end::Input group-->
-
-          <!--begin::Actions-->
-          <div class="d-flex justify-content-end pt-7">
-            <div
-              @click="state = 'main'"
-              class="btn btn-sm btn-light fw-bold btn-active-light-primary me-2"
-            >
-              Cancel
-            </div>
-            <button class="btn btn-sm fw-bold btn-primary">Save Changes</button>
-          </div>
-          <!--end::Actions-->
-        </form>
       </div>
       <!--end::Menu-->
     </template>
@@ -447,11 +92,24 @@
 
 <script lang="ts">
 import { getAssetPath } from "@/core/helpers/assets";
-import { defineComponent, ref } from "vue";
+import { defineComponent, ref, provide } from "vue";
 import Results from "@/layouts/default-layout/components/search/partials/Results.vue";
 import PartialMain from "@/layouts/default-layout/components/search/partials/Main.vue";
 import Empty from "@/layouts/default-layout/components/search/partials/Empty.vue";
 import MenuComponent from "@/components/menu/MenuComponent.vue";
+import ApiService from "@/core/services/ApiService";
+
+interface Trip {
+  trip_id: string;
+  trip_number: string;
+  trip_type: string;
+  trip_status: string;
+  patient_name?: string;
+  route?: string;
+}
+
+const RECENT_SEARCHES_KEY = "jet_icu_recent_searches";
+const MAX_RECENT_SEARCHES = 10;
 
 export default defineComponent({
   name: "kt-search",
@@ -463,45 +121,106 @@ export default defineComponent({
   },
   setup() {
     const search = ref<string>("");
-    const state = ref<
-      "main" | "empty" | "advanced-options" | "preferences" | "results"
-    >("main");
+    const state = ref<"main" | "empty" | "results">("main");
     const loading = ref<boolean>(false);
     const inputRef = ref<HTMLInputElement | null>(null);
+    const searchResults = ref<Trip[]>([]);
+    const searchDebounceTimer = ref<number | null>(null);
 
-    const searching = (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      if (target.value.length <= 1) {
-        load("main");
-      } else {
-        if (target.value.length > 5) {
-          load("empty");
-          return;
-        }
-        load("results");
+    // Provide search results and recent searches to child components
+    provide("searchResults", searchResults);
+    provide("loading", loading);
+
+    const saveRecentSearch = (trip: Trip) => {
+      try {
+        const recent = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || "[]");
+
+        // Remove if already exists (to move to top)
+        const filtered = recent.filter((t: Trip) => t.trip_id !== trip.trip_id);
+
+        // Add to beginning
+        filtered.unshift({
+          trip_id: trip.trip_id,
+          trip_number: trip.trip_number,
+          patient_name: trip.patient_name,
+          route: trip.route,
+          trip_type: trip.trip_type,
+          trip_status: trip.trip_status
+        });
+
+        // Keep only last MAX_RECENT_SEARCHES
+        const trimmed = filtered.slice(0, MAX_RECENT_SEARCHES);
+
+        localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(trimmed));
+      } catch (error) {
+        console.error("Error saving recent search:", error);
       }
     };
 
-    const load = (
-      current: "main" | "empty" | "advanced-options" | "preferences" | "results"
-    ) => {
+    const performSearch = async (searchTerm: string) => {
+      if (searchTerm.trim().length < 2) {
+        state.value = "main";
+        searchResults.value = [];
+        return;
+      }
+
       loading.value = true;
-      setTimeout(() => {
-        state.value = current;
+
+      try {
+        const params = new URLSearchParams();
+        params.append("search", searchTerm.trim());
+        params.append("page_size", "10"); // Limit to 10 results for dropdown
+
+        const url = `/workflows?${params}`;
+        const { data } = await ApiService.get(url);
+
+        searchResults.value = data.results || [];
+
+        if (searchResults.value.length === 0) {
+          state.value = "empty";
+        } else {
+          state.value = "results";
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+        searchResults.value = [];
+        state.value = "empty";
+      } finally {
         loading.value = false;
-      }, 1000);
+      }
+    };
+
+    const searching = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+
+      // Clear previous timer
+      if (searchDebounceTimer.value) {
+        clearTimeout(searchDebounceTimer.value);
+      }
+
+      // Show loading state immediately
+      if (target.value.trim().length >= 2) {
+        loading.value = true;
+      }
+
+      // Debounce search
+      searchDebounceTimer.value = setTimeout(() => {
+        performSearch(target.value);
+      }, 300) as unknown as number;
     };
 
     const reset = () => {
       search.value = "";
       state.value = "main";
+      searchResults.value = [];
+
+      if (searchDebounceTimer.value) {
+        clearTimeout(searchDebounceTimer.value);
+      }
     };
 
-    const setState = (
-      curr: "main" | "empty" | "advanced-options" | "preferences" | "results"
-    ) => {
-      state.value = curr;
-    };
+    // Expose saveRecentSearch to child components
+    provide("saveRecentSearch", saveRecentSearch);
 
     return {
       search,
@@ -510,8 +229,8 @@ export default defineComponent({
       searching,
       reset,
       inputRef,
-      setState,
       getAssetPath,
+      searchResults,
     };
   },
 });

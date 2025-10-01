@@ -497,6 +497,16 @@ const routes: Array<RouteRecordRaw> = [
         },
       },
       {
+        path: "/admin/workflows",
+        name: "admin-workflows",
+        component: () => import("@/views/admin/WorkflowDashboard.vue"),
+        meta: {
+          pageTitle: "Workflow Dashboard",
+          breadcrumbs: ["Administration", "Workflows"],
+          middleware: "auth",
+        },
+      },
+      {
         path: "/admin/trips/:id",
         name: "admin-trip-view",
         component: () => import("@/views/admin/trips/ViewTrip.vue"),
@@ -723,6 +733,36 @@ const routes: Array<RouteRecordRaw> = [
         meta: {
           pageTitle: "Audit Log",
           breadcrumbs: ["Administration", "System", "Modifications"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/email-templates",
+        name: "email-templates",
+        component: () => import("@/views/admin/EmailTemplates.vue"),
+        meta: {
+          pageTitle: "Email Templates",
+          breadcrumbs: ["Administration", "System", "Email Templates"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/email-templates/create",
+        name: "email-template-create",
+        component: () => import("@/views/admin/EmailTemplateEditor.vue"),
+        meta: {
+          pageTitle: "Create Email Template",
+          breadcrumbs: ["Administration", "System", "Email Templates", "Create"],
+          middleware: "auth",
+        },
+      },
+      {
+        path: "/admin/email-templates/:id/edit",
+        name: "email-template-edit",
+        component: () => import("@/views/admin/EmailTemplateEditor.vue"),
+        meta: {
+          pageTitle: "Edit Email Template",
+          breadcrumbs: ["Administration", "System", "Email Templates", "Edit"],
           middleware: "auth",
         },
       },

@@ -51,9 +51,10 @@ def get_fuel_prices(request, airport_code):
         return JsonResponse({'error': str(e)}, status=500)
 
 from .models import (
-    Modification, Permission, Role, Department, UserProfile, Contact, 
+    Modification, Permission, Role, Department, UserProfile, Contact,
     FBO, Ground, Airport, Document, Aircraft, Transaction, Agreement,
-    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract, LostReason
+    Patient, Quote, Passenger, CrewLine, Trip, TripLine, Staff, StaffRole, StaffRoleMembership, TripEvent, Comment, Contract, LostReason,
+    EmailTemplate
 )
 from .utils import track_creation, track_deletion
 from .contact_service import ContactCreationService, ContactCreationSerializer
@@ -79,6 +80,8 @@ from .serializers import (
     StaffRoleMembershipReadSerializer, StaffRoleMembershipWriteSerializer,
     ContractReadSerializer, ContractWriteSerializer, ContractCreateFromTripSerializer,
     ContractDocuSealActionSerializer, DocuSealWebhookSerializer,
+    EmailTemplateReadSerializer, EmailTemplateWriteSerializer,
+    WorkflowSerializer,
 )
 from .permissions import (
     IsAuthenticatedOrPublicEndpoint, IsTransactionOwner,
@@ -211,6 +214,12 @@ class ContactViewSet(BaseViewSet):
     queryset = Contact.objects.all()
     search_fields = ['first_name', 'last_name', 'business_name', 'email']
     ordering_fields = ['first_name', 'last_name', 'business_name', 'created_on']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Exclude contacts that have associated staff or patient records
+        queryset = queryset.filter(staff__isnull=True, patients__isnull=True)
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -1282,9 +1291,10 @@ class CrewLineViewSet(BaseViewSet):
 
 # Trip ViewSet
 class TripViewSet(BaseViewSet):
-    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line')
+    queryset = Trip.objects.select_related('quote', 'patient', 'patient__info', 'aircraft').prefetch_related('trip_lines', 'passengers__info', 'events__airport', 'events__crew_line').order_by('-created_on')
     search_fields = ['trip_number', 'type', 'patient__info__first_name', 'patient__info__last_name', 'passengers__info__first_name', 'passengers__info__last_name']
     ordering_fields = ['created_on', 'estimated_departure_time']
+    ordering = ['-created_on']  # Default ordering by created_on descending
     filterset_fields = ['status', 'type']  # Add filtering by status and type
     permission_classes = [
         permissions.IsAuthenticated,
@@ -2793,6 +2803,33 @@ class CommentViewSet(viewsets.ModelViewSet):
             )
 
 
+class EmailTemplateViewSet(BaseViewSet):
+    """
+    ViewSet for managing email templates with CRUD operations.
+    Supports creating, reading, updating, and deleting email templates.
+    """
+    queryset = EmailTemplate.objects.all()
+    search_fields = ['title', 'subject', 'category']
+    ordering_fields = ['title', 'category', 'is_published', 'last_sent_at', 'created_on']
+    filterset_fields = ['category', 'is_published']
+
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return EmailTemplateReadSerializer
+        return EmailTemplateWriteSerializer
+
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        track_creation(instance, self.request.user)
+
+    def perform_update(self, serializer):
+        instance = serializer.save(modified_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        track_deletion(instance, self.request.user)
+        instance.delete()
+
+
 # Timezone utility API endpoints
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4064,3 +4101,114 @@ def login_with_mfa(request):
         return Response({
             'error': 'An error occurred during login'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Workflow Dashboard ViewSet
+class WorkflowViewSet(BaseViewSet):
+    """
+    Optimized read-only endpoint for Workflow Dashboard.
+    Returns all trips with pre-computed fields for efficient display.
+    """
+    serializer_class = WorkflowSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination  # Explicitly set pagination
+    ordering = ['-created_on']  # Explicit ordering like TripViewSet
+    # Remove SearchFilter - we'll implement custom search in filter_queryset
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    ordering_fields = ['created_on']
+    filterset_fields = ['status', 'type']  # Add filtering by status and type
+
+    # Make it read-only by restricting HTTP methods
+    http_method_names = ['get', 'head', 'options']
+
+    def get_queryset(self):
+        """
+        Get base queryset with optimized related data loading.
+        Also handles search if provided.
+        """
+        from django.db.models import Q
+
+        queryset = Trip.objects.select_related(
+            'quote',
+            'quote__contact',
+            'quote__pickup_airport',
+            'quote__dropoff_airport',
+            'patient',
+            'patient__info',
+            'quote__patient'
+        ).prefetch_related(
+            'trip_lines__origin_airport',
+            'trip_lines__destination_airport',
+            'trip_lines__crew_line__primary_in_command',
+            'trip_lines__crew_line__secondary_in_command',
+            'trip_lines__crew_line__medic_ids'
+        ).order_by('-created_on')
+
+        # Handle search
+        search_term = self.request.query_params.get('search', '').strip().rstrip('/')
+        if search_term:
+            print(f"DEBUG WORKFLOW: Searching for: '{search_term}'")
+
+            # Build search query
+            search_query = Q(
+                Q(trip_number__icontains=search_term) |
+                Q(type__icontains=search_term) |
+                # Airport fields
+                Q(quote__pickup_airport__ident__icontains=search_term) |
+                Q(quote__pickup_airport__name__icontains=search_term) |
+                Q(quote__pickup_airport__icao_code__icontains=search_term) |
+                Q(quote__pickup_airport__iata_code__icontains=search_term) |
+                Q(quote__dropoff_airport__ident__icontains=search_term) |
+                Q(quote__dropoff_airport__name__icontains=search_term) |
+                Q(quote__dropoff_airport__icao_code__icontains=search_term) |
+                Q(quote__dropoff_airport__iata_code__icontains=search_term) |
+                # Legacy contact name fields
+                Q(patient__info__first_name__icontains=search_term) |
+                Q(patient__info__last_name__icontains=search_term) |
+                Q(quote__contact__first_name__icontains=search_term) |
+                Q(quote__contact__last_name__icontains=search_term) |
+                Q(quote__contact__business_name__icontains=search_term)
+            )
+
+            queryset = queryset.filter(search_query)
+            print(f"DEBUG WORKFLOW: After search filter, queryset count: {queryset.count()}")
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        """Override list to debug pagination."""
+        search_param = request.query_params.get('search')
+        print(f"DEBUG WORKFLOW: list() called with page={request.query_params.get('page')}, page_size={request.query_params.get('page_size')}, search={search_param}")
+        if search_param:
+            print(f"DEBUG WORKFLOW: Search param repr: {repr(search_param)}")
+            print(f"DEBUG WORKFLOW: Search param length: {len(search_param)}")
+            print(f"DEBUG WORKFLOW: Search param bytes: {search_param.encode('utf-8')}")
+        queryset = self.get_queryset()
+        print(f"DEBUG WORKFLOW: Base queryset count: {queryset.count()}")
+        queryset = self.filter_queryset(queryset)
+        print(f"DEBUG WORKFLOW: After filter_queryset, count: {queryset.count()}")
+        if request.query_params.get('search'):
+            print(f"DEBUG WORKFLOW: Search term: '{request.query_params.get('search')}'")
+            print(f"DEBUG WORKFLOW: SQL Query: {queryset.query}")
+
+        # Check if paginator exists
+        paginator = self.paginator
+        print(f"DEBUG WORKFLOW: self.paginator = {paginator}")
+        print(f"DEBUG WORKFLOW: self.pagination_class = {self.pagination_class}")
+
+        # Manually instantiate paginator to debug
+        if self.pagination_class:
+            manual_paginator = self.pagination_class()
+            print(f"DEBUG WORKFLOW: Manual paginator page_size = {manual_paginator.page_size}")
+            print(f"DEBUG WORKFLOW: Manual paginator page_size_query_param = {manual_paginator.page_size_query_param}")
+            print(f"DEBUG WORKFLOW: Request page_size param = {request.query_params.get('page_size')}")
+
+        page = self.paginate_queryset(queryset)
+        print(f"DEBUG WORKFLOW: After paginate_queryset, page has {len(page) if page else 'None'} items")
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

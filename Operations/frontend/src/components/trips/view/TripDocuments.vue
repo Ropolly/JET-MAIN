@@ -24,23 +24,18 @@
       <div class="col-md-6 col-lg-4 col-xl-3">
         <!--begin::Card-->
         <div
-          class="card h-100 flex-center border border-dashed p-8"
-          :class="{
-            'bg-light-primary border-primary': allRequiredAgreementsGenerated,
-            'bg-light-muted border-muted': !allRequiredAgreementsGenerated
-          }"
+          class="card h-100 flex-center border border-dashed p-8 bg-light-primary border-primary"
         >
           <!--begin::Image-->
           <img
             src="/media/svg/files/upload.svg"
             class="mb-5"
             alt=""
-            :class="{ 'opacity-50': !allRequiredAgreementsGenerated }"
           >
           <!--end::Image-->
 
           <!--begin::Link-->
-          <div class="dropdown" v-if="allRequiredAgreementsGenerated">
+          <div class="dropdown">
             <a href="#" class="text-hover-primary fs-5 fw-bold mb-2 dropdown-toggle" data-bs-toggle="dropdown">
               Add Document
             </a>
@@ -67,17 +62,11 @@
               </li>
             </ul>
           </div>
-          <div v-else>
-            <span class="fs-5 fw-bold mb-2 text-muted">Add Document</span>
-          </div>
           <!--end::Link-->
 
           <!--begin::Description-->
-          <div class="fs-7 fw-semibold" :class="{
-            'text-gray-500': allRequiredAgreementsGenerated,
-            'text-muted': !allRequiredAgreementsGenerated
-          }">
-            {{ allRequiredAgreementsGenerated ? 'Generate or upload documents' : 'Generate agreements first' }}
+          <div class="fs-7 fw-semibold text-gray-500">
+            Generate or upload documents
           </div>
           <!--end::Description-->
         </div>

@@ -155,8 +155,8 @@
                 :disabled="isSubmitting"
               >
                 <option value="">Select Aircraft</option>
-                <option value="65">Learjet 65</option>
-                <option value="35">Learjet 35</option>
+                <option value="60">Learjet 60</option>
+                <option value="30">Learjet 30</option>
                 <option value="TBD">To Be Determined</option>
               </select>
             </div>
@@ -499,8 +499,8 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 const getAircraftCruiseSpeed = (aircraftType: string): number => {
   // Cruise speeds in knots (nautical miles per hour)
   const speeds: Record<string, number> = {
-    '35': 464, // Learjet 35 cruise speed
-    '65': 459, // Learjet 65 cruise speed
+    '30': 530, // Learjet 30 cruise speed
+    '60': 457, // Learjet 60 cruise speed
     'TBD': 450, // Default estimate
   };
   return speeds[aircraftType] || 450;
